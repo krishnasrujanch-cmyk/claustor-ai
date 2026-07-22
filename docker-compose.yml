@@ -1,0 +1,140 @@
+version: "3.9"
+
+# ═══════════════════════════════════════════════════
+# Claustor AI — Local Development
+# Run: make dev  (starts all services)
+# ═══════════════════════════════════════════════════
+
+services:
+
+  # ── PostgreSQL (local only — use Neon in staging/prod) ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: claustor-postgres
+    environment:
+      POSTGRES_USER: claustor
+      POSTGRES_PASSWORD: claustor_dev
+      POSTGRES_DB: claustor
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claustor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (local only — use Upstash in staging/prod) ────
+  redis:
+    image: redis:7-alpine
+    container_name: claustor-redis
+    command: redis-server --requirepass claustor_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── RabbitMQ (local only — use CloudAMQP in staging/prod) ─
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: claustor-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: claustor
+      RABBITMQ_DEFAULT_PASS: claustor_dev
+      RABBITMQ_DEFAULT_VHOST: claustor
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # Management UI: http://localhost:15672
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # ── FastAPI Backend ──────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: ../../infrastructure/docker/api.Dockerfile
+      target: development
+    container_name: claustor-api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/api:/app
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://claustor:claustor_dev@postgres:5432/claustor
+      REDIS_URL: redis://:claustor_dev@redis:6379
+      RABBITMQ_URL: amqp://claustor:claustor_dev@rabbitmq:5672/claustor
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Celery Worker ────────────────────────────────────────
+  worker:
+    build:
+      context: ./apps/worker
+      dockerfile: ../../infrastructure/docker/worker.Dockerfile
+      target: development
+    container_name: claustor-worker
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./apps/worker:/app
+      - ./apps/api:/api  # shared code
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://claustor:claustor_dev@postgres:5432/claustor
+      REDIS_URL: redis://:claustor_dev@redis:6379
+      RABBITMQ_URL: amqp://claustor:claustor_dev@rabbitmq:5672/claustor
+    depends_on:
+      - api
+      - redis
+      - rabbitmq
+
+  # ── Celery Beat (scheduler) ──────────────────────────────
+  beat:
+    build:
+      context: ./apps/worker
+      dockerfile: ../../infrastructure/docker/worker.Dockerfile
+      target: development
+    container_name: claustor-beat
+    command: celery -A app.celery_app beat --loglevel=info
+    volumes:
+      - ./apps/worker:/app
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://:claustor_dev@redis:6379
+    depends_on:
+      - redis
+      - worker
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  default:
+    name: claustor-network

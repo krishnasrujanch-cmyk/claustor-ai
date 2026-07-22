@@ -1,0 +1,53 @@
+# ── Secrets (NEVER commit) ──────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+gcp-key.json
+secrets/
+
+# ── Python ───────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ── Node / Next.js ───────────────────────────────
+node_modules/
+.next/
+.turbo/
+out/
+dist/
+
+# ── IDE ──────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Docker ───────────────────────────────────────
+docker-compose.override.yml
+
+# ── Terraform ────────────────────────────────────
+infrastructure/terraform/.terraform/
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.backup
+infrastructure/terraform/.terraform.lock.hcl
+
+# ── Logs ─────────────────────────────────────────
+*.log
+logs/
