@@ -217,7 +217,7 @@ class Contract(Base):
 
     organisation: Mapped["Organisation"] = relationship("Organisation", back_populates="contracts")
     clauses: Mapped[list["Clause"]] = relationship("Clause", back_populates="contract", cascade="all, delete-orphan")
-    metadata_record: Mapped["DocumentMetadata"] = relationship("DocumentMetadata", back_populates="contract", uselist=False)
+    doc_metadata: Mapped["DocumentMetadata"] = relationship("DocumentMetadata", back_populates="contract", uselist=False)
     obligations: Mapped[list["Obligation"]] = relationship("Obligation", back_populates="contract", cascade="all, delete-orphan")
     conversations: Mapped[list["Conversation"]] = relationship("Conversation", back_populates="contract")
 
@@ -295,7 +295,7 @@ class DocumentMetadata(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    contract: Mapped["Contract"] = relationship("Contract", back_populates="metadata_record")
+    contract: Mapped["Contract"] = relationship("Contract", back_populates="doc_metadata")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -388,5 +388,5 @@ class AuditLog(Base):
     trace_id: Mapped[str | None] = mapped_column(String(100))
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20))                  # ALLOWED | DENIED | SUCCESS | FAILED
-    metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    extra_data: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

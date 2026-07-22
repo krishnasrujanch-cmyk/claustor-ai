@@ -1,6 +1,7 @@
 """Alembic migration environment — async SQLAlchemy."""
 
 import asyncio
+import ssl
 from logging.config import fileConfig
 
 from alembic import context
@@ -10,11 +11,30 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import settings
 from app.infrastructure.database.session import Base
-# Import all models so Alembic can detect them
-from app.domain.models import __init__ as _  # noqa: F401
+
+# ── Import ALL models so Alembic can detect them ──
+from app.domain.models import (
+    Organisation,
+    Department,
+    User,
+    Contract,
+    Clause,
+    DocumentMetadata,
+    Obligation,
+    Conversation,
+    APIKey,
+    AuditLog,
+)
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+# Strip sslmode from URL for asyncpg
+import re
+clean_url = settings.DATABASE_URL
+clean_url = re.sub(r"[?&]sslmode=[^&]*", "", clean_url)
+clean_url = re.sub(r"[?&]channel_binding=[^&]*", "", clean_url)
+clean_url = re.sub(r"[?&]$", "", clean_url).rstrip("?")
+config.set_main_option("sqlalchemy.url", clean_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -46,10 +66,13 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    ssl_context = ssl.create_default_context()
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={"ssl": ssl_context},
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

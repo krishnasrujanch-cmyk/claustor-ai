@@ -49,7 +49,7 @@ class LLMResponse:
     cost_usd: float = 0.0
     latency_ms: int = 0
     cached: bool = False
-    metadata: dict = field(default_factory=dict)
+    extra: dict = field(default_factory=dict)
 
     @property
     def total_tokens(self) -> int:
