@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
-import { contracts as contractsAPI, billing as billingAPI, Contract, getToken } from "@/lib/api";
+import { contracts as contractsAPI, billing as billingAPI, Contract } from "@/lib/api";
 
 const C = {
   primary: "#5B4BFF",
@@ -108,13 +108,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const load = async () => {
-      // Wait for auth store to hydrate
-      await new Promise(r => setTimeout(r, 100));
-      const token = getToken();
-      if (!token) return;
       try {
         const [contractsData, usageData] = await Promise.all([
-          contractsAPI.list({ page: 1, page_size: 50 }),
+          contractsAPI.list({ page: 1, page_size: 5 }),
           billingAPI.usage(),
         ]);
         setRecentContracts(contractsData.contracts);
@@ -154,8 +150,8 @@ export default function DashboardPage() {
       >
         <StatCard
           label="Contracts analysed"
-          value={recentContracts.filter(c => c.status === "analyzed").length}
-          sub={`${recentContracts.length} total uploaded`}
+          value={usage?.contracts.used ?? 0}
+          sub={`of ${usage?.contracts.limit ?? 5} this month`}
           color={C.primary}
         />
         <StatCard
@@ -167,7 +163,7 @@ export default function DashboardPage() {
         <StatCard
           label="High-risk clauses"
           value={highRiskCount}
-          sub="across all contracts"
+          sub="in recent contracts"
           color={C.error}
         />
         <StatCard
