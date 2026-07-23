@@ -75,6 +75,15 @@ export default function ContractDetailPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("overview");
 
+  // Assign review modal
+  const [showAssign, setShowAssign]     = useState(false);
+  const [orgUsers, setOrgUsers]         = useState<any[]>([]);
+  const [reviewerId, setReviewerId]     = useState("");
+  const [priority, setPriority]         = useState("normal");
+  const [reviewNotes, setReviewNotes]   = useState("");
+  const [assigning, setAssigning]       = useState(false);
+  const [assignMsg, setAssignMsg]       = useState("");
+
   // Analytics state
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -90,6 +99,34 @@ export default function ContractDetailPage() {
       .catch(()=>router.push("/dashboard/contracts"))
       .finally(()=>setLoading(false));
   }, [id]);
+
+  const loadUsers = async () => {
+    const token = getToken();
+    const r = await fetch(`${API}/api/v1/users/`, {headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json();
+    setOrgUsers(d.users?.filter((u:any) =>
+      ["legal_reviewer","contract_manager","dept_admin","super_admin"].includes(u.role)
+    ) || []);
+  };
+
+  const assignReview = async () => {
+    if (!reviewerId) return;
+    setAssigning(true); setAssignMsg("");
+    const token = getToken();
+    try {
+      const r = await fetch(`${API}/api/v1/reviews/assign`, {
+        method:"POST",
+        headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+        body:JSON.stringify({contract_id:id, reviewer_id:reviewerId, priority, notes:reviewNotes||undefined}),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail||"Failed");
+      setAssignMsg(`✅ Review assigned to ${d.reviewer}`);
+      setTimeout(()=>{ setShowAssign(false); setAssignMsg(""); setReviewerId(""); setReviewNotes(""); }, 2000);
+    } catch(e:any) {
+      setAssignMsg(`❌ ${e.message}`);
+    } finally { setAssigning(false); }
+  };
 
   useEffect(() => {
     if (tab==="analytics" && !analyticsData) {
@@ -150,6 +187,11 @@ export default function ContractDetailPage() {
             <span style={{fontSize:13,color:C.muted}}>v{contract.version}</span>
           </div>
         </div>
+        <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"flex-end"}}>
+          <button onClick={()=>{setShowAssign(true);loadUsers();}}
+            style={{padding:"8px 18px",background:"#5B4BFF",color:"white",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+            ✅ Assign for review
+          </button>
         {contract.risk_score!==null && (
           <div style={{textAlign:"center"}}>
             <div style={{
@@ -163,6 +205,7 @@ export default function ContractDetailPage() {
             <div style={{fontSize:11,color:C.muted,marginTop:4}}>Risk score</div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Key info */}
@@ -372,6 +415,69 @@ export default function ContractDetailPage() {
         </div>
       )}
       <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`}</style>
+
+      {/* Assign Review Modal */}
+      {showAssign && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
+          <div style={{background:C.surface,borderRadius:16,padding:32,width:480,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+            <h2 style={{fontSize:18,fontWeight:700,color:C.heading,marginBottom:4}}>Assign for Review</h2>
+            <p style={{fontSize:13,color:C.muted,marginBottom:24}}>{contract?.title}</p>
+
+            {assignMsg && (
+              <div style={{padding:"10px 14px",borderRadius:8,marginBottom:16,
+                background:assignMsg.startsWith("✅")?"#F0FDF4":"#FEF2F2",
+                color:assignMsg.startsWith("✅")?C.success:C.error,fontSize:13}}>
+                {assignMsg}
+              </div>
+            )}
+
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div>
+                <label style={{display:"block",fontSize:13,fontWeight:600,color:C.body,marginBottom:6}}>Reviewer</label>
+                <select value={reviewerId} onChange={e=>setReviewerId(e.target.value)}
+                  style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${C.border}`,borderRadius:8,fontSize:13,color:C.body}}>
+                  <option value="">Select reviewer...</option>
+                  {orgUsers.map(u=>(
+                    <option key={u.id} value={u.id}>{u.full_name||u.email} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:13,fontWeight:600,color:C.body,marginBottom:6}}>Priority</label>
+                <div style={{display:"flex",gap:8}}>
+                  {["low","normal","high","urgent"].map(p=>(
+                    <button key={p} onClick={()=>setPriority(p)}
+                      style={{flex:1,padding:"8px",border:`2px solid ${priority===p?"#5B4BFF":C.border}`,
+                        borderRadius:8,background:priority===p?"#EEF0FF":"none",
+                        color:priority===p?"#5B4BFF":C.muted,fontSize:12,fontWeight:600,cursor:"pointer",textTransform:"capitalize"}}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:13,fontWeight:600,color:C.body,marginBottom:6}}>Notes (optional)</label>
+                <textarea value={reviewNotes} onChange={e=>setReviewNotes(e.target.value)}
+                  placeholder="Instructions for reviewer..." rows={3}
+                  style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${C.border}`,borderRadius:8,fontSize:13,resize:"vertical",outline:"none"}}/>
+              </div>
+            </div>
+
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:20}}>
+              <button onClick={()=>{setShowAssign(false);setAssignMsg("");}}
+                style={{padding:"10px 20px",border:`1px solid ${C.border}`,borderRadius:8,background:"none",fontSize:14,cursor:"pointer"}}>
+                Cancel
+              </button>
+              <button onClick={assignReview} disabled={!reviewerId||assigning}
+                style={{padding:"10px 20px",border:"none",borderRadius:8,
+                  background:!reviewerId||assigning?"#D1D5DB":"#5B4BFF",
+                  color:"white",fontSize:14,fontWeight:600,cursor:!reviewerId?"not-allowed":"pointer"}}>
+                {assigning?"Assigning...":"Assign review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -327,3 +327,70 @@ async def get_counterparty_risk(
             for r in rows
         ],
     }
+
+
+@router.get("/export")
+async def export_analytics(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    format: str = Query("csv", pattern="^(csv|json)$"),
+    contract_id: str | None = Query(None),
+):
+    """Export analytics data as CSV or JSON."""
+    import csv, io, json as json_lib
+    from fastapi.responses import StreamingResponse
+    import uuid as _uuid
+
+    clause_filter = [Contract.org_id == user.org_id]
+    if contract_id:
+        clause_filter.append(Contract.id == _uuid.UUID(contract_id))
+
+    result = await db.execute(
+        select(
+            Clause.clause_type,
+            Clause.risk_level,
+            Clause.risk_score,
+            Clause.title,
+            Clause.section_reference,
+            Contract.title.label("contract_title"),
+            Contract.counterparty,
+        )
+        .join(Contract, Clause.contract_id == Contract.id)
+        .where(*clause_filter)
+        .order_by(Clause.risk_score.desc())
+    )
+    rows = result.fetchall()
+
+    if format == "json":
+        data = [
+            {
+                "contract": r.contract_title,
+                "counterparty": r.counterparty,
+                "clause_type": r.clause_type,
+                "clause_title": r.title,
+                "section": r.section_reference,
+                "risk_level": r.risk_level,
+                "risk_score": r.risk_score,
+            }
+            for r in rows
+        ]
+        return StreamingResponse(
+            io.BytesIO(json_lib.dumps(data, indent=2).encode()),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=claustor-analytics.json"},
+        )
+
+    # CSV export
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Contract","Counterparty","Clause Type","Clause Title","Section","Risk Level","Risk Score"])
+    for r in rows:
+        writer.writerow([r.contract_title, r.counterparty or "", r.clause_type,
+                        r.title or "", r.section_reference or "", r.risk_level, r.risk_score])
+
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode()),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=claustor-analytics.csv"},
+    )

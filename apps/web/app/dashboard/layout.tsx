@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/auth";
@@ -24,6 +25,8 @@ const NAV = [
   { href: "/dashboard/contracts",   icon: "📄", label: "Contracts" },
   { href: "/dashboard/copilot",     icon: "🤖", label: "AI Copilot" },
   { href: "/dashboard/reviews",     icon: "✅", label: "Reviews" },
+  { href: "/dashboard/compare",     icon: "⇄",  label: "Compare" },
+  { href: "/dashboard/playbook",    icon: "📚", label: "Playbook" },
   { href: "/dashboard/obligations", icon: "📅", label: "Obligations" },
   { href: "/dashboard/analytics",   icon: "📊", label: "Analytics" },
   { href: "/dashboard/bulk",        icon: "📦", label: "Bulk Import" },
@@ -111,6 +114,7 @@ export default function DashboardLayout({
             borderBottom: "1px solid rgba(255,255,255,0.08)",
           }}
         >
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%" }}>
           <Link
             href="/dashboard"
             style={{
@@ -140,6 +144,8 @@ export default function DashboardLayout({
               Claustor
             </span>
           </Link>
+          <NotificationBell />
+          </div>
         </div>
 
         {/* Main nav */}

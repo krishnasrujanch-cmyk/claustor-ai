@@ -1,0 +1,14 @@
+Contract,Counterparty,Clause Type,Clause Title,Section,Risk Level,Risk Score
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,liability,Liability Cap,Section 8.1,low,30.0
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,indemnification,Product Liability Insurance,Section 8.3,low,30.0
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,termination,Termination for Cause,Section 9.3,low,30.0
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,payment,Standard Terms,Section 3.1,low,30.0
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,confidentiality,Confidentiality Obligations,Section 7.1,low,30.0
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,ip_ownership,Buyer IP,Section 6.1,low,30.0
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,governing_law,Governing Law,Section 11.1,low,30.0
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,dispute_resolution,Dispute Resolution,Section 11.2,low,30.0
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,auto_renewal,Auto-Renewal,Section 9.2,low,30.0
+Supply Chain Master Agreement,PrimeLink Manufacturing Pvt. Ltd.,force_majeure,Force Majeure,Section 10.1,low,30.0
+Dku Technologies Firm Reg (2),DKU TECHNOLOGIES,governing_law,Governing Law,Section 59,low,30.0
+Dku Technologies Firm Reg (2),DKU TECHNOLOGIES,duration,Duration of Firm,,low,30.0
+Dku Technologies Firm Reg (2),DKU TECHNOLOGIES,other,Registration,Section 58(1),low,30.0

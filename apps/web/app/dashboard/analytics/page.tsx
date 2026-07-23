@@ -162,7 +162,7 @@ export default function AnalyticsPage() {
           </p>
         </div>
 
-        {/* Contract filter */}
+        {/* Contract filter + Export */}
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           {isFiltered && (
             <Link href={`/dashboard/contracts/${selectedId}`}
@@ -170,6 +170,21 @@ export default function AnalyticsPage() {
               View contract →
             </Link>
           )}
+          <a href={`http://localhost:8000/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`}
+            onClick={e=>{
+              const token = getToken();
+              e.preventDefault();
+              fetch(`http://localhost:8000/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`,
+                {headers:{Authorization:`Bearer ${token}`}})
+                .then(r=>r.blob()).then(blob=>{
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href=url; a.download="claustor-analytics.csv"; a.click();
+                });
+            }}
+            style={{ fontSize:13, color:C.body, textDecoration:"none", padding:"8px 14px", border:`1px solid ${C.border}`, borderRadius:8, background:C.surface }}>
+            ⬇ CSV
+          </a>
           <select value={selectedId} onChange={e=>setSelectedId(e.target.value)}
             style={{ padding:"10px 14px", border:`1.5px solid ${C.border}`, borderRadius:8, fontSize:13, color:C.body, background:C.surface, minWidth:220 }}>
             <option value="">📊 All contracts (portfolio)</option>

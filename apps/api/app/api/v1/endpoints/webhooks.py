@@ -109,11 +109,15 @@ async def deliver_webhook(
     secret: str,
     event: str,
     data: dict,
+    max_retries: int = 3,
 ) -> tuple[bool, int, str]:
     """
-    Deliver webhook payload to customer URL.
+    Deliver webhook payload with exponential backoff retry.
+    Attempts: 1s → 5s → 25s between retries.
     Returns (success, status_code, response_body).
     """
+    import asyncio
+
     payload = {
         "id":         str(uuid.uuid4()),
         "event":      event,
@@ -128,16 +132,36 @@ async def deliver_webhook(
         "User-Agent":           "Claustor-AI-Webhooks/1.0",
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                url,
-                json=payload,
-                headers=headers,
-            )
-            return response.status_code < 300, response.status_code, response.text[:500]
-    except Exception as e:
-        return False, 0, str(e)
+    backoff_secs = [1, 5, 25]
+
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url, json=payload, headers=headers)
+                if response.status_code < 300:
+                    return True, response.status_code, response.text[:500]
+
+                # 4xx = don't retry (client error)
+                if response.status_code < 500:
+                    return False, response.status_code, response.text[:500]
+
+                # 5xx = retry
+                if attempt < max_retries - 1:
+                    wait = backoff_secs[attempt]
+                    logger.warning("webhook_retry", url=url, attempt=attempt+1, wait=wait, status=response.status_code)
+                    await asyncio.sleep(wait)
+                else:
+                    return False, response.status_code, response.text[:500]
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait = backoff_secs[attempt]
+                logger.warning("webhook_retry_error", error=str(e), attempt=attempt+1, wait=wait)
+                await asyncio.sleep(wait)
+            else:
+                return False, 0, str(e)
+
+    return False, 0, "Max retries exceeded"
 
 
 async def trigger_webhook_event(
