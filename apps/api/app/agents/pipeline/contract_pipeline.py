@@ -437,6 +437,32 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
             risk_level=risk_level,
         )
 
+    def _enrich_chunks_with_clause_types(
+        self, chunks: list[dict], clauses: list[dict]
+    ) -> list[dict]:
+        """
+        Match chunks to clauses by text overlap.
+        Adds clause_type to chunk metadata for better hybrid search dedup.
+        """
+        for chunk in chunks:
+            chunk_text = chunk.get("text", "").lower()
+            best_match = None
+            best_overlap = 0
+            for clause in clauses:
+                clause_text = clause.get("raw_text", "").lower()
+                if not clause_text:
+                    continue
+                # Simple overlap: check if significant words match
+                clause_words = set(clause_text.split()[:20])
+                chunk_words = set(chunk_text.split()[:50])
+                overlap = len(clause_words & chunk_words)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_match = clause
+            if best_match and best_overlap > 5:
+                chunk["clause_type"] = best_match.get("clause_type", "")
+        return chunks
+
     async def _update_status(
         self,
         db: AsyncSession,

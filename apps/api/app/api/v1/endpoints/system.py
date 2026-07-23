@@ -150,3 +150,52 @@ async def process_local(
     )
 
     return {"status": "processed", "contract_id": str(contract_id)}
+
+
+@router.post("/test-hybrid")
+async def test_hybrid(payload: dict, db: AsyncSession = Depends(get_db)):
+    """Test hybrid search directly."""
+    import uuid
+    from app.infrastructure.vector_store.hybrid_search import get_hybrid_search
+
+    engine = get_hybrid_search()
+
+    org_id = uuid.UUID(payload.get("org_id", "00000000-0000-0000-0000-000000000002"))
+    contract_id = uuid.UUID(payload.get("contract_id", "9d7890b7-aad6-45f2-a744-d3f439a71369"))
+    query = payload.get("query", "liability cap")
+
+    # Test keyword only
+    keyword = await engine._keyword_search(
+        query=query,
+        org_id=org_id,
+        db=db,
+        contract_id=contract_id,
+        top_k=10,
+        clause_type=None,
+    )
+
+    # Test semantic only
+    semantic = await engine._semantic_search(
+        query=query,
+        org_id=org_id,
+        contract_id=contract_id,
+        top_k=6,
+        clause_type=None,
+    )
+
+    # Test full hybrid
+    results = await engine.search(
+        query=query,
+        org_id=org_id,
+        db=db,
+        contract_id=contract_id,
+        top_k=6,
+    )
+
+    return {
+        "keyword_hits": len(keyword),
+        "semantic_hits": len(semantic),
+        "hybrid_results": len(results),
+        "sources": [r.source for r in results],
+        "keyword_raw": [{"clause_type": k["clause_type"], "score": k["score"]} for k in keyword],
+    }

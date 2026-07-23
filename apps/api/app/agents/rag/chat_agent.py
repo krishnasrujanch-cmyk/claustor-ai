@@ -253,31 +253,35 @@ Answer based only on the contract context above. Cite sources using [N] notation
         plan: str,
     ) -> list[dict]:
         """Load recent conversation history for multi-turn context."""
-        history_limit = HISTORY_LIMITS.get(plan, 4)
-        turns_to_fetch = history_limit * 2  # user + assistant pairs
+        try:
+            history_limit = HISTORY_LIMITS.get(plan, 4)
+            turns_to_fetch = history_limit * 2
 
-        import sqlalchemy
-        query = sqlalchemy.select(
-            Conversation.role,
-            Conversation.content,
-        ).where(
-            Conversation.org_id == org_id,
-            Conversation.user_id == user_id,
-        )
+            import sqlalchemy
+            query = sqlalchemy.select(
+                Conversation.role,
+                Conversation.content,
+            ).where(
+                Conversation.org_id == org_id,
+                Conversation.user_id == user_id,
+            )
 
-        if contract_id:
-            query = query.where(Conversation.contract_id == contract_id)
+            if contract_id:
+                query = query.where(Conversation.contract_id == contract_id)
 
-        query = query.order_by(
-            Conversation.created_at.desc()
-        ).limit(turns_to_fetch)
+            query = query.order_by(
+                Conversation.created_at.desc()
+            ).limit(turns_to_fetch)
 
-        result = await db.execute(query)
-        rows = result.fetchall()
-
-        # Reverse to chronological order
-        history = [{"role": r.role, "content": r.content} for r in reversed(rows)]
-        return history
+            result = await db.execute(query)
+            rows = result.fetchall()
+            history = [{"role": r.role, "content": r.content} for r in reversed(rows)]
+            return history
+        except Exception as e:
+            logger.warning("load_history_failed", error=str(e))
+            # Rollback failed transaction and return empty history
+            await db.rollback()
+            return []
 
     async def _save_to_history(
         self,
