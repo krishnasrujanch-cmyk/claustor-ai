@@ -114,7 +114,7 @@ export default function DashboardPage() {
       if (!token) return;
       try {
         const [contractsData, usageData] = await Promise.all([
-          contractsAPI.list({ page: 1, page_size: 5 }),
+          contractsAPI.list({ page: 1, page_size: 50 }),
           billingAPI.usage(),
         ]);
         setRecentContracts(contractsData.contracts);
@@ -154,8 +154,8 @@ export default function DashboardPage() {
       >
         <StatCard
           label="Contracts analysed"
-          value={usage?.contracts.used ?? 0}
-          sub={`of ${usage?.contracts.limit ?? 5} this month`}
+          value={recentContracts.filter(c => c.status === "analyzed").length}
+          sub={`${recentContracts.length} total uploaded`}
           color={C.primary}
         />
         <StatCard
@@ -167,7 +167,7 @@ export default function DashboardPage() {
         <StatCard
           label="High-risk clauses"
           value={highRiskCount}
-          sub="in recent contracts"
+          sub="across all contracts"
           color={C.error}
         />
         <StatCard
