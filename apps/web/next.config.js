@@ -1,10 +1,7 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  // Enable strict mode
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   reactStrictMode: true,
 
-  // API proxy to FastAPI backend
   async rewrites() {
     return [
       {
@@ -14,7 +11,6 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // Security headers
   async headers() {
     return [
       {
@@ -23,22 +19,19 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         ],
       },
     ];
   },
 
-  // Image domains
   images: {
     domains: ["claustor.com", "lh3.googleusercontent.com"],
   },
 
-  // Environment variables exposed to browser
   env: {
     NEXT_PUBLIC_APP_URL: process.env.APP_URL || "http://localhost:3000",
     NEXT_PUBLIC_API_URL: process.env.API_URL || "http://localhost:8000",
   },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
