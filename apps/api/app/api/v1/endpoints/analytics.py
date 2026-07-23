@@ -24,8 +24,14 @@ router = APIRouter()
 async def get_overview(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    contract_id: str | None = Query(None),
 ):
-    """Portfolio overview stats."""
+    """Portfolio overview stats. Filter by contract_id for contract-level view."""
+    import uuid as _uuid
+    base_filter = [Contract.org_id == user.org_id, Contract.is_active == True]
+    if contract_id:
+        base_filter.append(Contract.id == _uuid.UUID(contract_id))
+
     result = await db.execute(
         select(
             func.count(Contract.id).label("total"),
@@ -38,10 +44,7 @@ async def get_overview(
             func.avg(Contract.risk_score).label("avg_risk_score"),
             func.sum(Contract.contract_value).label("total_value"),
             func.count(case((Contract.auto_renewal == True, 1))).label("auto_renewal_count"),
-        ).where(
-            Contract.org_id == user.org_id,
-            Contract.is_active == True,
-        )
+        ).where(*base_filter)
     )
     row = result.first()
 
@@ -96,11 +99,14 @@ async def get_overview(
 async def get_risk_heatmap(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    contract_id: str | None = Query(None),
 ):
-    """
-    Risk heatmap data — clause type vs risk level matrix.
-    Shows which clause types are most risky across all contracts.
-    """
+    """Risk heatmap — clause type vs risk level matrix. Optional contract filter."""
+    import uuid as _uuid
+    clause_filter = [Contract.org_id == user.org_id]
+    if contract_id:
+        clause_filter.append(Contract.id == _uuid.UUID(contract_id))
+
     result = await db.execute(
         select(
             Clause.clause_type,
@@ -109,7 +115,7 @@ async def get_risk_heatmap(
             func.avg(Clause.risk_score).label("avg_score"),
         )
         .join(Contract, Clause.contract_id == Contract.id)
-        .where(Contract.org_id == user.org_id)
+        .where(*clause_filter)
         .group_by(Clause.clause_type, Clause.risk_level)
         .order_by(Clause.clause_type)
     )
@@ -156,8 +162,14 @@ async def get_risk_heatmap(
 async def get_clause_distribution(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    contract_id: str | None = Query(None),
 ):
-    """Clause type distribution across all contracts."""
+    """Clause type distribution. Optional contract filter."""
+    import uuid as _uuid
+    clause_filter = [Contract.org_id == user.org_id]
+    if contract_id:
+        clause_filter.append(Contract.id == _uuid.UUID(contract_id))
+
     result = await db.execute(
         select(
             Clause.clause_type,
@@ -165,7 +177,7 @@ async def get_clause_distribution(
             func.avg(Clause.risk_score).label("avg_risk"),
         )
         .join(Contract, Clause.contract_id == Contract.id)
-        .where(Contract.org_id == user.org_id)
+        .where(*clause_filter)
         .group_by(Clause.clause_type)
         .order_by(func.count(Clause.id).desc())
     )
