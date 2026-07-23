@@ -51,7 +51,8 @@ async def get_upcoming_alerts(
     )
     renewals = renewals_result.fetchall()
 
-    # Upcoming obligations
+    # Upcoming obligations (include those with no due date)
+    from sqlalchemy import or_
     obligations_result = await db.execute(
         select(
             Obligation.id,
@@ -65,9 +66,11 @@ async def get_upcoming_alerts(
         ).where(
             Obligation.org_id == user.org_id,
             Obligation.status == "pending",
-            Obligation.due_date >= today,
-            Obligation.due_date <= end_date,
-        ).order_by(Obligation.due_date.asc())
+            or_(
+                Obligation.due_date == None,
+                Obligation.due_date >= today,
+            )
+        ).order_by(Obligation.due_date.asc().nullslast())
     )
     obligations = obligations_result.fetchall()
 
