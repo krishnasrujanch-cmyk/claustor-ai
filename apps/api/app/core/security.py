@@ -1,4 +1,8 @@
-"""Claustor AI — Security Utilities."""
+"""
+Claustor AI — Security Utilities
+Centralised password hashing, verification, token generation.
+All password operations go through here — never call bcrypt directly.
+"""
 
 import hashlib
 import secrets
@@ -24,10 +28,26 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def generate_api_key(prefix: str = "clst_live_") -> tuple[str, str]:
+    """
+    Generate a secure API key.
+    Returns (raw_key, key_hash) — store only the hash.
+    raw_key shown to user once, never stored.
+    """
     alphabet = string.ascii_letters + string.digits
-    raw = f"{prefix}{''.join(secrets.choice(alphabet) for _ in range(40))}"
-    return raw, hashlib.sha256(raw.encode()).hexdigest()
+    random_part = "".join(secrets.choice(alphabet) for _ in range(40))
+    raw_key = f"{prefix}{random_part}"
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    return raw_key, key_hash
+
+
+def generate_invite_token() -> str:
+    """Generate secure random token for user invitations."""
+    return secrets.token_urlsafe(32)
 
 
 def hash_ip(ip: str) -> str:
+    """
+    Hash IP address for audit log storage.
+    GDPR compliant — never store raw IPs.
+    """
     return hashlib.sha256(ip.encode()).hexdigest()
