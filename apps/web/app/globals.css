@@ -86,3 +86,32 @@ body {
   box-shadow: 0 4px 12px rgba(91, 75, 255, 0.1);
   transform: translateY(-1px);
 }
+
+/* ── Dark Mode ───────────────────────────────────────── */
+[data-theme="dark"] {
+  --background:   #0F0F1A;
+  --surface:      #1A1A2E;
+  --surface-alt:  #16213E;
+  --border:       #2D2D44;
+  --heading:      #F9FAFB;
+  --body:         #D1D5DB;
+  --muted:        #9CA3AF;
+  --primary-light:#1E1B4B;
+}
+
+[data-theme="dark"] body {
+  background-color: #0F0F1A;
+  color: #D1D5DB;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  background: #1A1A2E !important;
+  color: #F9FAFB !important;
+  border-color: #2D2D44 !important;
+}
+
+[data-theme="dark"] table {
+  color: #D1D5DB;
+}

@@ -11,8 +11,7 @@ import structlog
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.dependencies.auth import get_current_user
-from app.infrastructure.database.session import get_db as _get_db
+from app.api.v1.dependencies.auth import AuthUser, get_current_user
 from app.domain.schemas.contract import (
     ContractDetailOut, ContractListOut, ContractOut,
     ContractUploadResponse, ProcessingStatus,
@@ -23,14 +22,14 @@ from app.services.contract_service import ContractService
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
-DbSession = AsyncSession  # alias for type hints
+DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 @router.post("/", response_model=ContractUploadResponse, status_code=status.HTTP_202_ACCEPTED)
-async def upload_contract(
+async def upload_contract(    user: AuthUser,
+    db: DbSession,
+
     file: UploadFile = File(...),
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     """Upload contract PDF/DOCX for AI analysis."""
     if not user.can_upload:
@@ -64,8 +63,8 @@ async def upload_contract(
 
 @router.get("/", response_model=ContractListOut)
 async def list_contracts(
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    user: AuthUser,
+    db: DbSession,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status_filter: str | None = Query(None, alias="status"),
@@ -88,8 +87,8 @@ async def list_contracts(
 @router.get("/{contract_id}", response_model=ContractDetailOut)
 async def get_contract(
     contract_id: uuid.UUID,
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    user: AuthUser,
+    db: DbSession,
 ):
     """Get contract with extracted clauses."""
     service = ContractService(db)
@@ -102,8 +101,8 @@ async def get_contract(
 @router.get("/{contract_id}/status", response_model=ProcessingStatus)
 async def get_status(
     contract_id: uuid.UUID,
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    user: AuthUser,
+    db: DbSession,
 ):
     """Poll processing status. Frontend calls this every 3 seconds."""
     service = ContractService(db)
@@ -116,8 +115,8 @@ async def get_status(
 @router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_contract(
     contract_id: uuid.UUID,
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    user: AuthUser,
+    db: DbSession,
 ):
     """Delete contract, clauses, vectors and files."""
     if not user.is_admin and user.role != "contract_manager":
@@ -131,8 +130,8 @@ async def delete_contract(
 @router.get("/{contract_id}/export-pdf")
 async def export_contract_pdf(
     contract_id: uuid.UUID,
+    user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_user),
 ):
     """
     Export contract summary as PDF.
@@ -311,3 +310,59 @@ async def export_contract_pdf(
             media_type="text/plain",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
+
+
+@router.post("/{contract_id}/reprocess")
+async def reprocess_contract(
+    contract_id: uuid.UUID,
+    user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reprocess a contract through the full AI pipeline.
+    Use when: analysis failed, or you want fresh analysis.
+    """
+    result = await db.execute(
+        select(Contract).where(
+            Contract.id == contract_id,
+            Contract.org_id == user.org_id,
+        )
+    )
+    contract = result.scalar_one_or_none()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    # Reset status to queued
+    from sqlalchemy import update
+    await db.execute(
+        update(Contract)
+        .where(Contract.id == contract_id)
+        .values(
+            status="queued",
+            risk_score=None,
+            risk_level=None,
+            clause_count=0,
+            summary=None,
+            error_message=None,
+        )
+    )
+    await db.commit()
+
+    # Re-queue for processing
+    from app.agents.pipeline.contract_pipeline import ContractPipeline
+    import asyncio
+
+    async def _process():
+        async with async_sessionmaker(db.get_bind(), class_=AsyncSession, expire_on_commit=False)() as new_db:
+            pipeline = ContractPipeline()
+            await pipeline.run(
+                contract_id=contract_id,
+                org_id=user.org_id,
+                user_id=user.id,
+                file_path=contract.gcs_path or "",
+                db=new_db,
+            )
+
+    asyncio.create_task(_process())
+
+    return {"status": "queued", "contract_id": str(contract_id), "message": "Reprocessing started"}
