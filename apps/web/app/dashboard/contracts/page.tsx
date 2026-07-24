@@ -83,16 +83,16 @@ export default function ContractsPage() {
 
   const handleUpload = async (file: File) => {
     const token = getToken();
+    const uploadId = Date.now().toString(); // unique ID for this upload
     const uploadState: UploadState = {
       file, uploadPct: 0, contractId: null,
       status: "uploading", step: "Uploading file...",
       analysisPct: 0, error: null, done: false,
     };
-    setUploads(prev => [...prev, uploadState]);
-    const idx = uploads.length;
+    setUploads(prev => [...prev, {...uploadState, _id: uploadId} as any]);
 
     const update = (patch: Partial<UploadState>) =>
-      setUploads(prev => prev.map((u, i) => i === idx ? { ...u, ...patch } : u));
+      setUploads(prev => prev.map((u: any) => u._id === uploadId ? { ...u, ...patch } : u));
 
     try {
       // XHR for upload progress

@@ -62,7 +62,9 @@ class StorageClient:
         filename: str,
         data: bytes = None, file_bytes: bytes = None,
         content_type: str = "application/pdf",
+        mime_type: str = None,
     ) -> dict:
+        content_type = mime_type or content_type
         path = f"orgs/{org_id}/contracts/{contract_id}/{filename}"
         payload = data or file_bytes or b""
 

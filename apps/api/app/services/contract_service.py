@@ -181,13 +181,22 @@ class ContractService:
         await self.db.flush()  # get ID without committing
 
         # Queue for async processing
+        # Get org's actual plan
+        from sqlalchemy import select as sa_select
+        from app.domain.models import Organisation
+        org_result = await self.db.execute(
+            sa_select(Organisation.plan).where(Organisation.id == org_id)
+        )
+        org_plan = org_result.scalar() or "starter"
+        plan_config = {"name": org_plan, **settings.PLAN_LIMITS.get(org_plan, {})}
+
         queue_position = await self._queue_processing(
             contract_id=contract_id,
             org_id=org_id,
             user_id=user_id,
             file_path=gcs_path,
             file_hash=file_hash,
-            plan=settings.PLAN_LIMITS.get("starter", {}),
+            plan=plan_config,
         )
 
         await self.db.commit()
@@ -204,28 +213,36 @@ class ContractService:
         file_hash: str,
         plan: dict,
     ) -> int:
-        """Queue contract for Celery processing. Returns queue position."""
+        """Queue contract via Celery to plan-specific queue."""
         try:
-            from app.workers.tasks.contract_tasks import process_contract
-            task = process_contract.delay(
-                contract_id=str(contract_id),
-                org_id=str(org_id),
-                user_id=str(user_id),
-                file_path=file_path or "",
+            from app.workers.tasks.contract_tasks import process_contract, PLAN_QUEUES
+            plan_name = plan.get("name", "starter") if isinstance(plan, dict) else "starter"
+            queue_name = PLAN_QUEUES.get(plan_name, "starter_queue")
+            priority = {"free":1,"starter":5,"professional":8,"enterprise":10}.get(plan_name, 5)
+
+            task = process_contract.apply_async(
+                kwargs={
+                    "contract_id": str(contract_id),
+                    "org_id":      str(org_id),
+                    "user_id":     str(user_id),
+                    "file_path":   file_path or "",
+                    "plan":        plan_name,
+                },
+                queue=queue_name,
+                priority=priority,
             )
             logger.info(
                 "contract_queued",
                 contract_id=str(contract_id),
                 task_id=task.id,
+                queue=queue_name,
+                plan=plan_name,
             )
             return 1
         except Exception as e:
-            logger.warning(
-                "celery_queue_failed",
-                error=str(e),
-                note="Will process inline (dev mode)",
-            )
-            # In dev without Celery — process inline
+            import traceback
+            logger.error("celery_queue_failed", error=str(e), traceback=traceback.format_exc())
+            # Fallback: inline processing
             try:
                 await self._process_inline(contract_id, org_id, file_hash)
             except Exception as pe:
