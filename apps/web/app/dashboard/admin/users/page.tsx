@@ -20,8 +20,13 @@ export default function UsersPage() {
     e.preventDefault();
     setInviting(true); setMsg("");
     try {
-      await usersAPI.invite({ email:inviteEmail, full_name:inviteName, role:inviteRole });
-      setMsg(`✅ Invitation sent to ${inviteEmail}`);
+      const result = await usersAPI.invite({ email:inviteEmail, full_name:inviteName, role:inviteRole });
+      const inviteLink = result?.invite_url || "";
+      if (inviteLink) {
+        setMsg(`✅ Invited ${inviteEmail}! Share this link: ${inviteLink}`);
+      } else {
+        setMsg(`✅ Invitation sent to ${inviteEmail}`);
+      }
       setInviteEmail(""); setInviteName("");
       load();
     } catch(err:any) { setMsg(`❌ ${err.message}`); }

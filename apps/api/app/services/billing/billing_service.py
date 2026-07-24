@@ -187,23 +187,38 @@ class BillingService:
 
         plan_limits = PLANS.get(row.plan, PLANS["free"])
 
+        # Get actual contract count for accurate display
+        from sqlalchemy import func
+        from app.domain.models import Contract
+        contract_count_result = await self.db.execute(
+            select(func.count(Contract.id)).where(
+                Contract.org_id == org_id,
+                Contract.is_active == True,
+            )
+        )
+        actual_contract_count = contract_count_result.scalar() or 0
+
+        # Always use plan limits as source of truth — never rely on nullable org columns
+        contract_limit = plan_limits["contracts"]
+        query_limit    = plan_limits["queries"]
+
         return {
             "plan": row.plan,
             "billing_provider": self.provider.get_provider_name(),
             "usage": {
                 "contracts": {
-                    "used": row.contracts_used or 0,
-                    "limit": row.max_contracts or plan_limits["contracts"],
-                    "pct": round((row.contracts_used or 0) / max(row.max_contracts or 1, 1) * 100, 1),
+                    "used": actual_contract_count,
+                    "limit": contract_limit,
+                    "pct": round(actual_contract_count / max(contract_limit, 1) * 100, 1) if contract_limit > 0 else 0,
                 },
                 "queries": {
                     "used": row.queries_used or 0,
-                    "limit": row.max_queries_mo or plan_limits["queries"],
-                    "pct": round((row.queries_used or 0) / max(row.max_queries_mo or 1, 1) * 100, 1),
+                    "limit": query_limit,
+                    "pct": round((row.queries_used or 0) / max(query_limit, 1) * 100, 1) if query_limit > 0 else 0,
                 },
                 "storage_mb": {
                     "used": round(row.storage_used_mb or 0, 2),
-                    "limit": row.max_storage_mb or plan_limits["storage_mb"],
+                    "limit": plan_limits.get("storage_mb", 1024),
                 },
             },
             "reset_at": row.usage_reset_at.isoformat() if row.usage_reset_at else None,

@@ -44,10 +44,23 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   business_viewer:  ["contracts:view","chat:use","analytics:view","obligations:view"],
 };
 
-function hasPermission(role: string, permission: string | null): boolean {
+// Plan → features unlocked
+const PLAN_FEATURES: Record<string, string[]> = {
+  free:         ["contracts:view","chat:use","analytics:view"],
+  starter:      ["contracts:view","contracts:upload","contracts:delete","chat:use","reviews:view","reviews:assign","analytics:view","analytics:export","obligations:view","obligations:complete","bulk:import","playbook:view"],
+  professional: ["*"],
+  enterprise:   ["*"],
+};
+
+function hasPermission(role: string, permission: string | null, plan = "free"): boolean {
   if (!permission) return true;
-  const perms = ROLE_PERMISSIONS[role] || [];
-  return perms.includes("*") || perms.includes(permission);
+  // Check role permission
+  const rolePerms = ROLE_PERMISSIONS[role] || [];
+  const hasRole = rolePerms.includes("*") || rolePerms.includes(permission);
+  // Check plan feature
+  const planFeatures = PLAN_FEATURES[plan] || PLAN_FEATURES["free"];
+  const hasPlan = planFeatures.includes("*") || planFeatures.includes(permission);
+  return hasRole && hasPlan;
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -59,7 +72,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     const init = async () => {
       if (!token) { router.push("/login"); return; }
-      if (!user) await loadUser();
+      // Always reload user to get latest plan from DB
+      await loadUser();
       setChecked(true);
     };
     init();
@@ -89,8 +103,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   // Filter nav based on role permissions
-  const visibleNav = NAV_ITEMS.filter(item => hasPermission(user.role, item.permission));
-  const visibleAdmin = ADMIN_NAV.filter(item => hasPermission(user.role, item.permission));
+  const visibleNav = NAV_ITEMS.filter(item => hasPermission(user.role, item.permission, user.plan));
+  const visibleAdmin = ADMIN_NAV.filter(item => hasPermission(user.role, item.permission, user.plan));
 
   return (
     <div style={{display:"flex",height:"100vh",overflow:"hidden"}}>

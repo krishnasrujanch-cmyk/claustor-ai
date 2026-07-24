@@ -96,6 +96,20 @@ async def chat(
         provider=response.provider,
     )
 
+    # Increment query usage counter using fresh session
+    try:
+        from sqlalchemy import update, text
+        from app.infrastructure.database.session import async_session_factory
+        if async_session_factory:
+            async with async_session_factory() as counter_db:
+                await counter_db.execute(
+                    text("UPDATE organisations SET queries_used = queries_used + 1 WHERE id = :org_id"),
+                    {"org_id": str(user.org_id)}
+                )
+                await counter_db.commit()
+    except Exception as e:
+        logger.warning("query_counter_failed", error=str(e))
+
     return ChatOut(
         answer=response.answer,
         citations=response.citations,

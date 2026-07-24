@@ -26,9 +26,9 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 @router.post("/", response_model=ContractUploadResponse, status_code=status.HTTP_202_ACCEPTED)
-async def upload_contract(    user: AuthUser,
+async def upload_contract(
+    user: AuthUser,
     db: DbSession,
-
     file: UploadFile = File(...),
 ):
     """Upload contract PDF/DOCX for AI analysis."""

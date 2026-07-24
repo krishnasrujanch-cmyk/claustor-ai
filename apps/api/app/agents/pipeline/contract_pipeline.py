@@ -6,6 +6,7 @@ Steps: Parse → Extract Clauses → Score Risk → Extract Obligations → Inde
 This runs in Celery worker (production) or inline (development).
 """
 
+import asyncio
 from uuid import UUID
 
 import structlog
@@ -52,8 +53,9 @@ class ContractPipeline:
             # ── Step 1: Download + Parse ──────────────────
             await self._update_status(db, contract_id, "parsing")
             logger.info("pipeline_step", step="parsing", contract_id=str(contract_id))
+            await asyncio.sleep(0.3)  # Let frontend poll catch this step
 
-            file_bytes = await self._download_file(org_id, contract_id, file_hash)
+            file_bytes = await self._download_file(org_id, contract_id, file_hash, db)
             parsed = await self.parser.parse(file_bytes, "contract.pdf")
 
             # ── Step 2: Extract Clauses ───────────────────
@@ -103,6 +105,23 @@ class ContractPipeline:
                 obligations=len(obligations_data),
             )
 
+            # Trigger webhook event
+            try:
+                from app.api.v1.endpoints.webhooks import trigger_webhook_event
+                await trigger_webhook_event(
+                    org_id=org_id,
+                    event="contract.analyzed",
+                    data={
+                        "contract_id": str(contract_id),
+                        "clause_count": len(scored_clauses),
+                        "obligation_count": len(obligations_data),
+                        "risk_level": "low",
+                    },
+                    db=db,
+                )
+            except Exception as we:
+                logger.warning("webhook_trigger_failed", error=str(we))
+
         except Exception as e:
             logger.error(
                 "pipeline_failed",
@@ -111,6 +130,16 @@ class ContractPipeline:
                 exc_info=True,
             )
             await self._update_status(db, contract_id, "failed", error=str(e))
+            try:
+                from app.api.v1.endpoints.webhooks import trigger_webhook_event
+                await trigger_webhook_event(
+                    org_id=org_id,
+                    event="contract.failed",
+                    data={"contract_id": str(contract_id), "error": str(e)[:200]},
+                    db=db,
+                )
+            except Exception:
+                pass
             raise
 
     async def _download_file(
@@ -118,14 +147,65 @@ class ContractPipeline:
         org_id: UUID,
         contract_id: UUID,
         file_hash: str,
+        db: AsyncSession,
     ) -> bytes:
-        """Download contract from GCS."""
+        """
+        Download contract file.
+        Strategy:
+          1. Look up file_path from DB contract record
+          2. Try storage client (GCS or local) with that path
+          3. Fallback: scan /tmp/claustor-uploads for the file
+        """
+        from sqlalchemy import select, text
+        from pathlib import Path
+
+        # Strategy 1: Look up stored file_path from DB
         try:
-            storage = get_storage_client()
-            return await storage.download_contract(org_id, contract_id)
+            result = await db.execute(
+                text("SELECT file_path FROM contracts WHERE id = :id"),
+                {"id": str(contract_id)}
+            )
+            row = result.fetchone()
+            stored_path = row[0] if row else None
         except Exception as e:
-            logger.warning("gcs_download_failed", error=str(e))
-            raise FileNotFoundError(f"Could not download contract file: {e}")
+            logger.warning("db_lookup_failed", error=str(e))
+            stored_path = None
+
+        # Strategy 2: Download using stored path
+        if stored_path:
+            try:
+                # Handle relative "local/org_id/contract_id/filename" paths
+                if stored_path.startswith("local/"):
+                    abs_path = Path("/tmp/claustor-uploads") / stored_path[len("local/"):]
+                    if abs_path.exists():
+                        logger.info("file_found_local_path", path=str(abs_path))
+                        return abs_path.read_bytes()
+                else:
+                    storage = get_storage_client()
+                    return await storage.download_contract(stored_path)
+            except Exception as e:
+                logger.warning("storage_download_failed", path=stored_path, error=str(e))
+
+        # Strategy 3: Scan local tmp directory
+        local_base = Path("/tmp/claustor-uploads")
+        org_dir = local_base / str(org_id) / str(contract_id)
+        if org_dir.exists():
+            files = [f for f in org_dir.iterdir() if f.is_file()]
+            if files:
+                logger.info("file_found_local", path=str(files[0]))
+                return files[0].read_bytes()
+
+        # Strategy 4: Search all of tmp for contract_id
+        if local_base.exists():
+            for f in local_base.rglob("*"):
+                if str(contract_id) in str(f) and f.is_file():
+                    logger.info("file_found_by_scan", path=str(f))
+                    return f.read_bytes()
+
+        raise FileNotFoundError(
+            f"Contract file not found for {contract_id}. "
+            f"stored_path={stored_path}"
+        )
 
     async def _extract_clauses(
         self,
@@ -436,32 +516,6 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
             risk_score=round(overall_risk, 2),
             risk_level=risk_level,
         )
-
-    def _enrich_chunks_with_clause_types(
-        self, chunks: list[dict], clauses: list[dict]
-    ) -> list[dict]:
-        """
-        Match chunks to clauses by text overlap.
-        Adds clause_type to chunk metadata for better hybrid search dedup.
-        """
-        for chunk in chunks:
-            chunk_text = chunk.get("text", "").lower()
-            best_match = None
-            best_overlap = 0
-            for clause in clauses:
-                clause_text = clause.get("raw_text", "").lower()
-                if not clause_text:
-                    continue
-                # Simple overlap: check if significant words match
-                clause_words = set(clause_text.split()[:20])
-                chunk_words = set(chunk_text.split()[:50])
-                overlap = len(clause_words & chunk_words)
-                if overlap > best_overlap:
-                    best_overlap = overlap
-                    best_match = clause
-            if best_match and best_overlap > 5:
-                chunk["clause_type"] = best_match.get("clause_type", "")
-        return chunks
 
     async def _update_status(
         self,

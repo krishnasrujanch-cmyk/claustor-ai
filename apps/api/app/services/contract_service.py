@@ -156,6 +156,10 @@ class ContractService:
             gcs_path = result["gcs_path"]
         except Exception as e:
             logger.warning("gcs_upload_failed", error=str(e), note="Continuing without GCS")
+            # Store as local/ relative path — pipeline resolves to /tmp/claustor-uploads/
+            local_dir = Path("/tmp/claustor-uploads") / str(org_id) / str(contract_id)
+            local_dir.mkdir(parents=True, exist_ok=True)
+            (local_dir / filename).write_bytes(file_bytes)
             gcs_path = f"local/{org_id}/{contract_id}/{filename}"
 
         # Create contract record
@@ -230,17 +234,30 @@ class ContractService:
         file_hash: str,
     ) -> None:
         """
-        Process contract inline (development mode without Celery).
-        In production, Celery workers handle this.
+        Process contract in background (dev mode without Celery).
+        Runs as asyncio background task so upload returns immediately.
+        Frontend polls /status every 2s and sees each step.
         """
+        import asyncio
+        from app.infrastructure.database.session import async_session_factory
         from app.agents.pipeline.contract_pipeline import ContractPipeline
-        pipeline = ContractPipeline()
-        await pipeline.process(
-            contract_id=contract_id,
-            org_id=org_id,
-            file_hash=file_hash,
-            db=self.db,
-        )
+
+        async def _run_pipeline():
+            """Run in separate DB session so it doesn't block the upload response."""
+            async with async_session_factory() as bg_db:
+                try:
+                    pipeline = ContractPipeline()
+                    await pipeline.process(
+                        contract_id=contract_id,
+                        org_id=org_id,
+                        file_hash=file_hash,
+                        db=bg_db,
+                    )
+                except Exception as e:
+                    logger.error("background_pipeline_failed", error=str(e), contract_id=str(contract_id))
+
+        # Fire and forget — upload returns immediately, pipeline runs in background
+        asyncio.create_task(_run_pipeline())
 
     async def list_contracts(
         self,

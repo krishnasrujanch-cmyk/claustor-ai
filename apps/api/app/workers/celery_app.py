@@ -13,10 +13,21 @@ from celery import Celery
 from celery.schedules import crontab
 from app.core.config import settings
 
+# Use RABBITMQ_URL if set, else fall back to Redis as broker
+_broker_url = (
+    getattr(settings, "RABBITMQ_URL", None)
+    or getattr(settings, "CLOUDAMQP_URL", None)
+    or getattr(settings, "UPSTASH_REDIS_URL", "redis://localhost:6379/0")
+)
+
+_redis_url = getattr(settings, "UPSTASH_REDIS_URL", "redis://localhost:6379/0")
+# Strip auth prefix for backend URL
+_backend_url = _redis_url
+
 app = Celery(
     "claustor",
-    broker=settings.CLOUDAMQP_URL,
-    backend="redis://" + settings.UPSTASH_REDIS_URL.replace("rediss://default:", "").replace("redis://default:", ""),
+    broker=_broker_url,
+    backend=_backend_url,
     include=[
         "app.workers.tasks.alert_tasks",
         "app.workers.tasks.contract_tasks",

@@ -334,7 +334,14 @@ async def _send_invite_email(
     invite_url: str,
     from_name: str,
 ) -> None:
-    """Send invitation email via Resend."""
+    """
+    Send invitation email via Resend.
+
+    Domain verification workaround:
+    - Use onboarding@resend.dev as from address (works without domain verification)
+    - In production: verify claustor.com on resend.com/domains and use RESEND_FROM
+    - In dev: invite_url is always returned in API response for manual sharing
+    """
     try:
         from app.core.config import settings
         if not settings.RESEND_API_KEY:
@@ -343,19 +350,43 @@ async def _send_invite_email(
 
         import resend
         resend.api_key = settings.RESEND_API_KEY
+
+        # Use onboarding@resend.dev for unverified domains (Resend default sender)
+        # This works without domain verification for testing
+        from_address = getattr(settings, "RESEND_FROM", None)
+        if not from_address or "claustor.com" in from_address:
+            # Fall back to Resend's test sender which works without domain verification
+            from_address = "onboarding@resend.dev"
+
         resend.Emails.send({
-            "from": f"Claustor AI <{settings.RESEND_FROM}>",
+            "from": f"Claustor AI <{from_address}>",
             "to": to_email,
-            "subject": f"You've been invited to Claustor AI",
+            "subject": "You've been invited to Claustor AI",
             "html": f"""
-                <h2>You've been invited to Claustor AI</h2>
-                <p>Hi {to_name},</p>
-                <p>{from_name} has invited you to join their organisation on Claustor AI.</p>
-                <p><a href="{invite_url}" style="background:#5B4BFF;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;">Accept Invitation</a></p>
-                <p>This link expires in 7 days.</p>
-                <p>— The Claustor AI Team</p>
+            <div style="font-family:Inter,sans-serif;max-width:520px;margin:0 auto;padding:32px;">
+              <div style="background:#5B4BFF;padding:20px 24px;border-radius:12px 12px 0 0;">
+                <h1 style="color:white;margin:0;font-size:20px;">Claustor AI</h1>
+              </div>
+              <div style="background:#ffffff;padding:32px;border:1px solid #E5E7EB;border-top:none;border-radius:0 0 12px 12px;">
+                <h2 style="color:#111827;margin-top:0;">You've been invited! 🎉</h2>
+                <p style="color:#374151;">Hi {to_name or to_email},</p>
+                <p style="color:#374151;"><strong>{from_name}</strong> has invited you to join their organisation on Claustor AI — the AI-powered contract intelligence platform.</p>
+                <div style="text-align:center;margin:32px 0;">
+                  <a href="{invite_url}"
+                     style="background:#5B4BFF;color:white;padding:14px 32px;border-radius:8px;
+                            text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">
+                    Accept Invitation →
+                  </a>
+                </div>
+                <p style="color:#6B7280;font-size:13px;">Or copy this link: <a href="{invite_url}" style="color:#5B4BFF;">{invite_url}</a></p>
+                <p style="color:#6B7280;font-size:12px;margin-top:24px;border-top:1px solid #E5E7EB;padding-top:16px;">
+                  This invitation expires in 7 days. If you didn't expect this, ignore this email.
+                </p>
+              </div>
+            </div>
             """,
         })
         logger.info("invite_email_sent", to=to_email)
     except Exception as e:
-        logger.warning("invite_email_failed", error=str(e))
+        logger.warning("invite_email_failed", error=str(e), invite_url=invite_url)
+        # Email failure is non-critical — invite_url is always in API response
