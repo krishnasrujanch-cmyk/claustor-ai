@@ -184,6 +184,8 @@ class ContractService:
         queue_position = await self._queue_processing(
             contract_id=contract_id,
             org_id=org_id,
+            user_id=user_id,
+            file_path=gcs_path,
             file_hash=file_hash,
             plan=settings.PLAN_LIMITS.get("starter", {}),
         )
@@ -197,16 +199,19 @@ class ContractService:
         self,
         contract_id: UUID,
         org_id: UUID,
+        user_id: UUID,
+        file_path: str,
         file_hash: str,
         plan: dict,
     ) -> int:
         """Queue contract for Celery processing. Returns queue position."""
         try:
-            from app.workers.tasks import process_contract
+            from app.workers.tasks.contract_tasks import process_contract
             task = process_contract.delay(
                 contract_id=str(contract_id),
                 org_id=str(org_id),
-                file_hash=file_hash,
+                user_id=str(user_id),
+                file_path=file_path or "",
             )
             logger.info(
                 "contract_queued",

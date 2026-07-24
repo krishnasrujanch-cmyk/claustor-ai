@@ -14,8 +14,8 @@ from app.core.config import settings
 
 logger = structlog.get_logger(__name__)
 
-LOCAL_DIR = Path("/tmp/claustor-uploads")
-LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_DIR = Path.home() / "claustor-uploads"
+LOCAL_DIR.mkdir(parents=True, exist_ok=True)  # ~/claustor-uploads/
 
 MAX_FILE_SIZE_MB    = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024

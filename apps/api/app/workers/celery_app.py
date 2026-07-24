@@ -1,33 +1,19 @@
-"""
-Claustor AI — Celery Configuration
-Background task workers + Beat scheduler.
-
-Workers: process contracts, send alerts
-Beat:    daily alert scheduler (9 AM IST)
-
-Start worker:  celery -A app.workers.celery_app worker --loglevel=info
-Start beat:    celery -A app.workers.celery_app beat --loglevel=info
-"""
+"""Claustor AI — Celery Configuration."""
 
 from celery import Celery
 from celery.schedules import crontab
 from app.core.config import settings
 
-# Use RABBITMQ_URL if set, else fall back to Redis as broker
 _broker_url = (
     getattr(settings, "RABBITMQ_URL", None)
-    or getattr(settings, "CLOUDAMQP_URL", None)
-    or getattr(settings, "UPSTASH_REDIS_URL", "redis://localhost:6379/0")
+    or getattr(settings, "UPSTASH_REDIS_URL", None)
+    or "redis://localhost:6379/0"
 )
-
-_redis_url = getattr(settings, "UPSTASH_REDIS_URL", "redis://localhost:6379/0")
-# Strip auth prefix for backend URL
-_backend_url = _redis_url
 
 app = Celery(
     "claustor",
     broker=_broker_url,
-    backend=_backend_url,
+    backend="rpc://",
     include=[
         "app.workers.tasks.alert_tasks",
         "app.workers.tasks.contract_tasks",
@@ -43,23 +29,22 @@ app.conf.update(
     task_track_started=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    task_ignore_result=True,
 )
 
-# ── Beat Schedule ────────────────────────────────────
+app.conf.beat_scheduler = "celery.beat.PersistentScheduler"
+app.conf.beat_schedule_filename = "/tmp/claustor-celerybeat-schedule"
 app.conf.beat_schedule = {
-    # Run daily alerts at 9 AM IST
     "daily-alerts": {
-        "task":     "app.workers.tasks.alert_tasks.run_daily_alerts",
+        "task": "app.workers.tasks.alert_tasks.run_daily_alerts",
         "schedule": crontab(hour=9, minute=0),
     },
-    # Reset monthly usage on 1st of every month
     "monthly-usage-reset": {
-        "task":     "app.workers.tasks.alert_tasks.reset_monthly_usage",
+        "task": "app.workers.tasks.alert_tasks.reset_monthly_usage",
         "schedule": crontab(day_of_month=1, hour=0, minute=0),
     },
-    # Clean up expired guest users daily
     "cleanup-expired-guests": {
-        "task":     "app.workers.tasks.alert_tasks.cleanup_expired_guests",
+        "task": "app.workers.tasks.alert_tasks.cleanup_expired_guests",
         "schedule": crontab(hour=1, minute=0),
     },
 }

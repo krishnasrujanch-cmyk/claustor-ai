@@ -187,7 +187,7 @@ class ContractPipeline:
                 logger.warning("storage_download_failed", path=stored_path, error=str(e))
 
         # Strategy 3: Scan local tmp directory
-        local_base = Path("/tmp/claustor-uploads")
+        local_base = Path.home() / "claustor-uploads"
         org_dir = local_base / str(org_id) / str(contract_id)
         if org_dir.exists():
             files = [f for f in org_dir.iterdir() if f.is_file()]

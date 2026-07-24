@@ -210,7 +210,7 @@ async def trigger_webhook_event(
             logger.info(
                 "webhook_delivered",
                 url=endpoint.url,
-                event=event,
+                event_type=event,
                 success=success,
                 status=code,
             )
