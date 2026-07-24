@@ -188,10 +188,27 @@ export default function ContractDetailPage() {
           </div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"flex-end"}}>
-          <button onClick={()=>{setShowAssign(true);loadUsers();}}
-            style={{padding:"8px 18px",background:"#5B4BFF",color:"white",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-            ✅ Assign for review
-          </button>
+          <div style={{display:"flex",gap:8}}>
+            <a
+              onClick={async(e)=>{
+                e.preventDefault();
+                const token = getToken();
+                const r = await fetch(`${API}/api/v1/contracts/${id}/export-pdf`,
+                  {headers:{Authorization:`Bearer ${token}`}});
+                const blob = await r.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href=url; a.download=`claustor-${id.slice(0,8)}.pdf`; a.click();
+              }}
+              href="#"
+              style={{padding:"8px 14px",border:"1px solid #E5E7EB",borderRadius:8,fontSize:13,fontWeight:600,color:"#374151",textDecoration:"none",cursor:"pointer"}}>
+              ⬇ Export PDF
+            </a>
+            <button onClick={()=>{setShowAssign(true);loadUsers();}}
+              style={{padding:"8px 18px",background:"#5B4BFF",color:"white",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+              ✅ Assign for review
+            </button>
+          </div>
         {contract.risk_score!==null && (
           <div style={{textAlign:"center"}}>
             <div style={{

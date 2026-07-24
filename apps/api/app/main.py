@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize database connection pool
-    await init_db()
+    await init_db(settings.DATABASE_URL, connect_args={"ssl": __import__("ssl").create_default_context()})
     logger.info("database_connected")
 
     yield

@@ -1,40 +1,41 @@
-"""Claustor AI — Database Session Management."""
+"""
+Claustor AI — Database Session Management
+"""
 
 import ssl
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Optional
 
 import structlog
-from fastapi import Depends
 from sqlalchemy.ext.asyncio import (
-    AsyncEngine, AsyncSession,
-    async_sessionmaker, create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
 
-from app.core.config import settings
-
 logger = structlog.get_logger(__name__)
 
-engine: AsyncEngine | None = None
-async_session_factory: async_sessionmaker | None = None
+async_session_factory: Optional[async_sessionmaker] = None
 
 
-async def init_db() -> None:
-    """Initialize database engine and session factory."""
-    global engine, async_session_factory
+class Base(DeclarativeBase):
+    pass
 
-    # SSL context for Neon PostgreSQL
-    ssl_context = ssl.create_default_context()
+
+async def init_db(database_url: str, connect_args: dict = None) -> None:
+    global async_session_factory
+    if connect_args is None:
+        connect_args = {}
 
     engine = create_async_engine(
-        settings.DATABASE_URL,
-        pool_size=settings.DATABASE_POOL_SIZE,
-        max_overflow=settings.DATABASE_MAX_OVERFLOW,
-        pool_timeout=settings.DATABASE_POOL_TIMEOUT,
+        database_url,
+        connect_args=connect_args,
+        pool_size=10,
+        max_overflow=20,
         pool_pre_ping=True,
-        echo=settings.ENVIRONMENT == "development",
-        connect_args={"ssl": ssl_context},
+        pool_recycle=300,
+        echo=False,
     )
 
     async_session_factory = async_sessionmaker(
@@ -44,39 +45,29 @@ async def init_db() -> None:
         autoflush=False,
         autocommit=False,
     )
-
-    # Verify connection
-    import sqlalchemy
-    async with engine.begin() as conn:
-        await conn.execute(sqlalchemy.text("SELECT 1"))
-
-    logger.info("database_pool_initialized", pool_size=settings.DATABASE_POOL_SIZE)
-
-
-async def close_db() -> None:
-    """Close database connection pool."""
-    if engine:
-        await engine.dispose()
-        logger.info("database_pool_closed")
+    logger.info("database_initialized")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency for database session."""
+    """
+    FastAPI DB dependency.
+    NEVER auto-commits — endpoints must call db.commit() explicitly.
+    Always rolls back on exception, always closes session.
+    """
     if async_session_factory is None:
         raise RuntimeError("Database not initialized.")
 
-    async with async_session_factory() as session:
+    session: AsyncSession = async_session_factory()
+    try:
+        yield session
+    except Exception:
         try:
-            yield session
-            await session.commit()
-        except Exception:
             await session.rollback()
-            raise
-
-
-DbSession = Annotated[AsyncSession, Depends(get_db)]
-
-
-class Base(DeclarativeBase):
-    """Base class for all SQLAlchemy models."""
-    pass
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            await session.close()
+        except Exception:
+            pass

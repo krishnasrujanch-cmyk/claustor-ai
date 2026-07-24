@@ -166,6 +166,34 @@ class AlertService:
         except Exception as e:
             logger.error("renewal_alert_failed", error=str(e), contract_id=str(contract.id))
 
+    async def _send_slack_notification(
+        self,
+        org_id,
+        message: str,
+        color: str = "#5B4BFF",
+    ) -> None:
+        """Send Slack notification via webhook URL."""
+        try:
+            from app.core.config import settings
+            slack_url = getattr(settings, "SLACK_WEBHOOK_URL", None)
+            if not slack_url:
+                return
+
+            import httpx
+            payload = {
+                "attachments": [{
+                    "color": color,
+                    "text": message,
+                    "footer": "Claustor AI",
+                    "ts": int(__import__("time").time()),
+                }]
+            }
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(slack_url, json=payload)
+            logger.info("slack_notification_sent", org_id=str(org_id))
+        except Exception as e:
+            logger.warning("slack_notification_failed", error=str(e))
+
     async def _send_obligation_alert(self, obligation: Obligation, days_ahead: int) -> None:
         """Send obligation due date alert email."""
         try:
