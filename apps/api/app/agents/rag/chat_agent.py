@@ -17,6 +17,9 @@ from app.infrastructure.llm.router import LLMRouter, get_llm_router
 
 logger = structlog.get_logger(__name__)
 
+# Memory manager import
+from app.agents.memory.memory_manager import MemoryManager
+
 # Conversation history limits per plan
 HISTORY_LIMITS = {
     "free":         2,   # 2 turns
@@ -143,20 +146,20 @@ class ChatAgent:
             contract_id=contract_id,
         )
 
-        # ── Step 3: Load Conversation History ────────
-        history = await self._load_history(
-            db=db,
-            org_id=org_id,
-            user_id=user_id,
-            contract_id=contract_id,
-            plan=plan,
+        # ── Step 3: Load Conversation History (with memory) ──
+        memory = MemoryManager(db=db, llm=self.llm)
+        mem_ctx = await memory.get_context(
+            org_id=org_id, user_id=user_id,
+            contract_id=contract_id, plan=plan,
         )
+        history = mem_ctx["recent"]
 
         # ── Step 4: Build Messages ────────────────────
         messages = self._build_messages(
             query=query,
             context=context.context_text,
             history=history,
+            summary=mem_ctx.get("summary"),
         )
 
         # ── Step 5: Generate Answer ───────────────────
@@ -178,6 +181,13 @@ class ChatAgent:
             tokens_used=response.total_tokens,
             provider=response.provider.value,
         )
+
+        # ── Step 7: Memory updates ────────────────────
+        try:
+            await memory.track_query(org_id, user_id, query)
+            await memory.maybe_summarize(org_id, user_id, contract_id, plan)
+        except Exception as me:
+            logger.warning("memory_update_failed", error=str(me))
 
         logger.info(
             "chat_complete",
@@ -223,6 +233,7 @@ class ChatAgent:
         query: str,
         context: str,
         history: list[dict],
+        summary: str | None = None,
     ) -> list[LLMMessage]:
         """Build message list for LLM with context + history."""
         messages = [LLMMessage(role="system", content=SYSTEM_PROMPT)]
@@ -253,35 +264,31 @@ Answer based only on the contract context above. Cite sources using [N] notation
         plan: str,
     ) -> list[dict]:
         """Load recent conversation history for multi-turn context."""
-        try:
-            history_limit = HISTORY_LIMITS.get(plan, 4)
-            turns_to_fetch = history_limit * 2
+        history_limit = HISTORY_LIMITS.get(plan, 4)
+        turns_to_fetch = history_limit * 2  # user + assistant pairs
 
-            import sqlalchemy
-            query = sqlalchemy.select(
-                Conversation.role,
-                Conversation.content,
-            ).where(
-                Conversation.org_id == org_id,
-                Conversation.user_id == user_id,
-            )
+        import sqlalchemy
+        query = sqlalchemy.select(
+            Conversation.role,
+            Conversation.content,
+        ).where(
+            Conversation.org_id == org_id,
+            Conversation.user_id == user_id,
+        )
 
-            if contract_id:
-                query = query.where(Conversation.contract_id == contract_id)
+        if contract_id:
+            query = query.where(Conversation.contract_id == contract_id)
 
-            query = query.order_by(
-                Conversation.created_at.desc()
-            ).limit(turns_to_fetch)
+        query = query.order_by(
+            Conversation.created_at.desc()
+        ).limit(turns_to_fetch)
 
-            result = await db.execute(query)
-            rows = result.fetchall()
-            history = [{"role": r.role, "content": r.content} for r in reversed(rows)]
-            return history
-        except Exception as e:
-            logger.warning("load_history_failed", error=str(e))
-            # Rollback failed transaction and return empty history
-            await db.rollback()
-            return []
+        result = await db.execute(query)
+        rows = result.fetchall()
+
+        # Reverse to chronological order
+        history = [{"role": r.role, "content": r.content} for r in reversed(rows)]
+        return history
 
     async def _save_to_history(
         self,

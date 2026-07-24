@@ -14,6 +14,7 @@ from app.api.v1.endpoints.webhooks import router as webhooks_router
 from app.api.v1.endpoints.audit import router as audit_router
 from app.api.v1.endpoints.playbook import router as playbook_router
 from app.api.v1.endpoints.roles import router as roles_router
+from app.api.v1.endpoints.insights import router as insights_router
 from app.api.v1.endpoints.bulk import router as bulk_router
 from app.api.v1.endpoints.reviews import router as reviews_router
 from app.api.v1.endpoints.users import router as users_router
@@ -34,6 +35,7 @@ api_router.include_router(webhooks_router,   prefix="/webhooks",  tags=["webhook
 api_router.include_router(audit_router,       prefix="/audit",      tags=["audit"])
 api_router.include_router(playbook_router,    prefix="/playbook",   tags=["playbook"])
 api_router.include_router(roles_router,       prefix="/roles",      tags=["roles"])
+api_router.include_router(insights_router,    prefix="/insights",   tags=["insights"])
 api_router.include_router(bulk_router,       prefix="/bulk",      tags=["bulk"])
 api_router.include_router(reviews_router,    prefix="/reviews",   tags=["reviews"])
 api_router.include_router(users_router,     prefix="/users",     tags=["users"])
