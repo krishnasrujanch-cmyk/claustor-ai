@@ -38,6 +38,7 @@ class Organisation(Base):
     # Plan
     plan: Mapped[str] = mapped_column(String(50), default="free")
     industry: Mapped[str] = mapped_column(String(50), default="general")
+    addon_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     plan_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     plan_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

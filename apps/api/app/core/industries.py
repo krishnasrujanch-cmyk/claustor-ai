@@ -3,12 +3,83 @@ Claustor AI — Industry Definitions
 Risk weights, clause priorities, and pricing by industry.
 """
 
+# Plan definitions with add-on pricing
+PLAN_CONFIG = {
+    "free": {
+        "base_price":     0,
+        "addon_price":    0,
+        "addon_name":     None,
+        "base_industries":["general"],
+        "addon_industries":[],
+        "has_addon":      False,
+        "addon_features": [],
+    },
+    "starter": {
+        "base_price":     3999,
+        "addon_price":    1000,
+        "addon_name":     "Industry Pack",
+        "base_industries":["general"],
+        "addon_industries":["general", "it_saas", "manufacturing"],
+        "has_addon":      True,
+        "addon_features": [
+            "IT/SaaS industry risk scoring",
+            "Manufacturing/Supply Chain scoring",
+            "Industry-specific clause priorities",
+        ],
+    },
+    "professional": {
+        "base_price":     16499,
+        "addon_price":    2500,
+        "addon_name":     "Pro Industry Add-on",
+        "base_industries":["general"],
+        "addon_industries":["general","pharma","banking","it_saas",
+                           "manufacturing","legal","real_estate","hr_employment"],
+        "has_addon":      True,
+        "addon_features": [
+            "All 8 industry risk scoring",
+            "Custom clause weight adjustments",
+            "Priority processing queue",
+            "Dedicated industry playbook templates",
+        ],
+    },
+    "enterprise": {
+        "base_price":     0,
+        "addon_price":    0,
+        "addon_name":     "Everything Included",
+        "base_industries":["general","pharma","banking","it_saas",
+                          "manufacturing","legal","real_estate","hr_employment"],
+        "addon_industries":["general","pharma","banking","it_saas",
+                           "manufacturing","legal","real_estate","hr_employment"],
+        "has_addon":      False,
+        "addon_features": [
+            "All 8 industries",
+            "Custom clause weights",
+            "Dedicated workers",
+            "White-label options",
+            "SLA guarantee",
+        ],
+    },
+}
+
+# Which plans can access each industry (base only)
+INDUSTRY_PLAN_ACCESS = {
+    "general":      ["free", "starter", "professional", "enterprise"],
+    "it_saas":      ["starter", "professional", "enterprise"],
+    "manufacturing":["starter", "professional", "enterprise"],
+    "hr_employment":["professional", "enterprise"],
+    "legal":        ["professional", "enterprise"],
+    "real_estate":  ["professional", "enterprise"],
+    "pharma":       ["professional", "enterprise"],
+    "banking":      ["professional", "enterprise"],
+}
+
 INDUSTRIES = {
     "general": {
         "label":       "General / Other",
         "description": "Standard contract analysis",
         "premium_inr": 0,
         "icon":        "📄",
+        "min_plan":    "free",
         "keywords":    [],
         "high_risk_clauses": ["liability", "indemnification", "termination"],
         "critical_missing":  ["liability", "termination", "governing_law"],
@@ -171,7 +242,9 @@ INDUSTRIES = {
 
 INDUSTRY_CHOICES = [
     {"id": k, "label": v["label"], "icon": v["icon"],
-     "description": v["description"], "premium_inr": v["premium_inr"]}
+     "description": v["description"], "premium_inr": v["premium_inr"],
+     "min_plan": v.get("min_plan", "free"),
+     "allowed_plans": INDUSTRY_PLAN_ACCESS.get(k, ["professional", "enterprise"])}
     for k, v in INDUSTRIES.items()
 ]
 
@@ -197,24 +270,23 @@ def get_industry_risk_multiplier(industry_id: str, clause_type: str) -> float:
     return industry["risk_multipliers"].get(clause_type, 1.0)
 
 
-def get_plan_price(base_plan: str, industry_id: str) -> dict:
-    """Calculate final price for plan + industry combination."""
-    base_prices = {
-        "free":         0,
-        "starter":      4999,
-        "professional": 14999,
-        "enterprise":   0,  # custom
-    }
-    premium = INDUSTRIES.get(industry_id, {}).get("premium_inr", 0)
-    base   = base_prices.get(base_plan, 0)
-    total  = base + premium
+def get_plan_price(base_plan: str, addon_enabled: bool = False) -> dict:
+    """Calculate price for plan with optional add-on."""
+    config = PLAN_CONFIG.get(base_plan, PLAN_CONFIG["free"])
+    base   = config["base_price"]
+    addon  = config["addon_price"] if addon_enabled else 0
+    total  = base + addon
 
     return {
-        "base_plan":    base_plan,
-        "industry":     industry_id,
-        "base_price":   base,
-        "premium":      premium,
-        "total":        total,
-        "total_gst":    round(total * 1.18),
-        "display":      f"₹{total:,}/month" if total > 0 else "Custom",
+        "base_plan":       base_plan,
+        "base_price":      base,
+        "addon_price":     config["addon_price"],
+        "addon_enabled":   addon_enabled,
+        "addon_name":      config["addon_name"],
+        "addon_features":  config["addon_features"],
+        "total":           total,
+        "total_gst":       round(total * 1.18),
+        "display":         f"₹{total:,}/month" if total > 0 else "Custom",
+        "has_addon":       config["has_addon"],
+        "active_industries": config["addon_industries"] if addon_enabled else config["base_industries"],
     }

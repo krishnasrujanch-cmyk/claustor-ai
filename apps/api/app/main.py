@@ -6,7 +6,9 @@ Production-grade, multi-tenant contract intelligence platform.
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI, Request
+from app.infrastructure.document.processor import DocumentProcessor
+from fastapi import FastAPI
+from app.middleware.rate_limit import rate_limit_middleware, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -31,8 +33,14 @@ async def lifespan(app: FastAPI):
     )
 
     # Initialize database connection pool
-    await init_db(settings.DATABASE_URL, connect_args={"ssl": __import__("ssl").create_default_context()})
+    await init_db(settings.DATABASE_URL)
     logger.info("database_connected")
+
+    # Load document processing models (once at startup)
+    # Runs in thread pool to avoid blocking event loop during 400MB model load
+    import asyncio
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, DocumentProcessor.init_models)
 
     yield
 
@@ -63,7 +71,7 @@ def create_application() -> FastAPI:
     # ── CORS ─────────────────────────────────────
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if settings.ENVIRONMENT == "development" else settings.ALLOWED_ORIGINS,
+        allow_origins=settings.ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],

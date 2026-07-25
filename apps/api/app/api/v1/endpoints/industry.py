@@ -50,14 +50,30 @@ async def get_org_industry(
     plan        = row.plan if row else "free"
     industry    = INDUSTRIES.get(industry_id, INDUSTRIES["general"])
 
+    from app.core.industries import INDUSTRY_PLAN_ACCESS, PLAN_CONFIG, get_plan_price
+    addon_result = await db.execute(
+        select(Organisation.addon_enabled).where(Organisation.id == user.org_id)
+    )
+    addon_enabled = bool(addon_result.scalar() or False)
+    plan_config   = PLAN_CONFIG.get(plan, PLAN_CONFIG["free"])
+    pricing       = get_plan_price(plan, addon_enabled)
+
     return {
-        "industry":    industry_id,
-        "label":       industry["label"],
-        "icon":        industry["icon"],
-        "description": industry["description"],
-        "pricing":     get_plan_price(plan, industry_id),
-        "high_risk_clauses":  industry["high_risk_clauses"],
-        "critical_missing":   industry["critical_missing"],
+        "industry":        industry_id,
+        "label":           industry["label"],
+        "icon":            industry["icon"],
+        "description":     industry["description"],
+        "addon_enabled":   addon_enabled,
+        "pricing":         pricing,
+        "plan_config":     plan_config,
+        "high_risk_clauses":   industry["high_risk_clauses"],
+        "critical_missing":    industry["critical_missing"],
+        "active_industries":   pricing["active_industries"],
+        "available_industries": [
+            {"id": k, "label": v["label"], "icon": v["icon"],
+             "accessible": k in pricing["active_industries"]}
+            for k, v in INDUSTRIES.items()
+        ],
     }
 
 
@@ -79,6 +95,14 @@ async def set_org_industry(
         raise HTTPException(status_code=400,
             detail=f"Invalid industry. Choose from: {list(INDUSTRIES.keys())}")
 
+    # Check plan access
+    from app.core.industries import INDUSTRY_PLAN_ACCESS
+    allowed_plans = INDUSTRY_PLAN_ACCESS.get(req.industry, ["professional", "enterprise"])
+    if user.plan not in allowed_plans:
+        raise HTTPException(status_code=403,
+            detail=f"Industry '{req.industry}' requires {allowed_plans[0]} plan or higher. "
+                   f"Your plan: {user.plan}. Upgrade at /admin/billing")
+
     await db.execute(
         update(Organisation)
         .where(Organisation.id == user.org_id)
@@ -94,4 +118,49 @@ async def set_org_industry(
         "industry":  req.industry,
         "label":     industry["label"],
         "message":   f"Industry set to {industry['label']}. New contracts will use industry-specific risk scoring.",
+    }
+
+
+class SetAddonRequest(BaseModel):
+    addon_enabled: bool
+
+
+@router.post("/org/addon")
+async def toggle_addon(
+    req: SetAddonRequest,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Enable or disable industry add-on for the organisation."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    # Read plan from DB (JWT plan may be stale)
+    from app.core.industries import PLAN_CONFIG
+    plan_result = await db.execute(
+        select(Organisation.plan).where(Organisation.id == user.org_id)
+    )
+    actual_plan = plan_result.scalar() or user.plan
+    plan_config = PLAN_CONFIG.get(actual_plan, {})
+    if not plan_config.get("has_addon"):
+        raise HTTPException(status_code=400,
+            detail=f"Plan '{actual_plan}' does not support add-ons")
+
+    await db.execute(
+        update(Organisation)
+        .where(Organisation.id == user.org_id)
+        .values(addon_enabled=req.addon_enabled)
+    )
+    await db.commit()
+
+    pricing = get_plan_price(actual_plan, req.addon_enabled)
+    action  = "enabled" if req.addon_enabled else "disabled"
+    logger.info("addon_toggled", org_id=str(user.org_id),
+               addon_enabled=req.addon_enabled, plan=actual_plan)
+
+    return {
+        "addon_enabled": req.addon_enabled,
+        "message":       f"Add-on {action}. New monthly total: {pricing['display']}",
+        "pricing":       pricing,
+        "active_industries": pricing["active_industries"],
     }

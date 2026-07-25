@@ -56,7 +56,117 @@ class ContractPipeline:
             await asyncio.sleep(0.3)  # Let frontend poll catch this step
 
             file_bytes = await self._download_file(org_id, contract_id, file_hash, db)
-            parsed = await self.parser.parse(file_bytes, "contract.pdf")
+
+            # Use DocumentProcessor (models pre-loaded at startup)
+            from app.infrastructure.document.processor import DocumentProcessor
+            from app.domain.models import Organisation
+            from sqlalchemy import select as _sel_org
+
+            # Get org plan for feature gating
+            _org_result = await db.execute(
+                _sel_org(Organisation.plan).where(Organisation.id == org_id)
+            )
+            _org_plan = _org_result.scalar() or "free"
+
+            # Get original filename from DB
+            from app.domain.models import Contract as _Contract
+            _fname_result = await db.execute(
+                _sel_org(_Contract.original_filename).where(_Contract.id == contract_id)
+            )
+            _filename = _fname_result.scalar() or "contract.pdf"
+
+            # Parse with plan-gated features
+            _doc_processor = DocumentProcessor.get()
+            _parsed_doc = _doc_processor.parse(
+                file_bytes=file_bytes,
+                filename=_filename,
+                plan=_org_plan,
+            )
+
+            # Template matching (Professional+)
+            _template_match = {}
+            if _org_plan in ("professional", "enterprise"):
+                _template_match = _doc_processor.match_template(
+                    _parsed_doc["full_text"], str(org_id)
+                )
+                logger.info("template_matched",
+                           template=_template_match.get("template"),
+                           confidence=_template_match.get("confidence"))
+
+            # Signature detection (All plans)
+            _sig_info = _doc_processor.detect_signatures(file_bytes)
+
+            # Metadata extraction (All plans)
+            _meta = _doc_processor.extract_metadata(file_bytes, _filename)
+
+            # Build parsed object compatible with existing pipeline
+            class _ParsedDoc:
+                def __init__(self, doc_result, meta, sig_info, template):
+                    self.full_text    = doc_result.get("full_text", "")
+                    self.chunks       = self._make_chunks(self.full_text)
+                    self.tables       = doc_result.get("tables", [])
+                    self.page_count   = meta.get("page_count", 0)
+                    self.metadata     = meta
+                    self.has_signatures = sig_info.get("has_signatures", False)
+                    self.pii_masked   = doc_result.get("pii_masked", False)
+                    self.is_scanned   = doc_result.get("is_scanned", False)
+                    self.template     = template
+
+                def _make_chunks(self, text, chunk_size=1000, overlap=100):
+                    if not text:
+                        return []
+                    chunks = []
+                    words  = text.split()
+                    step   = chunk_size - overlap
+                    for i in range(0, len(words), step):
+                        chunk_words = words[i:i+chunk_size]
+                        chunks.append({"text": " ".join(chunk_words),
+                                       "chunk_index": len(chunks)})
+                    return chunks
+
+            parsed = _ParsedDoc(_parsed_doc, _meta, _sig_info, _template_match)
+
+            # ── Vision analysis for embedded images (Pro+) ──────
+            if _org_plan in ("professional", "enterprise"):
+                _raw_images = _parsed_doc.get("_raw_images", [])
+                if _raw_images:
+                    try:
+                        vision_text = await _doc_processor.analyze_images_with_vision(
+                            _raw_images, _org_plan
+                        )
+                        if vision_text:
+                            parsed.full_text += f"\n\n=== IMAGE ANALYSIS ===\n{vision_text}"
+                            logger.info("vision_analysis_complete",
+                                       images=len(_raw_images),
+                                       chars=len(vision_text))
+                    except Exception as _ve:
+                        logger.warning("vision_analysis_skipped", error=str(_ve))
+
+            # Log parsing results
+            logger.info("document_parsed",
+                       contract_id=str(contract_id),
+                       plan=_org_plan,
+                       pages=parsed.page_count,
+                       tables=len(parsed.tables),
+                       is_scanned=parsed.is_scanned,
+                       pii_masked=parsed.pii_masked,
+                       has_signatures=parsed.has_signatures,
+                       text_chars=len(parsed.full_text))
+
+            # Save metadata to DB
+            try:
+                from app.domain.models import DocumentMetadata
+                from sqlalchemy import update as _upd
+                await db.execute(
+                    _upd(_Contract)
+                    .where(_Contract.id == contract_id)
+                    .values(
+                        has_signatures=parsed.has_signatures,
+                    )
+                )
+                await db.commit()
+            except Exception as _me:
+                logger.warning("metadata_save_failed", error=str(_me))
 
             # ── Step 2: Extract Clauses ───────────────────
             await self._update_status(db, contract_id, "extracting")
