@@ -37,6 +37,7 @@ class Organisation(Base):
 
     # Plan
     plan: Mapped[str] = mapped_column(String(50), default="free")
+    industry: Mapped[str] = mapped_column(String(50), default="general")
     plan_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     plan_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -190,6 +191,7 @@ class Contract(Base):
 
     # AI analysis
     status: Mapped[str] = mapped_column(String(50), default="queued")
+    industry: Mapped[str] = mapped_column(String(50), default="general")
     risk_score: Mapped[float | None] = mapped_column(Float)
     risk_level: Mapped[str | None] = mapped_column(String(20))
     health_score: Mapped[float | None] = mapped_column(Float)

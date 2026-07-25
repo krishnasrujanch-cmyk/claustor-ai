@@ -80,10 +80,24 @@ class ContractPipeline:
             await self._update_status(db, contract_id, "indexing")
             logger.info("pipeline_step", step="indexing", contract_id=str(contract_id))
 
+            # Enrich chunks with contract metadata for better AI responses
+            contract_title   = contract_meta.get("title", "") or ""
+            counterparty     = contract_meta.get("counterparty", "") or ""
+            contract_value   = str(contract_meta.get("contract_value", "") or "")
+            enriched_chunks  = [
+                {
+                    **chunk,
+                    "contract_title": contract_title,
+                    "counterparty":   counterparty,
+                    "contract_value": contract_value,
+                }
+                for chunk in parsed.chunks
+            ]
+
             await self.vector_store.upsert_contract(
                 org_id=org_id,
                 contract_id=contract_id,
-                chunks=parsed.chunks,
+                chunks=enriched_chunks,
             )
 
             # ── Step 7: Save Results to DB ────────────────
@@ -280,26 +294,31 @@ Return ONLY valid JSON array, no other text."""
             f"{i+1}. [{c.get('clause_type', 'other')}] {c.get('summary', '')[:200]}"
             for i, c in enumerate(clauses)
         ])
+        
+        # Add contract value context for better risk calibration
+        contract_value_context = ""
+        if hasattr(self, "_current_contract_value") and self._current_contract_value:
+            contract_value_context = f"\nCONTRACT VALUE: {self._current_contract_value} (higher value = higher stakes)"
 
-        prompt = f"""Score the risk level for each of these contract clauses.
+        prompt = f"""Score each contract clause. Return ONLY a JSON array, nothing else.
 
-CLAUSES TO SCORE:
+CLAUSES:
 {clause_list}
 
-For each clause, return a JSON array with objects containing:
-- index: clause number (1-based)
-- risk_score: 0-100 (0=no risk, 100=critical risk)
-- risk_level: "low" (0-33), "medium" (34-66), or "high" (67-100)
-- risk_reason: one sentence explaining why this is risky (or why it's safe)
+Return this exact format:
+[
+  {{"index": 1, "risk_score": 75, "risk_level": "high", "risk_reason": "reason"}},
+  {{"index": 2, "risk_score": 45, "risk_level": "medium", "risk_reason": "reason"}}
+]
 
-Consider:
-- Unusual liability caps (too low = high risk)
-- Broad indemnification without carve-outs = high risk
-- Auto-renewal with long notice periods = medium-high risk
-- Missing dispute resolution = medium risk
-- Standard governing law clause = low risk
-
-Return ONLY valid JSON array."""
+RULES:
+- risk_score: 0-100 integer
+- risk_level: exactly "low" OR "medium" OR "high"
+- HIGH (67-100): unlimited liability, no liability cap, unilateral termination, uncapped indemnification, exclusive license, IP auto-vesting to other party, 18+ month notice periods
+- MEDIUM (34-66): liability cap below 3 months value, auto-renewal >60 days notice, broad confidentiality >5 years, short termination notice <30 days
+- LOW (0-33): standard caps, mutual termination 60-90 days, clear IP ownership, standard payment terms
+- DO NOT default everything to 30. Use the full 0-100 range.
+- Return ONLY the JSON array. No markdown, no explanation."""
 
         response = await self.llm.complete(
             messages=[
@@ -310,32 +329,53 @@ Return ONLY valid JSON array."""
             json_mode=True,
         )
 
-        import json
+        import json, re
         try:
-            scores = json.loads(response.content.strip())
+            raw = response.content.strip()
+            # Strip markdown code blocks if present
+            raw = re.sub(r"```(?:json)?", "", raw).strip()
+            # Extract JSON array
+            match = re.search(r"\[.*\]", raw, re.DOTALL)
+            if match:
+                raw = match.group(0)
+            scores = json.loads(raw)
             if isinstance(scores, dict):
-                for key in ["scores", "data", "results"]:
+                for key in ["scores", "data", "results", "clauses"]:
                     if key in scores:
                         scores = scores[key]
                         break
 
             # Merge scores back into clauses
             score_map = {s["index"]: s for s in scores if isinstance(s, dict)}
+            logger.info("risk_scores_parsed",
+                       count=len(score_map),
+                       sample=[{"idx":k,"score":v.get("risk_score")} for k,v in list(score_map.items())[:3]])
+
             for i, clause in enumerate(clauses):
                 score = score_map.get(i + 1, {})
-                clause["risk_score"] = score.get("risk_score", 30.0)
-                clause["risk_level"] = score.get("risk_level", "low")
+                clause["risk_score"] = float(score.get("risk_score", 50.0))
+                clause["risk_level"] = score.get("risk_level", "medium")
                 clause["risk_reason"] = score.get("risk_reason", "")
 
             return clauses
 
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.warning("risk_scoring_error", error=str(e))
-            # Default all to low risk on error
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.warning("risk_scoring_error", error=str(e), raw=response.content[:200])
+            # Smart fallback scoring based on clause type
+            HIGH_RISK_CLAUSES   = {"liability", "indemnification", "ip_ownership", "exclusivity"}
+            MEDIUM_RISK_CLAUSES = {"termination", "auto_renewal", "payment", "confidentiality", "dispute_resolution"}
             for clause in clauses:
-                clause.setdefault("risk_score", 30.0)
-                clause.setdefault("risk_level", "low")
-                clause.setdefault("risk_reason", "Could not score automatically")
+                ct = clause.get("clause_type", "other")
+                if ct in HIGH_RISK_CLAUSES:
+                    clause.setdefault("risk_score", 70.0)
+                    clause.setdefault("risk_level", "high")
+                elif ct in MEDIUM_RISK_CLAUSES:
+                    clause.setdefault("risk_score", 50.0)
+                    clause.setdefault("risk_level", "medium")
+                else:
+                    clause.setdefault("risk_score", 30.0)
+                    clause.setdefault("risk_level", "low")
+                clause.setdefault("risk_reason", "Auto-scored based on clause type")
             return clauses
 
     async def _extract_contract_metadata(self, full_text: str) -> dict:
@@ -431,8 +471,17 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
         # Calculate overall risk score
         risk_scores = [c.get("risk_score", 0) for c in scored_clauses]
         overall_risk = sum(risk_scores) / len(risk_scores) if risk_scores else 0
-        high_risk_count = sum(1 for s in risk_scores if s >= 67)
-        risk_level = "high" if overall_risk >= 67 else "medium" if overall_risk >= 34 else "low"
+        high_risk_count  = sum(1 for s in risk_scores if s >= 67)
+        medium_risk_count = sum(1 for s in risk_scores if 34 <= s < 67)
+
+        # If ANY clause is high risk → contract is at least medium
+        # If 2+ clauses are high risk → contract is high
+        if high_risk_count >= 2 or overall_risk >= 67:
+            risk_level = "high"
+        elif high_risk_count >= 1 or medium_risk_count >= 2 or overall_risk >= 34:
+            risk_level = "medium"
+        else:
+            risk_level = "low"
 
         # Parse dates safely
         def safe_date(val):

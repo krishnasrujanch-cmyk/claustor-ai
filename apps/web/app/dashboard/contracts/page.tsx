@@ -56,6 +56,7 @@ export default function ContractsPage() {
   const [status, setStatus]     = useState("");
   const [loading, setLoading]   = useState(true);
   const [uploads, setUploads]   = useState<UploadState[]>([]);
+  const [toast, setToast]         = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -73,11 +74,16 @@ export default function ContractsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Poll processing contracts
+  // Poll processing contracts — stop after 5 min to prevent infinite reload
   useEffect(() => {
     const processing = items.filter(c => ["queued","parsing","extracting","scoring","indexing"].includes(c.status));
     if (!processing.length) return;
-    const interval = setInterval(load, 3000);
+    let polls = 0;
+    const interval = setInterval(() => {
+      polls++;
+      if (polls > 10) { clearInterval(interval); return; } // stop after 30s
+      load();
+    }, 3000);
     return () => clearInterval(interval);
   }, [items, load]);
 
@@ -183,14 +189,21 @@ export default function ContractsPage() {
     load();
   };
 
-  const reprocess = async (id: string) => {
+  const reprocess = async (id: string, title: string) => {
     const token = getToken();
     const r = await fetch(`${API}/api/v1/contracts/${id}/reprocess`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` }
     });
-    if (r.ok) load();
-    else alert("Reprocess failed — check API logs");
+    if (r.ok) {
+      // Just reload once to show queued status — no continuous polling
+      setItems(prev => prev.map(c => c.id === id ? {...c, status: "queued"} : c));
+      // Show toast notification
+      setToast(`⏳ "${title}" queued for reprocessing. You'll be notified when done.`);
+      setTimeout(() => setToast(""), 5000);
+    } else {
+      alert("Reprocess failed — check API logs");
+    }
   };
 
   return (
@@ -326,13 +339,13 @@ export default function ContractsPage() {
                 <td style={{padding:"12px 16px"}}>
                   <div style={{display:"flex",gap:6}}>
                     {c.status==="failed" && (
-                      <button onClick={()=>reprocess(c.id)}
+                      <button onClick={()=>reprocess(c.id, c.title)}
                         style={{padding:"4px 10px",border:`1px solid ${C.warning}`,borderRadius:6,background:"none",color:C.warning,fontSize:11,fontWeight:600,cursor:"pointer"}}>
                         ↺ Retry
                       </button>
                     )}
                     {c.status==="analyzed" && (
-                      <button onClick={()=>reprocess(c.id)}
+                      <button onClick={()=>reprocess(c.id, c.title)}
                         style={{padding:"4px 10px",border:`1px solid ${C.border}`,borderRadius:6,background:"none",color:C.muted,fontSize:11,cursor:"pointer"}}>
                         ↺ Reprocess
                       </button>
@@ -360,6 +373,14 @@ export default function ContractsPage() {
         </div>
       )}
 
+      {/* Toast notification */}
+      {toast && (
+        <div style={{position:"fixed",bottom:24,right:24,background:"#1C1B2E",color:"white",
+          padding:"14px 20px",borderRadius:12,fontSize:14,fontWeight:500,
+          boxShadow:"0 8px 24px rgba(0,0,0,0.3)",zIndex:9999,maxWidth:400}}>
+          {toast}
+        </div>
+      )}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
