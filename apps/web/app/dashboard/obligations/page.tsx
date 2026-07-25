@@ -1,4 +1,5 @@
 "use client";
+import { Pagination } from "@/components/shared/Pagination";
 
 import { useEffect, useState } from "react";
 import { getToken } from "@/lib/api";
@@ -25,6 +26,8 @@ function UrgencyBadge({ urgency }: { urgency: string }) {
 export default function ObligationsPage() {
   const [alerts, setAlerts] = useState<any>(null);
   const [obligations, setObligations] = useState<any[]>([]);
+  const [obPage, setObPage] = useState(1);
+  const OB_PAGE_SIZE = 10;
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string|null>(null);
   const [days, setDays] = useState(30);

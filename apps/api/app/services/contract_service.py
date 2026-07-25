@@ -22,9 +22,13 @@ from app.domain.schemas.contract import ProcessingStatus
 logger = structlog.get_logger(__name__)
 
 # Allowed file types
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".xml"}
 ALLOWED_MIME_TYPES = {
     "application/pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # xlsx
+    "application/vnd.ms-excel",                                            # xls
+    "application/xml",                                                      # xml
+    "text/xml",                                                             # xml
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/msword",
 }
@@ -240,8 +244,7 @@ class ContractService:
             )
             return 1
         except Exception as e:
-            import traceback
-            logger.error("celery_queue_failed", error=str(e), traceback=traceback.format_exc())
+            logger.warning("celery_queue_failed", error=str(e))
             # Fallback: inline processing
             try:
                 await self._process_inline(contract_id, org_id, file_hash)
@@ -290,12 +293,21 @@ class ContractService:
         risk_level: str | None = None,
         contract_type: str | None = None,
         search: str | None = None,
+        contract_ids: list | None = None,
+        uploaded_by: UUID | None = None,
     ) -> tuple[list[Contract], int]:
         """List contracts with filtering and pagination."""
         query = select(Contract).where(
             Contract.org_id == org_id,
             Contract.is_active == True,
         )
+        # Role-based filters
+        if contract_ids is not None:
+            from sqlalchemy import cast
+            from sqlalchemy.dialects.postgresql import UUID as PGUUID
+            query = query.where(Contract.id.in_(contract_ids))
+        if uploaded_by is not None:
+            query = query.where(Contract.uploaded_by == uploaded_by)
 
         # Filters
         if status_filter:

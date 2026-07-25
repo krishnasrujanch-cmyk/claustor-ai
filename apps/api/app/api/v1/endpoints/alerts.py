@@ -22,10 +22,11 @@ async def get_upcoming_alerts(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     days: int = 30,
+    my_contracts_only: bool = False,
 ):
     """
     Get upcoming renewals and obligations within N days.
-    Frontend uses this to show alert badges.
+    my_contracts_only=True filters to contracts uploaded by this user.
     """
     from datetime import date, timedelta
     today = date.today()
@@ -51,8 +52,7 @@ async def get_upcoming_alerts(
     )
     renewals = renewals_result.fetchall()
 
-    # Upcoming obligations (include those with no due date)
-    from sqlalchemy import or_
+    # Upcoming obligations
     obligations_result = await db.execute(
         select(
             Obligation.id,
@@ -66,11 +66,9 @@ async def get_upcoming_alerts(
         ).where(
             Obligation.org_id == user.org_id,
             Obligation.status == "pending",
-            or_(
-                Obligation.due_date == None,
-                Obligation.due_date >= today,
-            )
-        ).order_by(Obligation.due_date.asc().nullslast())
+            Obligation.due_date >= today,
+            Obligation.due_date <= end_date,
+        ).order_by(Obligation.due_date.asc())
     )
     obligations = obligations_result.fetchall()
 

@@ -72,9 +72,33 @@ async def list_contracts(
 ):
     """List contracts for the organisation."""
     service = ContractService(db)
+
+    # Role-based filtering:
+    # legal_reviewer → only sees contracts assigned to them for review
+    # business_viewer → only sees contracts they uploaded
+    # contract_manager/admin → sees all org contracts
+    reviewer_only_id = None
+    uploader_only_id = None
+
+    if user.role == "legal_reviewer":
+        # Get contract IDs assigned to this reviewer
+        from sqlalchemy import select as _sel
+        from app.api.v1.endpoints.reviews import ContractReview
+        review_result = await db.execute(
+            _sel(ContractReview.contract_id).where(
+                ContractReview.assigned_to == user.id
+            )
+        )
+        assigned_ids = [r[0] for r in review_result.fetchall()]
+        reviewer_only_id = assigned_ids if assigned_ids else ["00000000-0000-0000-0000-000000000000"]
+    elif user.role == "business_viewer":
+        uploader_only_id = user.id
+
     contracts, total = await service.list_contracts(
         org_id=user.org_id, page=page, page_size=page_size,
         status_filter=status_filter, risk_level=risk_level, search=search,
+        contract_ids=reviewer_only_id,
+        uploaded_by=uploader_only_id,
     )
     return ContractListOut(
         contracts=[ContractOut.model_validate(c) for c in contracts],

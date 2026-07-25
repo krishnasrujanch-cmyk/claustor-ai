@@ -27,7 +27,7 @@ async def get_notifications(
     """
     notifications = []
 
-    # Recently analyzed contracts (last 24 hours)
+    # Recently analyzed contracts (last 24 hours) — only uploaded by THIS user
     from datetime import datetime, timezone, timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
@@ -35,6 +35,7 @@ async def get_notifications(
         select(Contract)
         .where(
             Contract.org_id == user.org_id,
+            Contract.uploaded_by == user.id,
             Contract.status == "analyzed",
             Contract.updated_at >= cutoff,
         )
@@ -62,6 +63,7 @@ async def get_notifications(
         select(Contract)
         .where(
             Contract.org_id == user.org_id,
+            Contract.uploaded_by == user.id,
             Contract.status == "failed",
             Contract.updated_at >= cutoff,
         )
@@ -81,6 +83,33 @@ async def get_notifications(
             "time":     c.updated_at.isoformat() if c.updated_at else None,
             "read":     False,
         })
+
+    # Reviews assigned to THIS user
+    try:
+        from app.domain.models import ContractReview
+        review_result = await db.execute(
+            select(ContractReview, Contract.title)
+            .join(Contract, ContractReview.contract_id == Contract.id)
+            .where(
+                ContractReview.assigned_to == user.id,
+                ContractReview.status == "pending",
+            )
+            .order_by(desc(ContractReview.assigned_at))
+            .limit(5)
+        )
+        for review, title in review_result.fetchall():
+            notifications.append({
+                "id":          f"review_{review.id}",
+                "type":        "review_assigned",
+                "title":       "📋 Review assigned to you",
+                "message":     f'Please review "{title}" — {review.priority} priority',
+                "contract_id": str(review.contract_id),
+                "severity":    "high" if review.priority == "high" else "info",
+                "time":        review.assigned_at.isoformat() if review.assigned_at else None,
+                "read":        False,
+            })
+    except Exception:
+        pass
 
     # Sort by time
     notifications.sort(key=lambda x: x["time"] or "", reverse=True)

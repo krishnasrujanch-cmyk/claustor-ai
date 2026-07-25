@@ -1,4 +1,5 @@
 "use client";
+import { useAuthStore } from "@/store/auth";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -28,6 +29,8 @@ const STATUS_COLORS: Record<string,{bg:string;text:string}> = {
 };
 
 export default function ReviewsPage() {
+  const { user: currentUser } = useAuthStore();
+  const isAdmin = ["super_admin","dept_admin","contract_manager"].includes(currentUser?.role || "");
   const [queue, setQueue]     = useState<any[]>([]);
   const [all, setAll]         = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +102,7 @@ export default function ReviewsPage() {
 
       {/* Tabs */}
       <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:20}}>
-        {[{id:"my-queue",label:`My Queue (${queue.length})`},{id:"all",label:`All Reviews (${all.length})`}].map(t=>(
+        {([{id:"my-queue",label:`My Queue (${queue.length})`},...(isAdmin?[{id:"all",label:`All Reviews (${all.length})`}]:[])] as any[]).map((t:any)=>(
           <button key={t.id} onClick={()=>setTab(t.id as any)}
             style={{padding:"10px 22px",border:"none",background:"none",cursor:"pointer",fontSize:14,
               fontWeight:tab===t.id?700:400,color:tab===t.id?C.primary:C.muted,

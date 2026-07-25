@@ -225,3 +225,46 @@ async def reset_password(req: ResetPasswordRequest, db: AsyncSession = Depends(g
     await db.commit()
 
     return {"message": "Password reset successfully. Please sign in."}
+
+
+@router.get("/validate-invite/{token}")
+async def validate_invite(token: str, db: DbSession):
+    """Validate an invite token — called when user opens invite link."""
+    from sqlalchemy import select
+    result = await db.execute(
+        select(User).where(User.invite_token == token)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Invalid or expired invite link")
+    return {
+        "valid": True,
+        "email": user.email,
+        "role":  user.role,
+        "name":  user.full_name,
+    }
+
+
+class AcceptInviteRequest(BaseModel):
+    token:    str
+    password: str
+
+
+@router.post("/accept-invite")
+async def accept_invite(req: AcceptInviteRequest, db: DbSession):
+    """Accept invite and set password."""
+    from sqlalchemy import select
+    result = await db.execute(
+        select(User).where(User.invite_token == req.token)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Invalid or expired invite link")
+
+    user.password_hash = hash_password(req.password)
+    user.invite_token  = None
+    user.is_active     = True
+    await db.commit()
+
+    logger.info("invite_accepted", user_id=str(user.id), email=user.email)
+    return {"message": "Account activated. You can now log in.", "email": user.email}

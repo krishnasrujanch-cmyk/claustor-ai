@@ -218,7 +218,7 @@ export default function ContractsPage() {
           style={{background:C.primary,color:"white",border:"none",borderRadius:8,padding:"10px 20px",fontSize:14,fontWeight:600,cursor:"pointer"}}>
           ⬆ Upload contract
         </button>
-        <input ref={fileRef} type="file" accept=".pdf,.docx,.doc" style={{display:"none"}}
+        <input ref={fileRef} type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.xml" style={{display:"none"}}
           onChange={e=>e.target.files?.[0] && handleUpload(e.target.files[0])}/>
       </div>
 

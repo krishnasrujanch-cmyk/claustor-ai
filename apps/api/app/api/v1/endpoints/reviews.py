@@ -165,7 +165,7 @@ async def list_reviews(
     status: str | None = None,
     assigned_to_me: bool = False,
 ):
-    """List reviews for the organisation. Filter by status or assigned to current user."""
+    """List reviews. My Queue shows only reviews assigned to current user."""
     query = select(ContractReview).where(ContractReview.org_id == user.org_id)
 
     if status:

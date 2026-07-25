@@ -20,7 +20,7 @@ export function NotificationBell() {
     try {
       const [notifR, alertR] = await Promise.all([
         fetch(`${API}/api/v1/notifications/`, {headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()),
-        fetch(`${API}/api/v1/alerts/upcoming?days=30`, {headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()),
+        fetch(`${API}/api/v1/alerts/upcoming?days=90&my_contracts_only=true`, {headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()),
       ]);
       setNotifs(notifR.notifications || []);
       setAlerts(alertR);

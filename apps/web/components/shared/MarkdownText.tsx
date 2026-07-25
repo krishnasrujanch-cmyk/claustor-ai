@@ -33,7 +33,7 @@ export function MarkdownText({ content, color = C.body }: Props) {
 
     // ── Empty line ──────────────────────────────────
     if (!line.trim()) {
-      elements.push(<div key={i} style={{ height: 8 }} />);
+      elements.push(<div key={`empty-${i}`} style={{ height: 8 }} />);
       i++;
       continue;
     }
@@ -48,7 +48,7 @@ export function MarkdownText({ content, color = C.body }: Props) {
       }
       i++; // skip closing ```
       elements.push(
-        <pre key={i} style={{
+        <pre key={`line-${i}`} style={{
           background: C.codeBg, border: `1px solid ${C.border}`,
           borderRadius: 8, padding: "12px 16px", overflowX: "auto",
           fontSize: 12, fontFamily: "monospace", color: C.code,
@@ -83,7 +83,7 @@ export function MarkdownText({ content, color = C.body }: Props) {
         const headers = rows[0];
         const body    = rows.slice(1);
         elements.push(
-          <div key={i} style={{ overflowX: "auto", margin: "12px 0" }}>
+          <div key={`line-${i}`} style={{ overflowX: "auto", margin: "12px 0" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#F3F4F6" }}>
@@ -130,7 +130,7 @@ export function MarkdownText({ content, color = C.body }: Props) {
       const size  = h1 ? 18 : h2 ? 16 : 14;
       const weight = h1 ? 800 : 700;
       elements.push(
-        <div key={i} style={{ fontSize: size, fontWeight: weight, color: C.heading, margin: "14px 0 6px" }}>
+        <div key={`line-${i}`} style={{ fontSize: size, fontWeight: weight, color: C.heading, margin: "14px 0 6px" }}>
           {renderInline(text)}
         </div>
       );
@@ -149,7 +149,7 @@ export function MarkdownText({ content, color = C.body }: Props) {
         i++;
       }
       elements.push(
-        <div key={i} style={{ margin: "8px 0", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div key={`line-${i}`} style={{ margin: "8px 0", display: "flex", flexDirection: "column", gap: 6 }}>
           {listItems.map(([num, text], idx) => (
             <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
               <span style={{
@@ -180,7 +180,7 @@ export function MarkdownText({ content, color = C.body }: Props) {
         i++;
       }
       elements.push(
-        <div key={i} style={{ margin: "8px 0", display: "flex", flexDirection: "column", gap: 5 }}>
+        <div key={`line-${i}`} style={{ margin: "8px 0", display: "flex", flexDirection: "column", gap: 5 }}>
           {items.map((text, idx) => (
             <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
               <span style={{ color: C.primary, fontWeight: 700, flexShrink: 0, marginTop: 2 }}>•</span>
@@ -194,14 +194,14 @@ export function MarkdownText({ content, color = C.body }: Props) {
 
     // ── Horizontal rule ────────────────────────────
     if (line.match(/^---+$/)) {
-      elements.push(<hr key={i} style={{ border: "none", borderTop: `1px solid ${C.border}`, margin: "12px 0" }} />);
+      elements.push(<hr key={`line-${i}`} style={{ border: "none", borderTop: `1px solid ${C.border}`, margin: "12px 0" }} />);
       i++;
       continue;
     }
 
     // ── Normal paragraph ───────────────────────────
     elements.push(
-      <p key={i} style={{ margin: "0 0 6px", fontSize: 14, color, lineHeight: 1.7 }}>
+      <p key={`line-${i}`} style={{ margin: "0 0 6px", fontSize: 14, color, lineHeight: 1.7 }}>
         {renderInline(line)}
       </p>
     );

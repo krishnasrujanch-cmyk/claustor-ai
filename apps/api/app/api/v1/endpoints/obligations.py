@@ -21,7 +21,34 @@ async def list_obligations(
     contract_id: str | None = Query(None),
 ):
     """List all obligations for the organisation."""
+    # Filter obligations by role
+    # legal_reviewer/business_viewer → only their assigned/uploaded contracts
     query = select(Obligation).where(Obligation.org_id == user.org_id)
+
+    if user.role in ("legal_reviewer", "business_viewer"):
+        from app.domain.models import Contract
+        from sqlalchemy import select as _sel, or_
+        from app.api.v1.endpoints.reviews import ContractReview
+
+        # Get contracts assigned to user for review
+        review_ids = await db.execute(
+            _sel(ContractReview.contract_id)
+            .where(ContractReview.assigned_to == user.id)
+        )
+        assigned_ids = [r[0] for r in review_ids.fetchall()]
+
+        if user.role == "legal_reviewer":
+            query = query.where(Obligation.contract_id.in_(assigned_ids)) if assigned_ids else query.where(Obligation.id == None)
+        else:  # business_viewer
+            uploaded = await db.execute(
+                _sel(Contract.id).where(
+                    Contract.org_id == user.org_id,
+                    Contract.uploaded_by == user.id
+                )
+            )
+            uploaded_ids = [r[0] for r in uploaded.fetchall()]
+            all_ids = list(set(assigned_ids + uploaded_ids))
+            query = query.where(Obligation.contract_id.in_(all_ids)) if all_ids else query.where(Obligation.id == None)
 
     if status:
         query = query.where(Obligation.status == status)
