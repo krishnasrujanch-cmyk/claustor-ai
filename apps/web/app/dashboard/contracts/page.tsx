@@ -1,4 +1,5 @@
 "use client";
+import { Pagination } from "@/components/shared/Pagination";
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
@@ -364,13 +365,13 @@ export default function ContractsPage() {
 
       {/* Pagination */}
       {total > 20 && (
-        <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:20}}>
-          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}
-            style={{padding:"8px 16px",border:`1px solid ${C.border}`,borderRadius:8,background:C.surface,cursor:"pointer",fontSize:13}}>← Prev</button>
-          <span style={{padding:"8px 16px",fontSize:13,color:C.muted}}>Page {page} of {Math.ceil(total/20)}</span>
-          <button onClick={()=>setPage(p=>p+1)} disabled={items.length<20}
-            style={{padding:"8px 16px",border:`1px solid ${C.border}`,borderRadius:8,background:C.surface,cursor:"pointer",fontSize:13}}>Next →</button>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={Math.ceil(total/20)}
+          total={total}
+          pageSize={20}
+          onPage={setPage}
+        />
       )}
 
       {/* Toast notification */}

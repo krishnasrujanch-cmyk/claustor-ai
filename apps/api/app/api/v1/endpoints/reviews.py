@@ -164,10 +164,16 @@ async def list_reviews(
     db: AsyncSession = Depends(get_db),
     status: str | None = None,
     assigned_to_me: bool = False,
+    contract_id: str | None = None,
 ):
     """List reviews. My Queue shows only reviews assigned to current user."""
     query = select(ContractReview).where(ContractReview.org_id == user.org_id)
 
+    if assigned_to_me:
+        query = query.where(ContractReview.assigned_to == user.id)
+    if contract_id:
+        import uuid as _uuid
+        query = query.where(ContractReview.contract_id == _uuid.UUID(contract_id))
     if status:
         query = query.where(ContractReview.status == status)
     if assigned_to_me:
@@ -203,10 +209,100 @@ async def list_reviews(
             "priority":       review.priority,
             "due_date":       review.due_date.isoformat() if review.due_date else None,
             "decision":       review.decision,
+            "clause_flags":   review.clause_flags or [],
             "created_at":     review.created_at.isoformat() if review.created_at else None,
         })
 
     return {"reviews": enriched, "total": len(enriched)}
+
+
+@router.get("/{review_id}")
+async def get_review_detail(
+    review_id: uuid.UUID,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get full review detail with contract clauses for review workspace."""
+    result = await db.execute(
+        select(ContractReview).where(
+            ContractReview.id == review_id,
+            ContractReview.org_id == user.org_id,
+        )
+    )
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    # Check access: only assigned reviewer or admin
+    if (str(review.assigned_to) != str(user.id) and
+        not user.is_admin and user.role != "contract_manager"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Get contract
+    contract_result = await db.execute(
+        select(Contract).where(Contract.id == review.contract_id)
+    )
+    contract = contract_result.scalar_one_or_none()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    # Get clauses
+    from app.domain.models import Clause
+    clauses_result = await db.execute(
+        select(Clause).where(Clause.contract_id == review.contract_id)
+        .order_by(Clause.risk_score.desc().nulls_last())
+    )
+    clauses = clauses_result.scalars().all()
+
+    # Get reviewer info
+    from app.domain.models import User as UserModel
+    reviewer_result = await db.execute(
+        select(UserModel).where(UserModel.id == review.assigned_to)
+    )
+    reviewer = reviewer_result.scalar_one_or_none()
+
+    return {
+        "review": {
+            "id":            str(review.id),
+            "status":        review.status,
+            "priority":      review.priority,
+            "due_date":      review.due_date.isoformat() if review.due_date else None,
+            "notes":         review.notes,
+            "decision":      review.decision,
+            "decision_notes":review.decision_notes,
+            "clause_flags":  review.clause_flags or [],
+            "assigned_at":   review.created_at.isoformat() if review.created_at else None,
+        },
+        "contract": {
+            "id":            str(contract.id),
+            "title":         contract.title,
+            "counterparty":  contract.counterparty,
+            "risk_level":    contract.risk_level,
+            "risk_score":    contract.risk_score,
+            "contract_type": contract.contract_type,
+            "summary":       contract.summary,
+            "contract_value":contract.contract_value,
+            "currency":      contract.contract_currency,
+            "effective_date":contract.effective_date.isoformat() if contract.effective_date else None,
+            "expiry_date":   contract.expiry_date.isoformat() if contract.expiry_date else None,
+        },
+        "clauses": [
+            {
+                "id":          str(c.id),
+                "clause_type": c.clause_type,
+                "risk_level":  c.risk_level,
+                "risk_score":  c.risk_score,
+                "summary":     c.summary,
+                "raw_text":    c.raw_text,
+                "page_number": c.page_number,
+            }
+            for c in clauses
+        ],
+        "reviewer": {
+            "name":  reviewer.full_name if reviewer else None,
+            "email": reviewer.email if reviewer else None,
+        },
+    }
 
 
 @router.post("/{review_id}/start")

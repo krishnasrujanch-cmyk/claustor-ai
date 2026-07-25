@@ -38,7 +38,6 @@ class Organisation(Base):
     # Plan
     plan: Mapped[str] = mapped_column(String(50), default="free")
     industry: Mapped[str] = mapped_column(String(50), default="general")
-    addon_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     plan_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     plan_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -206,6 +205,9 @@ class Contract(Base):
     # Flags
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     flagged_for_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    review_status: Mapped[str | None] = mapped_column(String(50))
+    review_notes: Mapped[str | None] = mapped_column(Text)
+    review_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     has_signatures: Mapped[bool] = mapped_column(Boolean, default=False)
     has_tracked_changes: Mapped[bool] = mapped_column(Boolean, default=False)
     has_unresolved_comments: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -251,6 +253,9 @@ class Clause(Base):
 
     # Feedback
     flagged_for_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    review_status: Mapped[str | None] = mapped_column(String(50))
+    review_notes: Mapped[str | None] = mapped_column(Text)
+    review_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reviewer_feedback: Mapped[str | None] = mapped_column(String(20))  # positive | negative
     reviewer_score: Mapped[float | None] = mapped_column(Float)
 

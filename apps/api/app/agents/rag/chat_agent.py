@@ -154,22 +154,39 @@ class ChatAgent:
         )
         history = mem_ctx["recent"]
 
-        # ── Step 4: Build Messages ────────────────────
+        # ── Step 4: Get contract review status ───────
+        review_status = None
+        review_notes  = None
+        if contract_id:
+            from sqlalchemy import select as _sel
+            from app.domain.models import Contract as _Contract
+            _cr = await db.execute(
+                _sel(_Contract.review_status, _Contract.review_notes)
+                .where(_Contract.id == contract_id)
+            )
+            _row = _cr.fetchone()
+            if _row:
+                review_status = _row.review_status
+                review_notes  = _row.review_notes
+
+        # ── Step 5: Build Messages ────────────────────
         messages = self._build_messages(
             query=query,
             context=context.context_text,
             history=history,
             summary=mem_ctx.get("summary"),
+            review_status=review_status,
+            review_notes=review_notes,
         )
 
-        # ── Step 5: Generate Answer ───────────────────
+        # ── Step 6: Generate Answer ───────────────────
         response = await self.llm.complete(
             messages=messages,
             role=AgentRole.ANSWERER,
             org_id=org_id,
         )
 
-        # ── Step 6: Save to History ───────────────────
+        # ── Step 7: Save to History ───────────────────
         await self._save_to_history(
             db=db,
             org_id=org_id,
@@ -234,26 +251,45 @@ class ChatAgent:
         context: str,
         history: list[dict],
         summary: str | None = None,
+        review_status: str | None = None,
+        review_notes: str | None = None,
     ) -> list[LLMMessage]:
         """Build message list for LLM with context + history."""
-        messages = [LLMMessage(role="system", content=SYSTEM_PROMPT)]
+        system = SYSTEM_PROMPT
 
-        # Add conversation history
+        if review_status == "rejected":
+            reason = review_notes or "See review notes"
+            system += (
+                "\n\nIMPORTANT: This contract was REJECTED by the legal reviewer. "
+                "Rejection reason: " + reason + ". "
+                "Always mention this contract has been rejected and advise the user "
+                "to address the flagged issues before proceeding."
+            )
+        elif review_status == "revision_needed":
+            notes = review_notes or "See review notes"
+            system += (
+                "\n\nIMPORTANT: This contract requires REVISION before approval. "
+                "Revision notes: " + notes + ". "
+                "Advise the user to address the requested changes."
+            )
+        elif review_status == "approved":
+            system += "\n\nThis contract has been approved by the legal reviewer."
+
+        messages = [LLMMessage(role="system", content=system)]
+
         for turn in history:
             messages.append(LLMMessage(role=turn["role"], content=turn["content"]))
 
-        # Add current query with context
-        user_content = f"""CONTRACT CONTEXT:
-{context}
+        ctx_block = ""
+        if summary:
+            ctx_block += "CONVERSATION SUMMARY:\n" + summary + "\n\n"
+        ctx_block += "CONTRACT CONTEXT:\n" + context
 
----
-
-USER QUESTION: {query}
-
-Answer based only on the contract context above. Cite sources using [N] notation."""
+        user_content = ctx_block + "\n\n---\n\nUSER QUESTION: " + query + "\n\nAnswer based only on the contract context above. Cite sources using [N] notation."
 
         messages.append(LLMMessage(role="user", content=user_content))
         return messages
+
 
     async def _load_history(
         self,

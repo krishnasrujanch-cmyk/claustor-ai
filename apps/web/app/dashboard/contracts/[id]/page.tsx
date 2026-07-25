@@ -1,4 +1,5 @@
 "use client";
+import { useAuthStore } from "@/store/auth";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -71,6 +72,8 @@ export default function ContractDetailPage() {
   const router = useRouter();
   const id = params.id as string;
 
+  const { user: currentUser } = useAuthStore();
+  const canAssign = ["super_admin","dept_admin","contract_manager"].includes(currentUser?.role || "");
   const [contract, setContract] = useState<(Contract & {clauses:Clause[]})|null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("overview");
@@ -82,6 +85,7 @@ export default function ContractDetailPage() {
   const [priority, setPriority]         = useState("normal");
   const [reviewNotes, setReviewNotes]   = useState("");
   const [assigning, setAssigning]       = useState(false);
+  const [clauseFlags, setClauseFlags]   = useState<Record<string,any>>({});
   const [assignMsg, setAssignMsg]       = useState("");
 
   // Analytics state
@@ -92,6 +96,22 @@ export default function ContractDetailPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<Array<{role:string;content:string;citations?:any[]}>>([]);
   const [chatLoading, setChatLoading] = useState(false);
+
+  useEffect(() => {
+    const token = getToken();
+    fetch(`${API}/api/v1/reviews/?contract_id=${id}`,
+      {headers:{Authorization:`Bearer ${token}`}})
+    .then(r=>r.json())
+    .then(rd=>{
+      const flags: Record<string,any> = {};
+      for (const rv of (rd.reviews||[])) {
+        for (const f of (rv.clause_flags||[])) {
+          flags[f.clause_id] = {...f, reviewer: rv.reviewer_email};
+        }
+      }
+      setClauseFlags(flags);
+    }).catch(console.error);
+  }, [id]);
 
   useEffect(() => {
     contractsAPI.get(id)
@@ -204,11 +224,49 @@ export default function ContractDetailPage() {
               style={{padding:"8px 14px",border:"1px solid #E5E7EB",borderRadius:8,fontSize:13,fontWeight:600,color:"#374151",textDecoration:"none",cursor:"pointer"}}>
               ⬇ Export PDF
             </a>
-            <button onClick={()=>{setShowAssign(true);loadUsers();}}
-              style={{padding:"8px 18px",background:"#5B4BFF",color:"white",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-              ✅ Assign for review
-            </button>
+            {canAssign && (contract?.flagged_for_review ? (
+              <button onClick={()=>{setShowAssign(true);loadUsers();}}
+                style={{padding:"8px 18px",background:"#22C55E",color:"white",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                ✅ Assigned for review
+              </button>
+            ) : (
+              <button onClick={()=>{setShowAssign(true);loadUsers();}}
+                style={{padding:"8px 18px",background:"#5B4BFF",color:"white",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                📋 Assign for review
+              </button>
+            ))}
           </div>
+        {/* Review status banner */}
+        {contract.review_status && contract.review_status !== "pending" && (
+          <div style={{
+            padding:"12px 16px", borderRadius:8, marginBottom:16,
+            background: contract.review_status==="approved"?"#F0FDF4":
+                        contract.review_status==="rejected"?"#FEF2F2":"#FFFBEB",
+            border:`1px solid ${contract.review_status==="approved"?"#22C55E30":
+                               contract.review_status==="rejected"?"#EF444430":"#F59E0B30"}`,
+            display:"flex", alignItems:"flex-start", gap:12,
+          }}>
+            <span style={{fontSize:20}}>
+              {contract.review_status==="approved"?"✅":
+               contract.review_status==="rejected"?"❌":"🔄"}
+            </span>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,
+                color:contract.review_status==="approved"?"#16A34A":
+                     contract.review_status==="rejected"?"#DC2626":"#D97706"}}>
+                {contract.review_status==="approved"?"Contract Approved":
+                 contract.review_status==="rejected"?"Contract Rejected — Revision Required":
+                 "Revision Requested"}
+              </div>
+              {contract.review_notes && (
+                <div style={{fontSize:13,color:"#374151",marginTop:4}}>
+                  {contract.review_notes}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {contract.risk_score!==null && (
           <div style={{textAlign:"center"}}>
             <div style={{
@@ -304,6 +362,35 @@ export default function ContractDetailPage() {
                   ⚠️ {clause.risk_reason}
                 </div>
               )}
+              {/* Show review decision for this clause */}
+              {clauseFlags[clause.id] && (
+                <div style={{marginTop:10,padding:"8px 12px",borderRadius:8,display:"flex",gap:8,alignItems:"center",
+                  background: clauseFlags[clause.id].action==="accept"?"#F0FDF4":
+                              clauseFlags[clause.id].action==="flag"?"#FEF2F2":"#FFFBEB",
+                  border:`1px solid ${clauseFlags[clause.id].action==="accept"?"#22C55E30":
+                                     clauseFlags[clause.id].action==="flag"?"#EF444430":"#F59E0B30"}`}}>
+                  <span style={{fontSize:14}}>
+                    {clauseFlags[clause.id].action==="accept"?"✅":
+                     clauseFlags[clause.id].action==="flag"?"🚩":"💬"}
+                  </span>
+                  <div>
+                    <span style={{fontSize:12,fontWeight:700,
+                      color:clauseFlags[clause.id].action==="accept"?"#16A34A":
+                           clauseFlags[clause.id].action==="flag"?"#DC2626":"#D97706"}}>
+                      {clauseFlags[clause.id].action==="accept"?"Accepted by reviewer":
+                       clauseFlags[clause.id].action==="flag"?"Flagged by reviewer":"Reviewer note"}
+                    </span>
+                    {clauseFlags[clause.id].comment && (
+                      <div style={{fontSize:12,color:"#374151",marginTop:2}}>
+                        {clauseFlags[clause.id].comment}
+                      </div>
+                    )}
+                    <div style={{fontSize:11,color:"#9CA3AF",marginTop:2}}>
+                      {clauseFlags[clause.id].reviewer}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -377,6 +464,30 @@ export default function ContractDetailPage() {
       {/* Tab: Chat */}
       {tab==="chat" && (
         <div style={{display:"flex",flexDirection:"column",height:520,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+          {/* Rejection/revision banner in chat */}
+          {contract?.review_status && ["rejected","revision_needed"].includes(contract.review_status) && (
+            <div style={{padding:"10px 16px",
+              background:contract.review_status==="rejected"?"#FEF2F2":"#FFFBEB",
+              borderBottom:`2px solid ${contract.review_status==="rejected"?"#EF4444":"#F59E0B"}`,
+              display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+              <span style={{fontSize:18}}>
+                {contract.review_status==="rejected"?"❌":"🔄"}
+              </span>
+              <div>
+                <span style={{fontSize:13,fontWeight:800,
+                  color:contract.review_status==="rejected"?"#DC2626":"#D97706"}}>
+                  {contract.review_status==="rejected"
+                    ?"CONTRACT REJECTED — Do not execute"
+                    :"REVISION REQUIRED — Address issues before signing"}
+                </span>
+                {contract.review_notes && (
+                  <span style={{fontSize:12,color:"#374151",marginLeft:8}}>
+                    · {contract.review_notes}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
           <div style={{flex:1,overflowY:"auto",padding:20,display:"flex",flexDirection:"column",gap:16}}>
             {chatMessages.length===0 && (
               <div style={{textAlign:"center",paddingTop:40,color:C.muted}}>

@@ -60,6 +60,9 @@ class ContractOut(BaseModel):
     has_signatures: bool
     has_tracked_changes: bool
     backdating_risk: bool
+    flagged_for_review: bool | None = False
+    review_status: str | None = None
+    review_notes: str | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 
 import { useEffect, useState } from "react";
@@ -29,6 +30,7 @@ const STATUS_COLORS: Record<string,{bg:string;text:string}> = {
 };
 
 export default function ReviewsPage() {
+  const router = useRouter();
   const { user: currentUser } = useAuthStore();
   const isAdmin = ["super_admin","dept_admin","contract_manager"].includes(currentUser?.role || "");
   const [queue, setQueue]     = useState<any[]>([]);
@@ -46,10 +48,10 @@ export default function ReviewsPage() {
     const h = { Authorization:`Bearer ${token}` };
     try {
       const [qR, aR] = await Promise.all([
-        fetch(`${API}/api/v1/reviews/my-queue`, {headers:h}).then(r=>r.json()),
+        fetch(`${API}/api/v1/reviews/?assigned_to_me=true`, {headers:h}).then(r=>r.json()),
         fetch(`${API}/api/v1/reviews/`, {headers:h}).then(r=>r.json()),
       ]);
-      setQueue(qR.queue||[]); setAll(aR.reviews||[]);
+      setQueue((qR.reviews||[]).map((r:any)=>({...r, review_id:r.id}))); setAll(aR.reviews||[]);
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -58,8 +60,13 @@ export default function ReviewsPage() {
 
   const startReview = async (id: string) => {
     const token = getToken();
-    await fetch(`${API}/api/v1/reviews/${id}/start`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
-    load();
+    const r = await fetch(`${API}/api/v1/reviews/${id}/start`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
+    if (r.ok) {
+      // Optimistic update
+      setQueue(prev => prev.map(item =>
+        item.review_id === id ? {...item, status: "in_review"} : item
+      ));
+    }
   };
 
   const submitDecision = async () => {
@@ -67,13 +74,22 @@ export default function ReviewsPage() {
     setSubmitting(true);
     const token = getToken();
     try {
-      await fetch(`${API}/api/v1/reviews/${modal.reviewId}/decide`, {
+      const r = await fetch(`${API}/api/v1/reviews/${modal.reviewId}/decide`, {
         method:"POST",
         headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
         body:JSON.stringify({decision,decision_notes:notes}),
       });
-      setModal(null); setDecision(""); setNotes("");
-      load();
+      if (r.ok) {
+        const reviewId = modal.reviewId;
+        setModal(null); setDecision(""); setNotes("");
+        // Optimistic update — no full reload
+        setQueue(prev => prev.filter(r => r.review_id !== reviewId));
+        setAll(prev => prev.map(r => r.review_id === reviewId
+          ? {...r, status: decision === "approved" ? "approved" : decision === "rejected" ? "rejected" : "revision_needed",
+             decision: decision}
+          : r
+        ));
+      }
     } finally { setSubmitting(false); }
   };
 
@@ -143,7 +159,14 @@ export default function ReviewsPage() {
                 <div style={{display:"flex",gap:10}}>
                   <Link href={`/dashboard/contracts/${item.contract_id}`} style={{padding:"8px 16px",border:`1px solid ${C.border}`,borderRadius:8,textDecoration:"none",fontSize:13,fontWeight:600,color:C.body}}>View contract</Link>
                   {item.status==="pending" && <button onClick={()=>startReview(item.review_id)} style={{padding:"8px 16px",border:"none",background:C.primaryLight,borderRadius:8,fontSize:13,fontWeight:600,color:C.primary,cursor:"pointer"}}>Start review</button>}
-                  {item.status==="in_review" && <button onClick={()=>setModal({reviewId:item.review_id,title:item.contract_title})} style={{padding:"8px 16px",border:"none",background:C.primary,borderRadius:8,fontSize:13,fontWeight:600,color:"white",cursor:"pointer"}}>Submit decision →</button>}
+                  <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>router.push(`/dashboard/reviews/${item.review_id}`)}
+                    style={{padding:"6px 14px",border:`1px solid ${C.primary}`,background:C.primaryLight,
+                      borderRadius:8,fontSize:12,fontWeight:600,color:C.primary,cursor:"pointer"}}>
+                    📋 Open Workspace
+                  </button>
+                  {item.status==="in_review" && <button onClick={()=>setModal({reviewId:item.review_id,title:item.contract_title})} style={{padding:"6px 14px",border:"none",background:C.primary,borderRadius:8,fontSize:12,fontWeight:600,color:"white",cursor:"pointer"}}>Submit decision →</button>}
+                </div>
                 </div>
               </div>
             ))}
