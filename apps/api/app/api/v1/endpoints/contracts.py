@@ -340,6 +340,37 @@ async def delete_contract(
         raise HTTPException(status_code=404, detail="Contract not found")
 
 
+@router.get("/{contract_id}/download")
+async def download_original(
+    contract_id: uuid.UUID,
+    user: AuthUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download the original uploaded contract file."""
+    import os
+    from fastapi.responses import FileResponse
+    result = await db.execute(
+        select(Contract).where(
+            Contract.id == contract_id,
+            Contract.org_id == user.org_id,
+        )
+    )
+    contract = result.scalar_one_or_none()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    file_path = contract.file_path
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Original file not found")
+
+    filename = contract.original_filename or f"contract-{str(contract_id)[:8]}.pdf"
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type=contract.mime_type or "application/pdf",
+    )
+
+
 @router.get("/{contract_id}/export-pdf")
 async def export_contract_pdf(
     contract_id: uuid.UUID,

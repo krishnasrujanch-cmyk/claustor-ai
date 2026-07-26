@@ -67,34 +67,6 @@ function RiskHeatmap({ matrix, clauseTypes }: { matrix:any; clauseTypes:string[]
 
 type Tab = "overview"|"clauses"|"analytics"|"chat";
 
-function contractHealth(contract: any): number {
-  const riskPenalty = (contract.risk_score || 50);
-  const missingPenalty = ((contract.missing_clauses?.length || 0) * 5);
-  const clauses = contract.clauses || [];
-  const avgPlaybook = clauses.length > 0
-    ? clauses.reduce((s: number, c: any) => s + (c.playbook_match || 0.5), 0) / clauses.length
-    : 0.5;
-  const playboookBonus = Math.round(avgPlaybook * 20);
-  return Math.max(0, Math.min(100, 100 - riskPenalty * 0.5 - missingPenalty + playboookBonus));
-}
-
-function parseAISummary(summary: string): {label:string,value:string}[] {
-  // Extract key facts from summary text
-  const bullets: {label:string,value:string}[] = [];
-  const patterns = [
-    {label:"Scope",       regex:/licens\w+ (.{0,80})/i},
-    {label:"Financials",  regex:/(\$[\d,.]+M?|USD[\s\d,.]+M?|INR[\s\d,.]+)/i},
-    {label:"Term",        regex:/(\d+[\s-]year|\d+[\s-]month).*?term/i},
-    {label:"Royalty",     regex:/(\d+[\s.]?\d*%)\s*royalt/i},
-    {label:"Territories", regex:/india|asean|mena|global|worldwide/i},
-  ];
-  for (const p of patterns) {
-    const match = summary.match(p.regex);
-    if (match) bullets.push({label:p.label, value:match[0].substring(0,80)});
-  }
-  return bullets.slice(0,4);
-}
-
 export default function ContractDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -118,9 +90,6 @@ export default function ContractDetailPage() {
   const [showUpload, setShowUpload]       = useState(false);
   const [uploading, setUploading]         = useState(false);
   const [uploadMsg, setUploadMsg]         = useState("");
-  const [showRiskTooltip, setShowRiskTooltip] = useState(false);
-  const [pdfUrl, setPdfUrl]                   = useState<string|null>(null);
-  const [pdfLoading, setPdfLoading]           = useState(false);
   const [assignMsg, setAssignMsg]       = useState("");
 
   // Analytics state
@@ -146,6 +115,18 @@ export default function ContractDetailPage() {
       }
       setClauseFlags(flags);
     }).catch(console.error);
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const token = getToken();
+    fetch(API + "/api/v1/contracts/" + id + "/versions",
+      {headers:{Authorization:"Bearer " + (token || "")}})
+    .then(r=>r.json())
+    .then(d=>{
+      const v = (d.versions||[]).sort((a,b)=>(b.version_number||1)-(a.version_number||1));
+      setVersions(v);
+    }).catch(()=>{});
   }, [id]);
 
   useEffect(() => {
@@ -199,21 +180,6 @@ export default function ContractDetailPage() {
     }
   }, [tab, id]);
 
-  const loadPdf = async () => {
-    if (pdfUrl) return; // already loaded
-    setPdfLoading(true);
-    const token = getToken();
-    try {
-      const r = await fetch(`${API}/api/v1/contracts/${id}/download`,
-        {headers:{Authorization:`Bearer ${token}`}});
-      if (r.ok) {
-        const blob = await r.blob();
-        setPdfUrl(URL.createObjectURL(blob));
-      }
-    } catch(e) { console.error(e); }
-    finally { setPdfLoading(false); }
-  };
-
   const uploadNewVersion = async (file: File) => {
     setUploading(true); setUploadMsg("");
     const token = typeof window !== "undefined" ? localStorage.getItem("claustor_token") : "";
@@ -255,13 +221,11 @@ export default function ContractDetailPage() {
   if (loading) return <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",color:C.muted}}>Loading...</div>;
   if (!contract) return null;
 
-  const highRiskClauses = (contract.clauses||[]).filter((c:any)=>c.risk_level==="high").length;
-  const missingCount = contract.missing_clauses?.length || 0;
   const tabs:{id:Tab;label:string}[] = [
     {id:"overview",  label:"Overview"},
     {id:"clauses",   label:`Clauses (${contract.clauses?.length||0})`},
-    {id:"analytics", label:highRiskClauses>0?`🔴 Risk Analytics (${highRiskClauses} High)`:"Analytics"},
-    {id:"chat",      label:"💬 AI Copilot"},
+    {id:"analytics", label:"Analytics"},
+    {id:"chat",      label:"AI Copilot"},
   ];
 
   return (
@@ -277,64 +241,46 @@ export default function ContractDetailPage() {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
         <div>
           <h1 style={{fontSize:24,fontWeight:800,color:C.heading,marginBottom:8}}>{contract.title}</h1>
-          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:6}}>
-            {contract.contract_type && (
-              <span style={{fontSize:12,color:C.body,background:C.bg,padding:"3px 10px",
-                borderRadius:20,border:`1px solid ${C.border}`,fontWeight:500}}>
-                {contract.contract_type}
-              </span>
-            )}
-            {/* Version dropdown — only once */}
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            {contract.contract_type && <span style={{fontSize:13,color:C.muted,background:C.bg,padding:"2px 10px",borderRadius:20,border:`1px solid ${C.border}`}}>{contract.contract_type}</span>}
+            {/* Version dropdown */}
             {versions.length > 1 ? (
               <select value={id}
                 onChange={e=>router.push("/dashboard/contracts/"+e.target.value)}
                 style={{fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,
-                  border:"1px solid #5B4BFF",color:"#5B4BFF",background:"#EEF0FF",
-                  cursor:"pointer"}}>
+                  border:"1px solid #5B4BFF",color:"#5B4BFF",background:"#EEF0FF",cursor:"pointer"}}>
                 {versions.map((v:any)=>(
                   <option key={v.id} value={v.id}>
-                    {v.is_latest?"✅ ":""}v{v.version_number||1}
+                    {v.is_latest?"✅ LATEST · ":""}v{v.version_number||1}
+                    {" — "}{new Date(v.created_at).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}
                     {v.review_status?" · "+v.review_status:""}
                   </option>
                 ))}
               </select>
+            ) : versions.length === 1 ? (
+              <span style={{fontSize:12,fontWeight:700,padding:"3px 10px",
+                borderRadius:20,background:"#EEF0FF",color:"#5B4BFF"}}>
+                v{versions[0]?.version_number||1}
+              </span>
+            ) : null}
+            {contract.risk_level && <RiskBadge level={contract.risk_level}/>}
+            {versions.length > 1 ? (
+              <select value={id}
+                onChange={e=>router.push("/dashboard/contracts/" + e.target.value)}
+                style={{fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:20,
+                  border:"1px solid #5B4BFF",color:"#5B4BFF",background:"#EEF0FF",
+                  cursor:"pointer"}}>
+                {versions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.is_latest ? "✅ LATEST · " : ""}v{v.version_number || 1}
+                    {" — "}{new Date(v.created_at).toLocaleDateString("en-IN",{day:"2-digit",month:"short"})}
+                    {v.review_status ? " · " + v.review_status : ""}
+                  </option>
+                ))}
+              </select>
             ) : (
-              <span style={{fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,
-                background:"#EEF0FF",color:"#5B4BFF"}}>
-                v{contract.version||1}
-              </span>
-            )}
-            {/* Risk badge — context-aware */}
-            {contract.risk_level && (
-              <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,
-                background:contract.risk_level==="high"?"#FEF2F2":
-                           contract.risk_level==="medium"?"#FFFBEB":"#F0FDF4",
-                color:contract.risk_level==="high"?"#DC2626":
-                      contract.risk_level==="medium"?"#D97706":"#16A34A",
-                textTransform:"uppercase"}}>
-                {contract.risk_level==="high"?"🔴":contract.risk_level==="medium"?"🟡":"🟢"} {contract.risk_level} Risk
-              </span>
-            )}
-            {/* Approval badge — neutral when high risk + approved */}
-            {contract.review_status==="approved" && (
-              <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,
-                border:"1px solid #22C55E40",
-                background:contract.risk_level==="high"?"#F3F4F6":"#F0FDF4",
-                color:contract.risk_level==="high"?"#6B7280":"#16A34A"}}>
-                ✅ {contract.risk_level==="high"?"Approved with High-Risk Exceptions":"Approved"}
-              </span>
-            )}
-            {contract.review_status==="rejected" && (
-              <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,
-                background:"#FEF2F2",color:"#DC2626",border:"1px solid #EF444440"}}>
-                ❌ Rejected
-              </span>
-            )}
-            {contract.review_status==="revision_needed" && (
-              <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,
-                background:"#FFFBEB",color:"#D97706",border:"1px solid #F59E0B40"}}>
-                🔄 Revision Required
-              </span>
+              <span style={{fontSize:12,fontWeight:700,padding:"3px 8px",borderRadius:20,
+                background:"#EEF0FF",color:"#5B4BFF"}}>v1</span>
             )}
           </div>
         </div>
@@ -344,7 +290,7 @@ export default function ContractDetailPage() {
               onClick={async(e)=>{
                 e.preventDefault();
                 const token = getToken();
-                const r = await fetch(`${API}/api/v1/contracts/${id}/download`,
+                const r = await fetch(`${API}/api/v1/contracts/${id}/export-pdf`,
                   {headers:{Authorization:`Bearer ${token}`}});
                 const blob = await r.blob();
                 const url = URL.createObjectURL(blob);
@@ -367,53 +313,48 @@ export default function ContractDetailPage() {
               </button>
             ))}
           </div>
-
+        {/* Review status banner */}
+        {contract.review_status && contract.review_status !== "pending" && (
+          <div style={{
+            padding:"12px 16px", borderRadius:8, marginBottom:16,
+            background: contract.review_status==="approved"?"#F0FDF4":
+                        contract.review_status==="rejected"?"#FEF2F2":"#FFFBEB",
+            border:`1px solid ${contract.review_status==="approved"?"#22C55E30":
+                               contract.review_status==="rejected"?"#EF444430":"#F59E0B30"}`,
+            display:"flex", alignItems:"flex-start", gap:12,
+          }}>
+            <span style={{fontSize:20}}>
+              {contract.review_status==="approved"?"✅":
+               contract.review_status==="rejected"?"❌":"🔄"}
+            </span>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,
+                color:contract.review_status==="approved"?"#16A34A":
+                     contract.review_status==="rejected"?"#DC2626":"#D97706"}}>
+                {contract.review_status==="approved"?"Contract Approved":
+                 contract.review_status==="rejected"?"Contract Rejected — Revision Required":
+                 "Revision Requested"}
+              </div>
+              {contract.review_notes && (
+                <div style={{fontSize:13,color:"#374151",marginTop:4}}>
+                  {contract.review_notes}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {contract.risk_score!==null && (
-          <div style={{textAlign:"center",position:"relative"}}
-            onMouseEnter={()=>setShowRiskTooltip(true)}
-            onMouseLeave={()=>setShowRiskTooltip(false)}>
+          <div style={{textAlign:"center"}}>
             <div style={{
-              width:72,height:72,borderRadius:"50%",cursor:"pointer",
+              width:64,height:64,borderRadius:"50%",
               background:contract.risk_score>=67?"#FEF2F2":contract.risk_score>=34?"#FFFBEB":"#F0FDF4",
               border:`3px solid ${contract.risk_score>=67?C.error:contract.risk_score>=34?C.warning:C.success}`,
-              display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-              fontSize:20,fontWeight:800,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:18,fontWeight:800,
               color:contract.risk_score>=67?C.error:contract.risk_score>=34?C.warning:C.success,
-              boxShadow:"0 2px 8px rgba(0,0,0,0.08)",
-            }}>
-              {Math.round(contract.risk_score)}
-              <div style={{fontSize:8,fontWeight:500,color:C.muted,marginTop:1}}>/ 100</div>
-            </div>
-            <div style={{fontSize:11,color:C.muted,marginTop:4,fontWeight:500}}>Risk score</div>
-            {/* Health score below */}
-            <div style={{fontSize:10,color:C.muted,marginTop:2}}>
-              Health: <span style={{fontWeight:700,
-                color:contractHealth(contract)>=70?C.success:contractHealth(contract)>=40?C.warning:C.error}}>
-                {contractHealth(contract)}
-              </span>
-            </div>
-            {/* Tooltip */}
-            {showRiskTooltip && (
-              <div style={{position:"absolute",right:"110%",top:0,zIndex:100,
-                background:C.heading,color:"white",borderRadius:10,
-                padding:"12px 16px",width:220,fontSize:12,
-                boxShadow:"0 8px 24px rgba(0,0,0,0.2)"}}>
-                <div style={{fontWeight:700,marginBottom:8}}>Risk Drivers</div>
-                {(contract.clauses||[])
-                  .filter((c:any)=>c.risk_level==="high")
-                  .slice(0,3)
-                  .map((c:any)=>(
-                    <div key={c.id} style={{marginBottom:4,display:"flex",gap:6}}>
-                      <span style={{color:"#EF4444"}}>●</span>
-                      <span style={{color:"#D1D5DB"}}>{(c.title||c.clause_type).substring(0,30)}</span>
-                    </div>
-                  ))}
-                {(contract.clauses||[]).filter((c:any)=>c.risk_level==="high").length===0 && (
-                  <div style={{color:"#9CA3AF"}}>No high-risk clauses</div>
-                )}
-              </div>
-            )}
+            }}>{Math.round(contract.risk_score)}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:4}}>Risk score</div>
           </div>
         )}
         </div>
@@ -427,65 +368,20 @@ export default function ContractDetailPage() {
           {label:"Effective",     value:contract.effective_date?new Date(contract.effective_date).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):null},
           {label:"Expiry",        value:contract.expiry_date?new Date(contract.expiry_date).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):null},
           {label:"Governing law", value:contract.governing_law},
-          {label:"Auto renewal", value:contract.auto_renewal===null?null:contract.auto_renewal?`Yes (${contract.renewal_notice_days||"?"}d notice)`:"No", warn: contract.auto_renewal && (contract.renewal_notice_days||0)>90},
-        ].filter(i=>i.value).map((item:any)=>(
-          <div key={item.label} style={{background:(item as any).warn?"#FFFBEB":C.surface,
-            border:`1px solid ${(item as any).warn?"#F59E0B40":C.border}`,
-            borderRadius:10,padding:"12px 16px"}}>
+          {label:"Auto renewal",  value:contract.auto_renewal===null?null:contract.auto_renewal?`Yes (${contract.renewal_notice_days||"?"}d notice)`:"No"},
+        ].filter(i=>i.value).map(item=>(
+          <div key={item.label} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 16px"}}>
             <div style={{fontSize:10,color:C.muted,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>{item.label}</div>
-            <div style={{fontSize:14,fontWeight:600,color:(item as any).warn?C.warning:C.heading}}>
-              {(item as any).warn && <span style={{marginRight:4}}>⚠️</span>}
-              {item.value}
-            </div>
+            <div style={{fontSize:14,fontWeight:600,color:C.heading}}>{item.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Missing Clauses Alert */}
-      {contract.missing_clauses?.length > 0 && (
-        <div style={{background:"#FFFBEB",border:"1px solid #F59E0B40",borderRadius:12,
-          padding:"12px 20px",marginBottom:16,display:"flex",alignItems:"flex-start",gap:12}}>
-          <span style={{fontSize:18,flexShrink:0}}>⚠️</span>
-          <div>
-            <div style={{fontSize:13,fontWeight:700,color:C.warning,marginBottom:6}}>
-              {contract.missing_clauses.length} Missing Clause{contract.missing_clauses.length>1?"s":""} Detected
-            </div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {contract.missing_clauses.map((m:any)=>(
-                <span key={m.clause_type} style={{fontSize:11,fontWeight:600,padding:"2px 8px",
-                  borderRadius:20,
-                  background:m.severity==="critical"?"#FEF2F2":m.severity==="high"?"#FFFBEB":"#F3F4F6",
-                  color:m.severity==="critical"?"#DC2626":m.severity==="high"?"#D97706":"#6B7280"}}>
-                  {m.severity==="critical"?"🚨":m.severity==="high"?"⚠️":"📌"} {m.label}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Key Takeaways */}
+      {/* Summary */}
       {contract.summary && (
-        <div style={{background:C.primaryLight,border:`1px solid ${C.primary}30`,
-          borderRadius:12,padding:"16px 20px",marginBottom:24}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.primary,marginBottom:10,
-            textTransform:"uppercase",letterSpacing:"0.05em"}}>🤖 AI Key Takeaways</div>
-          {/* Structured bullets from summary */}
-          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
-            {parseAISummary(contract.summary).map((b,i)=>(
-              <div key={i} style={{display:"flex",gap:8,fontSize:13}}>
-                <span style={{fontWeight:700,color:C.primary,minWidth:80}}>{b.label}:</span>
-                <span style={{color:C.body}}>{b.value}</span>
-              </div>
-            ))}
-          </div>
-          {/* Full summary collapsed */}
-          <details>
-            <summary style={{fontSize:12,color:C.primary,cursor:"pointer",fontWeight:600}}>
-              View full summary
-            </summary>
-            <p style={{fontSize:13,color:C.body,lineHeight:1.6,margin:"8px 0 0"}}>{contract.summary}</p>
-          </details>
+        <div style={{background:C.primaryLight,border:`1px solid ${C.primary}30`,borderRadius:12,padding:"16px 20px",marginBottom:24}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.primary,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>AI Summary</div>
+          <p style={{fontSize:14,color:C.body,lineHeight:1.6,margin:0}}>{contract.summary}</p>
         </div>
       )}
 
@@ -505,87 +401,20 @@ export default function ContractDetailPage() {
 
       {/* Tab: Overview */}
       {tab==="overview" && (
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-          {/* Left: Metadata */}
-          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:24}}>
-            <h3 style={{fontSize:14,fontWeight:700,color:C.heading,marginBottom:12}}>📋 Contract Details</h3>
-            {[
-              {label:"Original filename", value:contract.original_filename},
-              {label:"Language",          value:contract.detected_language||contract.language||"en"},
-              {label:"Total clauses",     value:String(contract.clause_count||0)},
-              {label:"Missing clauses",   value:String(contract.missing_clauses?.length||0)+" detected"},
-              {label:"Uploaded",          value:new Date(contract.created_at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})},
-              {label:"Last updated",      value:new Date(contract.updated_at).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})},
-            ].map(row=>(
-              <div key={row.label} style={{display:"flex",justifyContent:"space-between",
-                padding:"9px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
-                <span style={{color:C.muted}}>{row.label}</span>
-                <span style={{fontWeight:600,color:C.body}}>{row.value||"—"}</span>
-              </div>
-            ))}
-
-            {/* Clause Health Score */}
-            <div style={{marginTop:16,padding:"12px 0",borderTop:`1px solid ${C.border}`}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                <span style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase"}}>
-                  Contract Health
-                </span>
-                <span style={{fontSize:14,fontWeight:800,
-                  color:contractHealth(contract)>=70?C.success:contractHealth(contract)>=40?C.warning:C.error}}>
-                  {contractHealth(contract)}/100
-                </span>
-              </div>
-              <div style={{height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
-                <div style={{height:"100%",borderRadius:4,
-                  width:`${contractHealth(contract)}%`,
-                  background:contractHealth(contract)>=70?C.success:contractHealth(contract)>=40?C.warning:C.error,
-                  transition:"width 0.5s ease"}}/>
-              </div>
-              <div style={{fontSize:11,color:C.muted,marginTop:4}}>
-                Based on risk score, missing clauses, and playbook alignment
-              </div>
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:24}}>
+          <h3 style={{fontSize:15,fontWeight:700,color:C.heading,marginBottom:12}}>Contract details</h3>
+          {[
+            {label:"Original filename", value:contract.original_filename},
+            {label:"Language",          value:contract.language},
+            {label:"Total clauses",     value:String(contract.clause_count)},
+            {label:"Uploaded",          value:new Date(contract.created_at).toLocaleString("en-IN")},
+            {label:"Last updated",      value:new Date(contract.updated_at).toLocaleString("en-IN")},
+          ].map(row=>(
+            <div key={row.label} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${C.border}`,fontSize:14}}>
+              <span style={{color:C.muted}}>{row.label}</span>
+              <span style={{fontWeight:600,color:C.body}}>{row.value||"—"}</span>
             </div>
-          </div>
-
-          {/* Right: Document text preview */}
-          <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:24}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <h3 style={{fontSize:14,fontWeight:700,color:C.heading,margin:0}}>📄 Document Preview</h3>
-              <a onClick={async(e)=>{
-                  e.preventDefault();
-                  const token=getToken();
-                  const r=await fetch(`${API}/api/v1/contracts/${id}/download`,
-                    {headers:{Authorization:`Bearer ${token}`}});
-                  if(r.ok){
-                    const blob=await r.blob();
-                    const url=URL.createObjectURL(blob);
-                    const a=document.createElement("a");
-                    a.href=url;a.download=`contract-${id.slice(0,8)}.pdf`;a.click();
-                  } else { alert("Original file not found on server"); }
-                }} href="#"
-                style={{fontSize:12,color:C.primary,fontWeight:600,
-                  textDecoration:"none",cursor:"pointer"}}>
-                ⬇ Download Original
-              </a>
-            </div>
-            {!pdfUrl && !pdfLoading && (
-              <button onClick={loadPdf}
-                style={{width:"100%",padding:"40px 20px",border:`2px dashed ${C.border}`,
-                  borderRadius:10,background:C.bg,cursor:"pointer",
-                  fontSize:13,color:C.primary,fontWeight:600}}>
-                📄 Click to load PDF preview
-              </button>
-            )}
-            {pdfLoading && (
-              <div style={{textAlign:"center",padding:40,color:C.muted}}>Loading PDF...</div>
-            )}
-            {pdfUrl && (
-              <iframe src={pdfUrl}
-                style={{width:"100%",height:400,border:`1px solid ${C.border}`,
-                  borderRadius:8,background:C.bg}}
-                title="Contract PDF Preview"/>
-            )}
-          </div>
+          ))}
         </div>
       )}
 
@@ -606,25 +435,18 @@ export default function ContractDetailPage() {
               </div>
               {clause.summary && <p style={{fontSize:14,color:C.body,lineHeight:1.6,margin:0}}>{clause.summary}</p>}
               {clause.risk_reason && (
-                <div style={{marginTop:8,padding:"8px 12px",background:C.bg,borderRadius:8,fontSize:13,color:C.muted}}>
+                <div style={{marginTop:10,padding:"8px 12px",background:C.bg,borderRadius:8,fontSize:13,color:C.muted}}>
                   ⚠️ {clause.risk_reason}
                 </div>
               )}
-
-              {/* Phase 2: Playbook match + deviation */}
-              {(clause.playbook_match!=null || clause.deviation_from_std) && (
+              {/* Phase 2: Playbook + Deviation */}
+              {(clause.playbook_match!=null||clause.deviation_from_std) && (
                 <div style={{marginTop:8,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                   {clause.playbook_match!=null && (
                     <span style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:20,
-                      background:(clause.playbook_match||0)>0.6?"#F0FDF4":(clause.playbook_match||0)>0.3?"#FFFBEB":"#FEF2F2",
-                      color:(clause.playbook_match||0)>0.6?"#16A34A":(clause.playbook_match||0)>0.3?"#D97706":"#DC2626"}}>
-                      📋 Playbook {Math.round((clause.playbook_match||0)*100)}%
-                    </span>
-                  )}
-                  {clause.adjusted_risk && clause.adjusted_risk !== clause.risk_score && (
-                    <span style={{fontSize:11,padding:"2px 8px",borderRadius:20,
-                      background:"#F5F3FF",color:"#7C3AED",fontWeight:600}}>
-                      ⚖️ Adj. risk: {Math.round(clause.adjusted_risk)}
+                      background:clause.playbook_match>0.6?"#F0FDF4":clause.playbook_match>0.3?"#FFFBEB":"#FEF2F2",
+                      color:clause.playbook_match>0.6?"#16A34A":clause.playbook_match>0.3?"#D97706":"#DC2626"}}>
+                      📋 Playbook match: {Math.round((clause.playbook_match||0)*100)}%
                     </span>
                   )}
                   {clause.deviation_from_std && (
@@ -634,33 +456,23 @@ export default function ContractDetailPage() {
                   )}
                 </div>
               )}
-
-              {/* Phase 3: Related clauses */}
-              {clause.related_clauses?.length > 0 && (
+              {/* Phase 3: Related Clauses */}
+              {clause.related_clauses?.length>0 && (
                 <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                  <span style={{fontSize:11,color:C.muted,fontWeight:500}}>Related:</span>
+                  <span style={{fontSize:11,color:C.muted}}>Related:</span>
                   {clause.related_clauses.map((r:string)=>(
-                    <span key={r}
+                    <span key={r} style={{fontSize:11,fontWeight:600,padding:"2px 8px",
+                      borderRadius:20,background:C.primaryLight,color:C.primary,
+                      cursor:"pointer"}}
                       onClick={()=>{
                         const el = document.getElementById("clause-"+r);
-                        if(el) el.scrollIntoView({behavior:"smooth",block:"center"});
-                      }}
-                      style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:20,
-                        background:C.primaryLight,color:C.primary,cursor:"pointer",
-                        border:`1px solid ${C.primary}30`}}>
-                      → {r.replace(/_/g," ")}
+                        if(el) el.scrollIntoView({behavior:"smooth"});
+                      }}>
+                      {r.replace(/_/g," ")}
                     </span>
                   ))}
                 </div>
               )}
-
-              {/* Phase 3: Cross references */}
-              {clause.cross_references?.length > 0 && (
-                <div style={{marginTop:4,fontSize:11,color:C.muted}}>
-                  📎 References: {clause.cross_references.join(", ")}
-                </div>
-              )}
-
               {/* Show review decision for this clause */}
               {clauseFlags[clause.id] && (
                 <div style={{marginTop:10,padding:"8px 12px",borderRadius:8,display:"flex",gap:8,alignItems:"center",

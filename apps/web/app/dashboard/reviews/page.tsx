@@ -124,11 +124,12 @@ export default function ReviewsPage() {
 
   // Filter counts for stat tabs
   const counts = useMemo(()=>({
-    "my-queue": queue.length,
-    pending:    all.filter(r=>r.status==="pending").length,
-    in_review:  all.filter(r=>r.status==="in_review").length,
-    approved:   all.filter(r=>r.status==="approved").length,
-    rejected:   all.filter(r=>r.status==="rejected").length,
+    "my-queue":        queue.length,
+    pending:           all.filter(r=>r.status==="pending").length,
+    in_review:         all.filter(r=>r.status==="in_review").length,
+    approved:          all.filter(r=>r.status==="approved").length,
+    rejected:          all.filter(r=>r.status==="rejected").length,
+    revision_needed:   all.filter(r=>r.status==="revision_needed").length,
   }),[queue,all]);
 
   // Filtered display list
@@ -185,11 +186,12 @@ export default function ReviewsPage() {
 
   // Stat filter tabs
   const TABS = [
-    {key:"my-queue",label:"My Queue",     icon:"👤"},
-    {key:"pending", label:"Pending",      icon:"⏳"},
-    {key:"in_review",label:"In Review",   icon:"🔍"},
-    {key:"approved", label:"Approved",    icon:"✅"},
-    {key:"rejected", label:"Rejected",    icon:"❌"},
+    {key:"my-queue",        label:"My Queue",     icon:"👤"},
+    {key:"pending",         label:"Pending",      icon:"⏳"},
+    {key:"in_review",       label:"In Review",    icon:"🔍"},
+    {key:"approved",        label:"Approved",     icon:"✅"},
+    {key:"rejected",        label:"Rejected",     icon:"❌"},
+    {key:"revision_needed", label:"Revision",     icon:"🔄"},
   ].filter(t=>isAdmin||t.key==="my-queue");
 
   return (
