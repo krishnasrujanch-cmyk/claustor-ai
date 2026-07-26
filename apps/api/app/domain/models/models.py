@@ -261,19 +261,23 @@ class Clause(Base):
 
     # Feedback
     flagged_for_review: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Version control
-    parent_contract_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    contract_family_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    version_number: Mapped[int] = mapped_column(Integer, default=1)
-    is_latest: Mapped[bool] = mapped_column(Boolean, default=True)
-    version_note: Mapped[str | None] = mapped_column(String(500))
-    missing_clauses: Mapped[list | None] = mapped_column(JSONB, default=list)
-    detected_language: Mapped[str | None] = mapped_column(String(10), default="en")
     review_status: Mapped[str | None] = mapped_column(String(50))
     review_notes: Mapped[str | None] = mapped_column(Text)
     review_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reviewer_feedback: Mapped[str | None] = mapped_column(String(20))  # positive | negative
     reviewer_score: Mapped[float | None] = mapped_column(Float)
+    playbook_match: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deviation_from_std: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adjusted_risk: Mapped[float | None] = mapped_column(Float, nullable=True)
+    industry_weight: Mapped[float | None] = mapped_column(Float, default=1.0)
+    related_clauses: Mapped[list | None] = mapped_column(JSONB, default=list)
+    cross_references: Mapped[list | None] = mapped_column(JSONB, default=list)
+    playbook_match: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deviation_from_std: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adjusted_risk: Mapped[float | None] = mapped_column(Float, nullable=True)
+    industry_weight: Mapped[float | None] = mapped_column(Float, default=1.0)
+    related_clauses: Mapped[list | None] = mapped_column(JSONB, default=list)
+    cross_references: Mapped[list | None] = mapped_column(JSONB, default=list)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

@@ -173,13 +173,30 @@ class ContractPipeline:
             await self._update_status(db, contract_id, "extracting")
             logger.info("pipeline_step", step="extracting", contract_id=str(contract_id))
 
-            clauses_data = await self._extract_clauses(parsed.full_text, parsed.tables)
+            # ── ClauseEngine — All 3 Phases ──────────────
+            _clause_engine = ClauseEngine(self.llm)
+            _engine_result = await _clause_engine.analyze(
+                full_text=parsed.full_text,
+                tables=parsed.tables if hasattr(parsed, "tables") else [],
+                contract_type="general",
+                industry=org_industry if "org_industry" in dir() else "general",
+                contract_value=None,
+            )
+            scored_clauses   = _engine_result["clauses"]
+            _missing_clauses = _engine_result["missing_clauses"]
+            _detected_lang   = _engine_result["language"]
+            logger.info("clause_engine_complete",
+                       total=len(scored_clauses),
+                       missing=len(_missing_clauses),
+                       language=_detected_lang)
+            clauses_data = scored_clauses
+            logger.info("scored_clauses_sample", sample=scored_clauses[0] if scored_clauses else {})
 
             # ── Step 3: Score Risks ───────────────────────
             await self._update_status(db, contract_id, "scoring")
             logger.info("pipeline_step", step="scoring", contract_id=str(contract_id))
 
-            scored_clauses = await self._score_risks(clauses_data)
+            # Risk scoring done by ClauseEngine above
 
             # ── Step 4: Extract Contract Metadata ─────────
             contract_meta = await self._extract_contract_metadata(parsed.full_text)
@@ -648,6 +665,8 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                 risk_level=risk_level,
                 clause_count=len(scored_clauses),
                 status="analyzed",
+                missing_clauses=_missing_clauses if "_missing_clauses" in dir() else [],
+                detected_language=_detected_lang if "_detected_lang" in dir() else "en",
             )
         )
 

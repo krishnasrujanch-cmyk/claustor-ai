@@ -26,16 +26,21 @@ class ContractUploadResponse(BaseModel):
 class ClauseOut(BaseModel):
     id: UUID
     clause_type: str
-    title: str | None
-    summary: str | None
-    risk_score: float
-    risk_level: str
-    risk_reason: str | None
-    section_reference: str | None
-    page_number: int | None
-
+    title: str | None = None
+    summary: str | None = None
+    raw_text: str | None = None
+    risk_score: float = 0.0
+    risk_level: str = "low"
+    risk_reason: str | None = None
+    section_reference: str | None = None
+    page_number: int | None = None
+    playbook_match: float | None = None
+    deviation_from_std: str | None = None
+    adjusted_risk: float | None = None
+    industry_weight: float | None = 1.0
+    related_clauses: list | None = None
+    cross_references: list | None = None
     model_config = {"from_attributes": True}
-
 
 class ContractOut(BaseModel):
     id: UUID

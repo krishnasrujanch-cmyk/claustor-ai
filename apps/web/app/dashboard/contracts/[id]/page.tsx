@@ -424,7 +424,7 @@ export default function ContractDetailPage() {
           {contract.clauses?.length===0 ? (
             <div style={{textAlign:"center",padding:60,color:C.muted}}>No clauses extracted yet</div>
           ) : contract.clauses?.map(clause=>(
-            <div key={clause.id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
+            <div key={clause.id} id={"clause-"+clause.clause_type} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
                 <div>
                   <span style={{fontSize:11,fontWeight:700,color:C.primary,textTransform:"uppercase",letterSpacing:"0.05em"}}>{clause.clause_type}</span>
@@ -437,6 +437,40 @@ export default function ContractDetailPage() {
               {clause.risk_reason && (
                 <div style={{marginTop:10,padding:"8px 12px",background:C.bg,borderRadius:8,fontSize:13,color:C.muted}}>
                   ⚠️ {clause.risk_reason}
+                </div>
+              )}
+              {/* Phase 2: Playbook + Deviation */}
+              {(clause.playbook_match!=null||clause.deviation_from_std) && (
+                <div style={{marginTop:8,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                  {clause.playbook_match!=null && (
+                    <span style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:20,
+                      background:clause.playbook_match>0.6?"#F0FDF4":clause.playbook_match>0.3?"#FFFBEB":"#FEF2F2",
+                      color:clause.playbook_match>0.6?"#16A34A":clause.playbook_match>0.3?"#D97706":"#DC2626"}}>
+                      📋 Playbook match: {Math.round((clause.playbook_match||0)*100)}%
+                    </span>
+                  )}
+                  {clause.deviation_from_std && (
+                    <span style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>
+                      {clause.deviation_from_std}
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* Phase 3: Related Clauses */}
+              {clause.related_clauses?.length>0 && (
+                <div style={{marginTop:6,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontSize:11,color:C.muted}}>Related:</span>
+                  {clause.related_clauses.map((r:string)=>(
+                    <span key={r} style={{fontSize:11,fontWeight:600,padding:"2px 8px",
+                      borderRadius:20,background:C.primaryLight,color:C.primary,
+                      cursor:"pointer"}}
+                      onClick={()=>{
+                        const el = document.getElementById("clause-"+r);
+                        if(el) el.scrollIntoView({behavior:"smooth"});
+                      }}>
+                      {r.replace(/_/g," ")}
+                    </span>
+                  ))}
                 </div>
               )}
               {/* Show review decision for this clause */}
