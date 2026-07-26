@@ -116,6 +116,10 @@ class ContractService:
         filename: str,
         file_bytes: bytes,
         mime_type: str = "application/pdf",
+        parent_contract_id: UUID | None = None,
+        contract_family_id: UUID | None = None,
+        version_number: int = 1,
+        version_note: str | None = None,
     ) -> tuple[Contract, int]:
         """
         Create contract DB record and queue for processing.
@@ -134,7 +138,8 @@ class ContractService:
             )
         )
         existing_contract = existing.scalar_one_or_none()
-        if existing_contract:
+        # Skip duplicate check if this is a new version upload
+        if existing_contract and not parent_contract_id:
             logger.info(
                 "duplicate_contract_detected",
                 contract_id=str(existing_contract.id),
@@ -182,7 +187,9 @@ class ContractService:
         )
 
         self.db.add(contract)
-        await self.db.flush()  # get ID without committing
+        await self.db.flush()
+        # Set family_id: provided family or self (v1 is its own root)
+        contract.contract_family_id = contract_family_id or contract.id  # get ID without committing
 
         # Queue for async processing
         # Get org's actual plan

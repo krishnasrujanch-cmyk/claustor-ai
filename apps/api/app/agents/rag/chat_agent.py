@@ -154,20 +154,24 @@ class ChatAgent:
         )
         history = mem_ctx["recent"]
 
-        # ── Step 4: Get contract review status ───────
+        # ── Step 4: Get contract review status + resolve latest version ──
         review_status = None
         review_notes  = None
         if contract_id:
             from sqlalchemy import select as _sel
             from app.domain.models import Contract as _Contract
             _cr = await db.execute(
-                _sel(_Contract.review_status, _Contract.review_notes)
+                _sel(_Contract.review_status, _Contract.review_notes,
+                     _Contract.contract_family_id, _Contract.is_latest,
+                     _Contract.version_number)
                 .where(_Contract.id == contract_id)
             )
             _row = _cr.fetchone()
             if _row:
                 review_status = _row.review_status
                 review_notes  = _row.review_notes
+
+                # Version resolution disabled — use requested contract_id directly
 
         # ── Step 5: Build Messages ────────────────────
         messages = self._build_messages(
@@ -256,40 +260,33 @@ class ChatAgent:
     ) -> list[LLMMessage]:
         """Build message list for LLM with context + history."""
         system = SYSTEM_PROMPT
-
         if review_status == "rejected":
             reason = review_notes or "See review notes"
-            system += (
-                "\n\nIMPORTANT: This contract was REJECTED by the legal reviewer. "
-                "Rejection reason: " + reason + ". "
-                "Always mention this contract has been rejected and advise the user "
-                "to address the flagged issues before proceeding."
-            )
+            system += ("\n\nIMPORTANT: This contract was REJECTED. Reason: " + reason + ". Advise user to address flagged issues.")
         elif review_status == "revision_needed":
             notes = review_notes or "See review notes"
-            system += (
-                "\n\nIMPORTANT: This contract requires REVISION before approval. "
-                "Revision notes: " + notes + ". "
-                "Advise the user to address the requested changes."
-            )
+            system += ("\n\nIMPORTANT: This contract requires REVISION. Notes: " + notes + ". Advise user to address changes.")
         elif review_status == "approved":
             system += "\n\nThis contract has been approved by the legal reviewer."
 
         messages = [LLMMessage(role="system", content=system)]
 
+        # Add conversation history
         for turn in history:
             messages.append(LLMMessage(role=turn["role"], content=turn["content"]))
 
-        ctx_block = ""
-        if summary:
-            ctx_block += "CONVERSATION SUMMARY:\n" + summary + "\n\n"
-        ctx_block += "CONTRACT CONTEXT:\n" + context
+        # Add current query with context
+        user_content = f"""CONTRACT CONTEXT:
+{context}
 
-        user_content = ctx_block + "\n\n---\n\nUSER QUESTION: " + query + "\n\nAnswer based only on the contract context above. Cite sources using [N] notation."
+---
+
+USER QUESTION: {query}
+
+Answer based only on the contract context above. Cite sources using [N] notation."""
 
         messages.append(LLMMessage(role="user", content=user_content))
         return messages
-
 
     async def _load_history(
         self,

@@ -1,0 +1,455 @@
+"use client";
+import { Pagination } from "@/components/shared/Pagination";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { getToken } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth";
+import { can } from "@/lib/permissions";
+
+const API = "http://localhost:8000";
+const C = {
+  primary:"#5B4BFF", primaryLight:"#EEF0FF",
+  heading:"#111827", body:"#374151", muted:"#6B7280",
+  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
+  error:"#EF4444", success:"#22C55E", warning:"#F59E0B",
+};
+const RISK_COLOR: Record<string,string> = {high:C.error,medium:C.warning,low:C.success};
+const REVIEW_COLOR: Record<string,string> = {
+  approved:C.success, rejected:C.error, revision_needed:C.warning
+};
+const REVIEW_LABEL: Record<string,string> = {
+  approved:"✅ Approved", rejected:"❌ Rejected", revision_needed:"🔄 Revision"
+};
+
+function RiskBadge({ level }: { level: string }) {
+  const m: Record<string,any> = {
+    high:{bg:"#FEF2F2",text:"#DC2626"},
+    medium:{bg:"#FFFBEB",text:"#D97706"},
+    low:{bg:"#F0FDF4",text:"#16A34A"},
+  };
+  const c = m[level]||{bg:"#F3F4F6",text:"#6B7280"};
+  return <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,
+    background:c.bg,color:c.text,textTransform:"uppercase"}}>{level}</span>;
+}
+
+interface UploadState {
+  _id: string; file: File; uploadPct: number; contractId: string|null;
+  status: string; step: string; analysisPct: number; error: string|null;
+  done: boolean; parentId?: string|null;
+}
+
+export default function ContractsPage() {
+  const router = useRouter();
+  const { user: currentUser } = useAuthStore();
+  const role = currentUser?.role || "";
+
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [total, setTotal]         = useState(0);
+  const [page, setPage]           = useState(1);
+  const [search, setSearch]       = useState("");
+  const [risk, setRisk]           = useState("");
+  const [status, setStatus]       = useState("");
+  const [loading, setLoading]     = useState(true);
+  const [uploads, setUploads]     = useState<UploadState[]>([]);
+  const [toast, setToast]         = useState("");
+  const [expanded, setExpanded]   = useState<Set<string>>(new Set());
+  const fileRef = useRef<HTMLInputElement>(null);
+  const PAGE_SIZE = 20;
+
+  const load = useCallback(async () => {
+    // Only show loading on first load, not refreshes
+    if (contracts.length === 0) setLoading(true);
+    const token = getToken();
+    const params = new URLSearchParams({
+      page: String(page), page_size: String(PAGE_SIZE),
+      ...(search && {search}),
+      ...(risk && {risk_level: risk}),
+      ...(status && {status}),
+    });
+    try {
+      const r = await fetch(`${API}/api/v1/contracts/grouped?${params}`,
+        {headers:{Authorization:`Bearer ${token}`}});
+      const d = await r.json();
+      setContracts(d.contracts||[]);
+      setTotal(d.total||0);
+    } catch(e) { console.error(e); }
+    finally { setLoading(false); }
+  }, [page, search, risk, status]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleUpload = async (file: File, parentId?: string|null) => {
+    const token = getToken();
+    const uploadId = Date.now().toString();
+    setUploads(prev => [...prev, {
+      _id:uploadId, file, uploadPct:0, contractId:null,
+      status:"uploading", step:"Uploading file...",
+      analysisPct:0, error:null, done:false, parentId:parentId||null,
+    }]);
+    const update = (patch: Partial<UploadState>) =>
+      setUploads(prev => prev.map(u => u._id===uploadId ? {...u,...patch} : u));
+
+    try {
+      const contractId = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const form = new FormData();
+        form.append("file", file);
+        if (parentId) {
+          form.append("parent_contract_id", parentId);
+          form.append("version_note", "New version");
+        }
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable)
+            update({ uploadPct: Math.round(e.loaded/e.total*100) });
+        };
+        xhr.onload = () => {
+          if (xhr.status===202||xhr.status===200)
+            resolve(JSON.parse(xhr.responseText).contract_id);
+          else reject(new Error(JSON.parse(xhr.responseText).detail||"Upload failed"));
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.open("POST", `${API}/api/v1/contracts/`);
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.send(form);
+      });
+
+      update({contractId, uploadPct:100, status:"queued", step:"Queued for analysis..."});
+
+      const STEP_LABELS: Record<string,string> = {
+        queued:"Queued for analysis...", parsing:"Parsing document structure...",
+        extracting:"Extracting clauses with AI...", scoring:"Scoring risk...",
+        indexing:"Indexing into vector store...", analyzed:"✅ Analysis complete!",
+      };
+      const STEP_PCT: Record<string,number> = {
+        queued:0, parsing:20, extracting:45, scoring:70, indexing:90, analyzed:100
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const poll = setInterval(async () => {
+          try {
+            const r = await fetch(`${API}/api/v1/contracts/${contractId}/status`,
+              {headers:{Authorization:`Bearer ${token}`}});
+            const d = await r.json();
+            const step = d.status||"queued";
+            update({status:step, step:STEP_LABELS[step]||step, analysisPct:d.progress_pct??STEP_PCT[step]??0});
+            if (step==="analyzed") { clearInterval(poll); update({done:true,analysisPct:100}); load(); resolve(); }
+            else if (step==="failed") { clearInterval(poll); update({error:d.error||"Failed"}); reject(new Error(d.error)); }
+          } catch(e) { clearInterval(poll); reject(e); }
+        }, 2000);
+      });
+    } catch(e:any) { update({error:e.message, status:"failed"}); }
+  };
+
+  const deleteContract = async (id: string, title: string) => {
+    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+    const token = getToken();
+    await fetch(`${API}/api/v1/contracts/${id}`,
+      {method:"DELETE",headers:{Authorization:`Bearer ${token}`}});
+    setContracts(prev => prev.filter(c => c.id!==id));
+    setTotal(prev => prev-1);
+  };
+
+  const reprocess = async (id: string, title: string) => {
+    const token = getToken();
+    const r = await fetch(`${API}/api/v1/contracts/${id}/reprocess`,
+      {method:"POST",headers:{Authorization:`Bearer ${token}`}});
+    if (r.ok) {
+      setContracts(prev => prev.map(c => c.id===id ? {...c,status:"queued"} : c));
+      setToast(`⏳ "${title}" queued for reprocessing`);
+      setTimeout(()=>setToast(""), 5000);
+    } else alert("Reprocess failed");
+  };
+
+  const toggleExpand = (id: string) =>
+    setExpanded(prev => { const s=new Set(prev); s.has(id)?s.delete(id):s.add(id); return s; });
+
+  const STEPS = ["queued","parsing","extracting","scoring","indexing","analyzed"];
+
+  return (
+    <div style={{padding:"32px 36px"}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <div>
+          <h1 style={{fontSize:24,fontWeight:800,color:C.heading,marginBottom:4}}>Contracts</h1>
+          <p style={{fontSize:14,color:C.muted}}>{total} contract families</p>
+        </div>
+        {can(role,"contract.upload") && (
+          <>
+            <button onClick={()=>fileRef.current?.click()}
+              style={{background:C.primary,color:"white",border:"none",borderRadius:8,
+                padding:"10px 20px",fontSize:14,fontWeight:600,cursor:"pointer"}}>
+              ⬆ Upload contract
+            </button>
+            <input ref={fileRef} type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.xml"
+              style={{display:"none"}}
+              onChange={e=>e.target.files?.[0] && handleUpload(e.target.files[0])}/>
+          </>
+        )}
+      </div>
+
+      {/* Upload progress cards */}
+      {uploads.filter(u=>!u.done).map(u=>(
+        <div key={u._id} style={{background:C.surface,
+          border:`1.5px solid ${u.error?C.error:C.primary}`,
+          borderRadius:12,padding:20,marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:C.heading}}>
+                {u.file.name}
+                {u.parentId && <span style={{fontSize:11,color:C.primary,marginLeft:8}}>(new version)</span>}
+              </div>
+              <div style={{fontSize:12,color:u.error?C.error:C.primary,marginTop:2}}>{u.error||u.step}</div>
+            </div>
+            <div style={{fontSize:13,fontWeight:700,color:u.error?C.error:C.primary}}>
+              {u.error?"Failed":u.status==="uploading"?`${u.uploadPct}%`:`${u.analysisPct}%`}
+            </div>
+          </div>
+          {u.status==="uploading" && (
+            <div style={{height:6,background:C.border,borderRadius:3,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${u.uploadPct}%`,background:C.primary,borderRadius:3,transition:"width 0.3s"}}/>
+            </div>
+          )}
+          {u.status!=="uploading" && !u.error && (
+            <div>
+              <div style={{display:"flex",gap:4,marginBottom:8}}>
+                {STEPS.map(step=>{
+                  const done = STEPS.indexOf(u.status)>=STEPS.indexOf(step);
+                  return (
+                    <div key={step} style={{flex:1,textAlign:"center"}}>
+                      <div style={{height:4,borderRadius:2,background:done?C.primary:C.border,marginBottom:4}}/>
+                      <div style={{fontSize:9,color:done?C.primary:C.muted,fontWeight:done?600:400,textTransform:"capitalize"}}>{step}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${u.analysisPct}%`,
+                  background:`linear-gradient(90deg,${C.primary},#06B6D4)`,
+                  borderRadius:4,transition:"width 0.5s ease"}}/>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Filters */}
+      <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}
+          placeholder="Search contracts..."
+          style={{padding:"8px 12px",border:`1.5px solid ${C.border}`,borderRadius:8,fontSize:13,flex:1,minWidth:200}}/>
+        <select value={risk} onChange={e=>{setRisk(e.target.value);setPage(1);}}
+          style={{padding:"8px 12px",border:`1.5px solid ${C.border}`,borderRadius:8,fontSize:13}}>
+          <option value="">All risk levels</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}
+          style={{padding:"8px 12px",border:`1.5px solid ${C.border}`,borderRadius:8,fontSize:13}}>
+          <option value="">All statuses</option>
+          <option value="analyzed">Analyzed</option>
+          <option value="queued">Queued</option>
+          <option value="failed">Failed</option>
+        </select>
+      </div>
+
+      {/* Table */}
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+        {loading ? (
+          <div style={{padding:40,textAlign:"center",color:C.muted}}>Loading...</div>
+        ) : contracts.length===0 ? (
+          <div style={{padding:60,textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:16}}>📄</div>
+            <p style={{fontSize:15,fontWeight:600,color:C.heading,marginBottom:8}}>No contracts found</p>
+            <p style={{fontSize:14,color:C.muted}}>Upload a PDF or DOCX to get started</p>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div style={{display:"grid",
+              gridTemplateColumns:"minmax(180px,2fr) minmax(100px,1fr) minmax(90px,1fr) 80px 110px 44px 44px 44px 44px",
+              padding:"10px 16px",background:C.bg,borderBottom:`1px solid ${C.border}`}}>
+              {["Contract","Counterparty","Value","Risk","Review","","","",""].map((h,i)=>(
+                <div key={i} style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase"}}>{h}</div>
+              ))}
+            </div>
+
+            {contracts.map(c=>{
+              const isExpanded = expanded.has(c.id);
+              const hasVersions = c.version_count > 1;
+              return (
+                <div key={c.id} style={{borderBottom:`1px solid ${C.border}`}}>
+                  {/* Row */}
+                  <div style={{display:"grid",
+                    gridTemplateColumns:"minmax(180px,2fr) minmax(100px,1fr) minmax(90px,1fr) 80px 110px 44px 44px 44px 44px",
+                    padding:"14px 16px",alignItems:"center",
+                    background:isExpanded?C.primaryLight:C.surface}}>
+
+                    {/* Title */}
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                        <span onClick={()=>router.push(`/dashboard/contracts/${c.id}`)}
+                          style={{fontSize:14,fontWeight:700,color:C.heading,cursor:"pointer"}}>
+                          {c.title||"Untitled"}
+                        </span>
+                        {hasVersions && (
+                          <span style={{fontSize:10,fontWeight:800,padding:"2px 7px",
+                            borderRadius:20,background:C.primary,color:"white"}}>
+                            LATEST · {c.version_count}v
+                          </span>
+                        )}
+                        {c.status!=="analyzed" && (
+                          <span style={{fontSize:10,padding:"2px 7px",borderRadius:20,
+                            background:"#F3F4F6",color:C.muted}}>{c.status}</span>
+                        )}
+                      </div>
+                      <div style={{fontSize:11,color:C.muted}}>
+                        {c.contract_type}
+                        {hasVersions && (
+                          <span style={{marginLeft:8,color:C.primary,cursor:"pointer",fontWeight:600}}
+                            onClick={()=>toggleExpand(c.id)}>
+                            {isExpanded?"▲ Hide":"▼"} versions
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Counterparty */}
+                    <div style={{fontSize:13,color:C.body,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {c.counterparty||"—"}
+                    </div>
+
+                    {/* Value */}
+                    <div style={{fontSize:13,color:C.body}}>
+                      {c.contract_value
+                        ? `${c.contract_currency||"₹"}${Number(c.contract_value).toLocaleString("en-IN",{maximumFractionDigits:0})}`
+                        : "—"}
+                    </div>
+
+                    {/* Risk */}
+                    <div>{c.risk_level ? <RiskBadge level={c.risk_level}/> : <span style={{color:C.muted}}>—</span>}</div>
+
+                    {/* Review status */}
+                    <div>
+                      {c.review_status ? (
+                        <span style={{fontSize:11,fontWeight:700,padding:"3px 8px",borderRadius:20,
+                          background:`${REVIEW_COLOR[c.review_status]||C.muted}18`,
+                          color:REVIEW_COLOR[c.review_status]||C.muted}}>
+                          {REVIEW_LABEL[c.review_status]||c.review_status}
+                        </span>
+                      ) : <span style={{color:C.muted,fontSize:12}}>—</span>}
+                    </div>
+
+                    {/* Upload new version */}
+                    <div style={{display:"flex",justifyContent:"center"}}>
+                      {can(role,"contract.upload_version") ? (
+                        <label title="Upload new version" onClick={e=>e.stopPropagation()}
+                          style={{cursor:"pointer",padding:"5px 6px",background:C.primaryLight,
+                            borderRadius:6,fontSize:14,display:"inline-block"}}>
+                          📎
+                          <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xml"
+                            style={{display:"none"}} onClick={e=>e.stopPropagation()}
+                            onChange={e=>{
+                              e.stopPropagation();
+                              const f=e.target.files?.[0];
+                              if(f) handleUpload(f, c.id);
+                            }}/>
+                        </label>
+                      ) : <span/>}
+                    </div>
+
+                    {/* Reprocess */}
+                    <div style={{display:"flex",justifyContent:"center"}}>
+                      {can(role,"contract.reprocess") && (c.status==="failed"||c.status==="analyzed") && (
+                        <button onClick={()=>reprocess(c.id,c.title)} title="Reprocess"
+                          style={{padding:"5px 6px",background:"#FFFBEB",
+                            border:`1px solid ${C.warning}30`,borderRadius:6,
+                            fontSize:14,cursor:"pointer",border:"none"}}>
+                          ↺
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Open */}
+                    <div style={{display:"flex",justifyContent:"center"}}>
+                      <button onClick={()=>router.push(`/dashboard/contracts/${c.id}`)}
+                        title="Open contract"
+                        style={{padding:"5px 6px",background:C.primaryLight,
+                          border:"none",borderRadius:6,fontSize:14,cursor:"pointer"}}>
+                        🔍
+                      </button>
+                    </div>
+
+                    {/* Delete */}
+                    <div style={{display:"flex",justifyContent:"center"}}>
+                      {can(role,"contract.delete") && (
+                        <button onClick={()=>deleteContract(c.id,c.title)} title="Delete"
+                          style={{padding:"5px 6px",background:"#FEF2F2",
+                            border:"none",borderRadius:6,fontSize:14,cursor:"pointer"}}>
+                          🗑
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Version history */}
+                  {isExpanded && hasVersions && (
+                    <div style={{background:"#F9FAFB",borderTop:`1px solid ${C.border}`,
+                      padding:"12px 24px 12px 48px"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.muted,
+                        marginBottom:8,textTransform:"uppercase"}}>Version History</div>
+                      {c.versions.map((v:any)=>(
+                        <div key={v.id} onClick={()=>router.push(`/dashboard/contracts/${v.id}`)}
+                          style={{display:"flex",alignItems:"center",gap:12,
+                            padding:"8px 12px",marginBottom:4,borderRadius:8,cursor:"pointer",
+                            background:v.is_latest?C.primaryLight:C.surface,
+                            border:`1px solid ${v.is_latest?C.primary:C.border}`}}>
+                          <span style={{fontSize:12,fontWeight:800,
+                            color:v.is_latest?C.primary:C.muted,minWidth:24}}>
+                            v{v.version_number||1}
+                          </span>
+                          {v.is_latest && (
+                            <span style={{fontSize:10,fontWeight:700,padding:"1px 6px",
+                              background:C.primary,color:"white",borderRadius:20}}>LATEST</span>
+                          )}
+                          <span style={{fontSize:12,color:C.muted,flex:1}}>
+                            {new Date(v.created_at).toLocaleDateString("en-IN",
+                              {day:"2-digit",month:"short",year:"numeric"})}
+                            {v.version_note && ` · ${v.version_note}`}
+                          </span>
+                          {v.review_status && (
+                            <span style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:20,
+                              background:`${REVIEW_COLOR[v.review_status]||C.muted}18`,
+                              color:REVIEW_COLOR[v.review_status]||C.muted}}>
+                              {REVIEW_LABEL[v.review_status]}
+                            </span>
+                          )}
+                          {v.risk_level && <RiskBadge level={v.risk_level}/>}
+                          <span style={{fontSize:12,color:C.primary,fontWeight:600}}>Open →</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {Math.ceil(total/PAGE_SIZE) > 1 && (
+              <Pagination page={page} totalPages={Math.ceil(total/PAGE_SIZE)}
+                total={total} pageSize={PAGE_SIZE} onPage={setPage}/>
+            )}
+          </>
+        )}
+      </div>
+
+      {toast && (
+        <div style={{position:"fixed",bottom:24,right:24,background:"#1C1B2E",
+          color:"white",padding:"14px 20px",borderRadius:12,fontSize:14,
+          fontWeight:500,boxShadow:"0 8px 24px rgba(0,0,0,0.3)",zIndex:9999}}>
+          {toast}
+        </div>
+      )}
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}

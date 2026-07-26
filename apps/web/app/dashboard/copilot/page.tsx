@@ -1,4 +1,5 @@
 "use client";
+const API = "http://localhost:8000";
 
 import { useEffect, useRef, useState } from "react";
 import { chat as chatAPI, contracts as contractsAPI, Contract } from "@/lib/api";
@@ -35,6 +36,8 @@ const SUGGESTED_QUESTIONS = [
 export default function CopilotPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [selectedContract, setSelectedContract] = useState<string>("");
+  const [selectedReviewStatus, setSelectedReviewStatus] = useState<string|null>(null);
+  const [selectedReviewNotes, setSelectedReviewNotes]   = useState<string|null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -48,6 +51,17 @@ export default function CopilotPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior:"smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!selectedContract) { setSelectedReviewStatus(null); return; }
+    import("@/lib/api").then(({getToken, contracts: contractsAPI}) => {
+      contractsAPI.get(selectedContract)
+        .then((d:any) => {
+          setSelectedReviewStatus(d.review_status||null);
+          setSelectedReviewNotes(d.review_notes||null);
+        }).catch(console.error);
+    });
+  }, [selectedContract]);
 
   const sendMessage = async (query: string) => {
     if (!query.trim() || isLoading) return;
@@ -85,6 +99,27 @@ export default function CopilotPage() {
           {contracts.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}
         </select>
       </div>
+
+      {/* Rejection banner */}
+      {selectedContract && selectedReviewStatus && ["rejected","revision_needed"].includes(selectedReviewStatus) && (
+        <div style={{margin:"0 24px",padding:"10px 16px",borderRadius:8,
+          background:selectedReviewStatus==="rejected"?"#FEF2F2":"#FFFBEB",
+          border:`2px solid ${selectedReviewStatus==="rejected"?"#EF4444":"#F59E0B"}`,
+          display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:18}}>{selectedReviewStatus==="rejected"?"❌":"🔄"}</span>
+          <div>
+            <span style={{fontSize:13,fontWeight:800,
+              color:selectedReviewStatus==="rejected"?"#DC2626":"#D97706"}}>
+              {selectedReviewStatus==="rejected"
+                ?"CONTRACT REJECTED — Do not execute"
+                :"REVISION REQUIRED — Address issues before signing"}
+            </span>
+            {selectedReviewNotes && (
+              <span style={{fontSize:12,color:"#374151",marginLeft:8}}>· {selectedReviewNotes}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div style={{ flex:1, overflowY:"auto", padding:"24px 0", display:"flex", flexDirection:"column", gap:20 }}>

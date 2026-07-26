@@ -18,7 +18,6 @@ from app.infrastructure.llm.base import AgentRole, LLMMessage
 from app.infrastructure.llm.router import get_llm_router
 from app.infrastructure.parsers.document_parser import get_document_parser
 from app.infrastructure.vector_store.pinecone_store import get_vector_store
-from app.agents.clause_engine import ClauseEngine, detect_missing_clauses
 from app.infrastructure.storage.gcs import get_storage_client
 
 logger = structlog.get_logger(__name__)
@@ -665,14 +664,6 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                 risk_level=clause_data.get("risk_level", "low"),
                 risk_reason=clause_data.get("risk_reason"),
                 confidence=0.85,
-                # Phase 2: Playbook + industry
-                playbook_match=clause_data.get("playbook_match"),
-                deviation_from_std=clause_data.get("deviation"),
-                adjusted_risk=clause_data.get("adjusted_risk"),
-                industry_weight=clause_data.get("industry_weight", 1.0),
-                # Phase 3: Relationships
-                related_clauses=clause_data.get("related_clauses", []),
-                cross_references=clause_data.get("cross_references", []),
             )
             db.add(clause)
 

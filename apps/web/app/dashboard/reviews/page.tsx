@@ -1,42 +1,105 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
-
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { getToken } from "@/lib/api";
 
 const API = "http://localhost:8000";
 const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF",
+  primary:"#5B4BFF", primaryLight:"#EEF0FF", primaryDark:"#4338CA",
   heading:"#111827", body:"#374151", muted:"#6B7280",
   border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  error:"#EF4444", warning:"#F59E0B", success:"#22C55E",
+  error:"#EF4444", errorLight:"#FEF2F2",
+  success:"#22C55E", successLight:"#F0FDF4",
+  warning:"#F59E0B", warningLight:"#FFFBEB",
 };
 
-const PRIORITY_COLORS: Record<string,{bg:string;text:string}> = {
-  urgent:{bg:"#FEF2F2",text:"#DC2626"},
-  high:  {bg:"#FFFBEB",text:"#D97706"},
-  normal:{bg:"#EEF0FF",text:"#5B4BFF"},
-  low:   {bg:"#F0FDF4",text:"#16A34A"},
+// Priority uses filled pills
+const PRIORITY_META: Record<string,{bg:string,text:string,label:string}> = {
+  urgent: {bg:"#FEF2F2",text:"#DC2626",label:"🔴 URGENT"},
+  high:   {bg:"#FFFBEB",text:"#D97706",label:"🟡 HIGH"},
+  normal: {bg:"#EEF0FF",text:"#5B4BFF",label:"🔵 NORMAL"},
+  low:    {bg:"#F0FDF4",text:"#16A34A",label:"🟢 LOW"},
 };
 
-const STATUS_COLORS: Record<string,{bg:string;text:string}> = {
-  pending:         {bg:"#FFFBEB",text:"#D97706"},
-  in_review:       {bg:"#EEF0FF",text:"#5B4BFF"},
-  approved:        {bg:"#F0FDF4",text:"#16A34A"},
-  rejected:        {bg:"#FEF2F2",text:"#DC2626"},
-  revision_needed: {bg:"#FFF7ED",text:"#C2410C"},
+// Status uses outline-style pills — distinct from priority
+const STATUS_META: Record<string,{bg:string,text:string,border:string,label:string,icon:string}> = {
+  pending:         {bg:"#FFFBEB",text:"#92400E",border:"#F59E0B",label:"Pending",   icon:"⏳"},
+  in_review:       {bg:"#EFF6FF",text:"#1E40AF",border:"#3B82F6",label:"In Review", icon:"🔍"},
+  approved:        {bg:"#F0FDF4",text:"#166534",border:"#22C55E",label:"Approved",  icon:"✅"},
+  rejected:        {bg:"#FEF2F2",text:"#991B1B",border:"#EF4444",label:"Rejected",  icon:"❌"},
+  revision_needed: {bg:"#FFF7ED",text:"#9A3412",border:"#F97316",label:"Revision",  icon:"🔄"},
 };
+
+const RISK_META: Record<string,{dot:string,text:string}> = {
+  high:   {dot:"#EF4444",text:"#DC2626"},
+  medium: {dot:"#F59E0B",text:"#D97706"},
+  low:    {dot:"#22C55E",text:"#16A34A"},
+};
+
+function PriorityBadge({priority}:{priority:string}) {
+  const m = PRIORITY_META[priority]||PRIORITY_META.normal;
+  return (
+    <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,
+      background:m.bg,color:m.text,letterSpacing:"0.04em"}}>
+      {m.label}
+    </span>
+  );
+}
+
+function StatusBadge({status}:{status:string}) {
+  const m = STATUS_META[status]||{bg:"#F3F4F6",text:"#6B7280",border:"#D1D5DB",label:status,icon:"·"};
+  return (
+    <span style={{fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:20,
+      background:m.bg,color:m.text,border:`1px solid ${m.border}30`,
+      letterSpacing:"0.02em"}}>
+      {m.icon} {m.label}
+    </span>
+  );
+}
+
+function SlaTag({dueDate,createdAt,status}:{dueDate?:string,createdAt:string,status:string}) {
+  const now = Date.now();
+  const created = new Date(createdAt).getTime();
+  const pendingDays = Math.floor((now-created)/(1000*60*60*24));
+
+  if (["approved","rejected","revision_needed"].includes(status)) {
+    return (
+      <span style={{fontSize:11,color:C.muted}}>
+        Completed {new Date(createdAt).toLocaleDateString("en-IN",{day:"2-digit",month:"short"})}
+      </span>
+    );
+  }
+  if (dueDate) {
+    const daysLeft = Math.ceil((new Date(dueDate).getTime()-now)/(1000*60*60*24));
+    const color = daysLeft<0?C.error:daysLeft<=2?C.warning:C.muted;
+    return (
+      <span style={{fontSize:11,fontWeight:600,color}}>
+        {daysLeft<0?`Overdue by ${Math.abs(daysLeft)}d`:
+         daysLeft===0?"Due today":
+         daysLeft===1?"Due tomorrow":`Due in ${daysLeft}d`}
+        {" · "}{new Date(dueDate).toLocaleDateString("en-IN",{day:"2-digit",month:"short"})}
+      </span>
+    );
+  }
+  return (
+    <span style={{fontSize:11,color:C.muted}}>
+      Pending {pendingDays}d
+    </span>
+  );
+}
 
 export default function ReviewsPage() {
   const router = useRouter();
   const { user: currentUser } = useAuthStore();
-  const isAdmin = ["super_admin","dept_admin","contract_manager"].includes(currentUser?.role || "");
+  const isAdmin = ["super_admin","dept_admin","contract_manager"].includes(currentUser?.role||"");
+
   const [queue, setQueue]     = useState<any[]>([]);
   const [all, setAll]         = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab]         = useState<"my-queue"|"all">("my-queue");
+  const [activeFilter, setActiveFilter] = useState<string>("my-queue");
+  const [search, setSearch]   = useState("");
   const [modal, setModal]     = useState<{reviewId:string;title:string}|null>(null);
   const [decision, setDecision]     = useState("");
   const [notes, setNotes]           = useState("");
@@ -45,193 +108,377 @@ export default function ReviewsPage() {
   const load = async () => {
     setLoading(true);
     const token = getToken();
-    const h = { Authorization:`Bearer ${token}` };
+    const h = {Authorization:`Bearer ${token}`};
     try {
       const [qR, aR] = await Promise.all([
-        fetch(`${API}/api/v1/reviews/?assigned_to_me=true`, {headers:h}).then(r=>r.json()),
-        fetch(`${API}/api/v1/reviews/`, {headers:h}).then(r=>r.json()),
+        fetch(`${API}/api/v1/reviews/my-queue`,{headers:h}).then(r=>r.json()),
+        fetch(`${API}/api/v1/reviews/`,{headers:h}).then(r=>r.json()),
       ]);
-      setQueue((qR.reviews||[]).map((r:any)=>({...r, review_id:r.id}))); setAll(aR.reviews||[]);
+      setQueue(qR.queue||[]);
+      setAll(aR.reviews||[]);
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(()=>{ load(); },[]);
 
-  const startReview = async (id: string) => {
+  // Filter counts for stat tabs
+  const counts = useMemo(()=>({
+    "my-queue": queue.length,
+    pending:    all.filter(r=>r.status==="pending").length,
+    in_review:  all.filter(r=>r.status==="in_review").length,
+    approved:   all.filter(r=>r.status==="approved").length,
+    rejected:   all.filter(r=>r.status==="rejected").length,
+  }),[queue,all]);
+
+  // Filtered display list
+  const displayList = useMemo(()=>{
+    let list: any[] = [];
+    if (activeFilter==="my-queue") {
+      list = queue;
+    } else {
+      list = all.filter(r=>r.status===activeFilter);
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(r=>
+        (r.contract_title||"").toLowerCase().includes(q) ||
+        (r.counterparty||"").toLowerCase().includes(q) ||
+        (r.reviewer_email||"").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  },[activeFilter,queue,all,search]);
+
+  const startReview = async (id:string) => {
     const token = getToken();
-    const r = await fetch(`${API}/api/v1/reviews/${id}/start`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
-    if (r.ok) {
-      // Optimistic update
-      setQueue(prev => prev.map(item =>
-        item.review_id === id ? {...item, status: "in_review"} : item
-      ));
+    const r = await fetch(`${API}/api/v1/reviews/${id}/start`,
+      {method:"POST",headers:{Authorization:`Bearer ${token}`}});
+    if(r.ok) {
+      setQueue(prev=>prev.map(item=>
+        item.review_id===id?{...item,status:"in_review"}:item));
+      setAll(prev=>prev.map(item=>
+        item.id===id?{...item,status:"in_review"}:item));
     }
   };
 
   const submitDecision = async () => {
-    if (!modal||!decision) return;
+    if(!modal||!decision) return;
     setSubmitting(true);
     const token = getToken();
     try {
-      const r = await fetch(`${API}/api/v1/reviews/${modal.reviewId}/decide`, {
+      const r = await fetch(`${API}/api/v1/reviews/${modal.reviewId}/decide`,{
         method:"POST",
         headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
         body:JSON.stringify({decision,decision_notes:notes}),
       });
-      if (r.ok) {
-        const reviewId = modal.reviewId;
+      if(r.ok) {
+        const rid = modal.reviewId;
         setModal(null); setDecision(""); setNotes("");
-        // Optimistic update — no full reload
-        setQueue(prev => prev.filter(r => r.review_id !== reviewId));
-        setAll(prev => prev.map(r => r.review_id === reviewId
-          ? {...r, status: decision === "approved" ? "approved" : decision === "rejected" ? "rejected" : "revision_needed",
-             decision: decision}
-          : r
-        ));
+        setQueue(prev=>prev.filter(r=>r.review_id!==rid));
+        setAll(prev=>prev.map(r=>r.id===rid
+          ?{...r,status:decision==="approved"?"approved":decision==="rejected"?"rejected":"revision_needed",decision}
+          :r));
       }
     } finally { setSubmitting(false); }
   };
 
+  // Stat filter tabs
+  const TABS = [
+    {key:"my-queue",label:"My Queue",     icon:"👤"},
+    {key:"pending", label:"Pending",      icon:"⏳"},
+    {key:"in_review",label:"In Review",   icon:"🔍"},
+    {key:"approved", label:"Approved",    icon:"✅"},
+    {key:"rejected", label:"Rejected",    icon:"❌"},
+  ].filter(t=>isAdmin||t.key==="my-queue");
+
   return (
-    <div style={{padding:"32px 36px"}}>
-      <div style={{marginBottom:28}}>
-        <h1 style={{fontSize:24,fontWeight:800,color:C.heading,marginBottom:4}}>Review Workflow</h1>
-        <p style={{fontSize:14,color:C.muted}}>Manage contract reviews and approvals</p>
-      </div>
+    <div style={{padding:"28px 32px",maxWidth:1200,margin:"0 auto"}}>
 
-      {/* Stats */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:16,marginBottom:28}}>
-        {[
-          {label:"My queue",   value:queue.length,                                     color:C.primary},
-          {label:"Pending",    value:all.filter(r=>r.status==="pending").length,        color:C.warning},
-          {label:"In review",  value:all.filter(r=>r.status==="in_review").length,     color:C.primary},
-          {label:"Approved",   value:all.filter(r=>r.status==="approved").length,      color:C.success},
-          {label:"Rejected",   value:all.filter(r=>r.status==="rejected").length,      color:C.error},
-        ].map(s=>(
-          <div key={s.label} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"16px 20px"}}>
-            <div style={{fontSize:12,color:C.muted,marginBottom:6}}>{s.label}</div>
-            <div style={{fontSize:28,fontWeight:800,color:s.color}}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Tabs */}
-      <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:20}}>
-        {([{id:"my-queue",label:`My Queue (${queue.length})`},...(isAdmin?[{id:"all",label:`All Reviews (${all.length})`}]:[])] as any[]).map((t:any)=>(
-          <button key={t.id} onClick={()=>setTab(t.id as any)}
-            style={{padding:"10px 22px",border:"none",background:"none",cursor:"pointer",fontSize:14,
-              fontWeight:tab===t.id?700:400,color:tab===t.id?C.primary:C.muted,
-              borderBottom:tab===t.id?`2px solid ${C.primary}`:"2px solid transparent",marginBottom:-1}}>
-            {t.label}
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div style={{display:"flex",justifyContent:"space-between",
+        alignItems:"flex-start",marginBottom:24}}>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:800,color:C.heading,marginBottom:4}}>
+            Review Workflow
+          </h1>
+          <p style={{fontSize:13,color:C.muted}}>
+            Manage contract reviews and approvals
+          </p>
+        </div>
+        {isAdmin && (
+          <button onClick={()=>router.push("/dashboard/contracts")}
+            style={{padding:"10px 20px",background:C.primary,color:"white",
+              border:"none",borderRadius:10,fontSize:13,fontWeight:600,
+              cursor:"pointer",boxShadow:"0 2px 8px rgba(91,75,255,0.3)"}}>
+            + Assign Review
           </button>
-        ))}
+        )}
       </div>
 
-      {tab==="my-queue" && (
-        loading ? <div style={{textAlign:"center",padding:60,color:C.muted}}>Loading...</div>
-        : queue.length===0 ? (
-          <div style={{textAlign:"center",padding:80,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12}}>
-            <div style={{fontSize:48,marginBottom:16}}>✅</div>
-            <p style={{fontSize:16,fontWeight:700,color:C.heading,marginBottom:8}}>Queue is empty</p>
-            <p style={{fontSize:14,color:C.muted}}>No contracts assigned to you for review</p>
+      {/* ── Clickable Stat Tabs ──────────────────────────────────────────── */}
+      <div style={{display:"grid",
+        gridTemplateColumns:`repeat(${TABS.length},1fr)`,
+        gap:12,marginBottom:20}}>
+        {TABS.map(tab=>{
+          const count = counts[tab.key as keyof typeof counts]||0;
+          const active = activeFilter===tab.key;
+          const sm = STATUS_META[tab.key]||{bg:C.primaryLight,text:C.primary,border:C.primary};
+          return (
+            <button key={tab.key} onClick={()=>setActiveFilter(tab.key)}
+              style={{padding:"16px 20px",border:`2px solid ${active?C.primary:C.border}`,
+                borderRadius:12,background:active?C.primaryLight:C.surface,
+                cursor:"pointer",textAlign:"left",transition:"all 0.15s",
+                boxShadow:active?"0 0 0 3px rgba(91,75,255,0.1)":"none"}}>
+              <div style={{fontSize:12,color:active?C.primary:C.muted,
+                fontWeight:600,marginBottom:6,display:"flex",alignItems:"center",gap:4}}>
+                <span>{tab.icon}</span>
+                {tab.label}
+              </div>
+              <div style={{fontSize:28,fontWeight:800,
+                color:active?C.primary:C.heading,lineHeight:1}}>
+                {count}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Search ───────────────────────────────────────────────────────── */}
+      <div style={{position:"relative",marginBottom:20}}>
+        <span style={{position:"absolute",left:12,top:"50%",
+          transform:"translateY(-50%)",color:C.muted,fontSize:14}}>🔍</span>
+        <input value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="Search reviews by contract, counterparty, reviewer..."
+          style={{width:"100%",padding:"10px 12px 10px 36px",
+            border:`1.5px solid ${C.border}`,borderRadius:10,
+            fontSize:13,background:C.surface,boxSizing:"border-box",
+            outline:"none"}}/>
+        {search && (
+          <button onClick={()=>setSearch("")}
+            style={{position:"absolute",right:12,top:"50%",
+              transform:"translateY(-50%)",border:"none",background:"none",
+              cursor:"pointer",color:C.muted,fontSize:14}}>✕</button>
+        )}
+      </div>
+
+      {/* ── Review Cards ─────────────────────────────────────────────────── */}
+      {loading ? (
+        <div style={{textAlign:"center",padding:60,color:C.muted}}>
+          <div style={{fontSize:24,marginBottom:8}}>⏳</div>
+          Loading reviews...
+        </div>
+      ) : displayList.length===0 ? (
+        <div style={{textAlign:"center",padding:80,background:C.surface,
+          border:`1px solid ${C.border}`,borderRadius:16}}>
+          <div style={{fontSize:48,marginBottom:12}}>
+            {activeFilter==="my-queue"?"🎉":"🔍"}
           </div>
-        ) : (
-          <div style={{display:"flex",flexDirection:"column",gap:16}}>
-            {queue.map(item=>(
-              <div key={item.review_id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:24}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-                  <div>
-                    <div style={{display:"flex",gap:8,marginBottom:8}}>
-                      <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,background:PRIORITY_COLORS[item.priority]?.bg,color:PRIORITY_COLORS[item.priority]?.text}}>{item.priority.toUpperCase()}</span>
-                      <span style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:20,background:STATUS_COLORS[item.status]?.bg,color:STATUS_COLORS[item.status]?.text}}>{item.status.replace(/_/g," ")}</span>
+          <div style={{fontSize:16,fontWeight:700,color:C.heading,marginBottom:6}}>
+            {activeFilter==="my-queue"?"Queue is empty":"No reviews found"}
+          </div>
+          <div style={{fontSize:13,color:C.muted}}>
+            {activeFilter==="my-queue"?"No contracts assigned for review":"Try adjusting your search or filter"}
+          </div>
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {displayList.map(item=>{
+            const rid = item.review_id||item.id;
+            const cid = item.contract_id;
+            const title = item.contract_title||"Contract";
+            const status = item.status||"pending";
+            const priority = item.priority||"normal";
+            const sm = STATUS_META[status];
+            const pm = PRIORITY_META[priority]||PRIORITY_META.normal;
+            const rm = RISK_META[item.risk_level||"low"];
+            const isCompleted = ["approved","rejected","revision_needed"].includes(status);
+            const isPending = status==="pending";
+            const isInReview = status==="in_review";
+
+            return (
+              <div key={rid}
+                style={{background:C.surface,borderRadius:14,overflow:"hidden",
+                  border:`1px solid ${C.border}`,
+                  borderLeft:`4px solid ${isPending?C.warning:isInReview?C.primary:isCompleted&&status==="approved"?C.success:isCompleted&&status==="rejected"?C.error:C.warning}`,
+                  boxShadow:"0 1px 4px rgba(0,0,0,0.05)",
+                  transition:"box-shadow 0.15s"}}
+                onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)"}
+                onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.05)"}>
+
+                <div style={{padding:"16px 20px"}}>
+                  {/* Top row: badges + SLA */}
+                  <div style={{display:"flex",justifyContent:"space-between",
+                    alignItems:"center",marginBottom:10}}>
+                    <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                      <PriorityBadge priority={priority}/>
+                      <StatusBadge status={status}/>
                     </div>
-                    <h3 style={{fontSize:16,fontWeight:700,color:C.heading,marginBottom:4}}>{item.contract_title}</h3>
-                    <p style={{fontSize:13,color:C.muted}}>{item.counterparty||""}{item.risk_level?` · Risk: ${item.risk_level}`:""}</p>
+                    <SlaTag dueDate={item.due_date} createdAt={item.created_at||new Date().toISOString()} status={status}/>
                   </div>
-                  {item.due_date && (
-                    <div style={{fontSize:12,color:C.error,fontWeight:600}}>
-                      Due: {new Date(item.due_date).toLocaleDateString("en-IN",{day:"2-digit",month:"short"})}
+
+                  {/* Main content row */}
+                  <div style={{display:"flex",justifyContent:"space-between",
+                    alignItems:"flex-start",gap:16}}>
+
+                    {/* Left: Contract info */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <h3 onClick={()=>router.push(`/dashboard/contracts/${cid}`)}
+                        style={{fontSize:15,fontWeight:700,color:C.heading,
+                          marginBottom:4,cursor:"pointer",lineHeight:1.3,
+                          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
+                        title={title}>
+                        {title}
+                      </h3>
+                      <div style={{display:"flex",alignItems:"center",gap:8,
+                        fontSize:12,color:C.muted,flexWrap:"wrap",marginBottom:8}}>
+                        <span>{item.counterparty||"Unknown counterparty"}</span>
+                        {item.risk_level && (
+                          <>
+                            <span>·</span>
+                            <span style={{display:"flex",alignItems:"center",gap:4,fontWeight:600,color:rm.text}}>
+                              <span style={{width:6,height:6,borderRadius:"50%",
+                                background:rm.dot,display:"inline-block"}}/>
+                              {item.risk_level.toUpperCase()} RISK
+                            </span>
+                          </>
+                        )}
+                        {item.reviewer_email && (
+                          <>
+                            <span>·</span>
+                            <span>👤 {item.reviewer_email.split("@")[0]}</span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Metadata chips */}
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                        {item.contract_value && (
+                          <span style={{fontSize:12,fontWeight:600,
+                            padding:"3px 10px",borderRadius:20,
+                            background:"#F8F9FF",border:`1px solid ${C.border}`,
+                            color:C.body}}>
+                            💰 {item.contract_currency||"₹"}
+                            {Number(item.contract_value).toLocaleString("en-IN")}
+                          </span>
+                        )}
+                        {(item.clause_flags?.length>0) && (
+                          <span style={{fontSize:12,fontWeight:600,
+                            padding:"3px 10px",borderRadius:20,
+                            background:C.errorLight,border:`1px solid ${C.error}30`,
+                            color:C.error}}>
+                            🚩 {item.clause_flags.filter((f:any)=>f.action==="flag").length} flagged clauses
+                          </span>
+                        )}
+                        {item.notes && (
+                          <span style={{fontSize:12,padding:"3px 10px",borderRadius:20,
+                            background:C.bg,border:`1px solid ${C.border}`,
+                            color:C.muted,maxWidth:240,
+                            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            📝 {item.notes}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-                {item.notes && <div style={{padding:"10px 14px",background:C.bg,borderRadius:8,fontSize:13,color:C.body,marginBottom:16}}>📝 {item.notes}</div>}
-                <div style={{display:"flex",gap:10}}>
-                  <Link href={`/dashboard/contracts/${item.contract_id}`} style={{padding:"8px 16px",border:`1px solid ${C.border}`,borderRadius:8,textDecoration:"none",fontSize:13,fontWeight:600,color:C.body}}>View contract</Link>
-                  {item.status==="pending" && <button onClick={()=>startReview(item.review_id)} style={{padding:"8px 16px",border:"none",background:C.primaryLight,borderRadius:8,fontSize:13,fontWeight:600,color:C.primary,cursor:"pointer"}}>Start review</button>}
-                  <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>router.push(`/dashboard/reviews/${item.review_id}`)}
-                    style={{padding:"6px 14px",border:`1px solid ${C.primary}`,background:C.primaryLight,
-                      borderRadius:8,fontSize:12,fontWeight:600,color:C.primary,cursor:"pointer"}}>
-                    📋 Open Workspace
-                  </button>
-                  {item.status==="in_review" && <button onClick={()=>setModal({reviewId:item.review_id,title:item.contract_title})} style={{padding:"6px 14px",border:"none",background:C.primary,borderRadius:8,fontSize:12,fontWeight:600,color:"white",cursor:"pointer"}}>Submit decision →</button>}
-                </div>
+
+                    {/* Right: Primary CTA */}
+                    <div style={{display:"flex",flexDirection:"column",
+                      alignItems:"flex-end",gap:8,flexShrink:0}}>
+                      {/* Single primary action based on state */}
+                      {isPending && (
+                        <button onClick={()=>startReview(rid)}
+                          style={{padding:"9px 20px",background:C.primary,color:"white",
+                            border:"none",borderRadius:10,fontSize:13,fontWeight:700,
+                            cursor:"pointer",boxShadow:"0 2px 8px rgba(91,75,255,0.3)",
+                            whiteSpace:"nowrap"}}>
+                          🚀 Start Review →
+                        </button>
+                      )}
+                      {isInReview && (
+                        <button onClick={()=>router.push(`/dashboard/reviews/${rid}`)}
+                          style={{padding:"9px 20px",background:C.primary,color:"white",
+                            border:"none",borderRadius:10,fontSize:13,fontWeight:700,
+                            cursor:"pointer",boxShadow:"0 2px 8px rgba(91,75,255,0.3)",
+                            whiteSpace:"nowrap"}}>
+                          📋 Open Workspace →
+                        </button>
+                      )}
+                      {isCompleted && (
+                        <button onClick={()=>router.push(`/dashboard/reviews/${rid}`)}
+                          style={{padding:"9px 20px",background:C.bg,color:C.body,
+                            border:`1px solid ${C.border}`,borderRadius:10,
+                            fontSize:13,fontWeight:600,cursor:"pointer",
+                            whiteSpace:"nowrap"}}>
+                          View Decision
+                        </button>
+                      )}
+                      {/* Secondary: View contract */}
+                      <Link href={`/dashboard/contracts/${cid}`}
+                        style={{fontSize:12,color:C.primary,fontWeight:600,
+                          textDecoration:"none",padding:"4px 0"}}>
+                        View contract →
+                      </Link>
+                    </div>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )
-      )}
-
-      {tab==="all" && (
-        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-          {loading ? <div style={{padding:40,textAlign:"center",color:C.muted}}>Loading...</div>
-          : all.length===0 ? <div style={{padding:60,textAlign:"center",color:C.muted}}>No reviews yet</div>
-          : (
-            <table style={{width:"100%",borderCollapse:"collapse"}}>
-              <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
-                {["Contract","Reviewer","Priority","Status","Decision","Date"].map(h=>(
-                  <th key={h} style={{padding:"10px 20px",textAlign:"left",fontSize:12,fontWeight:600,color:C.muted,textTransform:"uppercase"}}>{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>{all.map(r=>(
-                <tr key={r.id} style={{borderBottom:`1px solid ${C.border}`}}>
-                  <td style={{padding:"12px 20px"}}>
-                    <Link href={`/dashboard/contracts/${r.contract_id}`} style={{fontSize:14,fontWeight:600,color:C.heading,textDecoration:"none"}}>{r.contract_title}</Link>
-                    {r.risk_level && <div style={{fontSize:11,color:C.muted,marginTop:2}}>{r.risk_level} risk</div>}
-                  </td>
-                  <td style={{padding:"12px 20px",fontSize:13,color:C.body}}>{r.reviewer_email}</td>
-                  <td style={{padding:"12px 20px"}}><span style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:20,background:PRIORITY_COLORS[r.priority]?.bg,color:PRIORITY_COLORS[r.priority]?.text}}>{r.priority}</span></td>
-                  <td style={{padding:"12px 20px"}}><span style={{fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:20,background:STATUS_COLORS[r.status]?.bg,color:STATUS_COLORS[r.status]?.text}}>{r.status.replace(/_/g," ")}</span></td>
-                  <td style={{padding:"12px 20px",fontSize:13,color:r.decision==="approved"?C.success:r.decision==="rejected"?C.error:C.muted}}>{r.decision||"—"}</td>
-                  <td style={{padding:"12px 20px",fontSize:12,color:C.muted}}>{new Date(r.created_at).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
+            );
+          })}
         </div>
       )}
 
-      {/* Decision modal */}
+      {/* ── Quick Decision Modal ─────────────────────────────────────────── */}
       {modal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}}>
-          <div style={{background:C.surface,borderRadius:16,padding:32,width:480,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-            <h2 style={{fontSize:18,fontWeight:700,color:C.heading,marginBottom:4}}>Submit Decision</h2>
-            <p style={{fontSize:13,color:C.muted,marginBottom:24}}>{modal.title}</p>
-            <div style={{display:"flex",gap:10,marginBottom:20}}>
-              {[{v:"approved",l:"✅ Approve",c:C.success},{v:"rejected",l:"❌ Reject",c:C.error},{v:"revision_needed",l:"🔄 Revision",c:C.warning}].map(opt=>(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",
+          display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
+          <div style={{background:C.surface,borderRadius:16,padding:28,
+            width:"100%",maxWidth:480,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+            <h3 style={{fontSize:18,fontWeight:700,color:C.heading,marginBottom:4}}>
+              Submit Decision
+            </h3>
+            <p style={{fontSize:13,color:C.muted,marginBottom:20}}>
+              {modal.title}
+            </p>
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              {[
+                {v:"approved",     label:"✅ Approve",  bg:C.success},
+                {v:"rejected",     label:"❌ Reject",   bg:C.error},
+                {v:"revision_needed",label:"🔄 Revision",bg:C.warning},
+              ].map(opt=>(
                 <button key={opt.v} onClick={()=>setDecision(opt.v)}
-                  style={{flex:1,padding:"10px",border:`2px solid ${decision===opt.v?opt.c:C.border}`,borderRadius:8,
-                    background:decision===opt.v?`${opt.c}15`:"none",color:decision===opt.v?opt.c:C.muted,
-                    fontSize:13,fontWeight:600,cursor:"pointer"}}>
-                  {opt.l}
+                  style={{flex:1,padding:"10px 8px",border:`2px solid ${decision===opt.v?opt.bg:C.border}`,
+                    borderRadius:10,background:decision===opt.v?`${opt.bg}15`:"none",
+                    cursor:"pointer",fontSize:12,fontWeight:700,
+                    color:decision===opt.v?opt.bg:C.muted}}>
+                  {opt.label}
                 </button>
               ))}
             </div>
-            <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Add notes..." rows={3}
-              style={{width:"100%",padding:"10px 14px",border:`1.5px solid ${C.border}`,borderRadius:8,fontSize:13,resize:"vertical",marginBottom:20,outline:"none"}}/>
-            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-              <button onClick={()=>{setModal(null);setDecision("");setNotes("");}}
-                style={{padding:"10px 20px",border:`1px solid ${C.border}`,borderRadius:8,background:"none",fontSize:14,cursor:"pointer"}}>Cancel</button>
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)}
+              placeholder="Add decision notes (optional)..."
+              style={{width:"100%",height:80,padding:"10px 12px",
+                border:`1.5px solid ${C.border}`,borderRadius:10,
+                fontSize:13,resize:"vertical",outline:"none",
+                boxSizing:"border-box",fontFamily:"inherit"}}/>
+            <div style={{display:"flex",gap:10,marginTop:16}}>
+              <button onClick={()=>setModal(null)}
+                style={{flex:1,padding:"10px",border:`1px solid ${C.border}`,
+                  borderRadius:10,background:"none",cursor:"pointer",
+                  fontSize:13,color:C.body}}>
+                Cancel
+              </button>
               <button onClick={submitDecision} disabled={!decision||submitting}
-                style={{padding:"10px 20px",border:"none",borderRadius:8,background:!decision||submitting?"#D1D5DB":C.primary,color:"white",fontSize:14,fontWeight:600,cursor:!decision?"not-allowed":"pointer"}}>
-                {submitting?"Submitting...":"Submit"}
+                style={{flex:2,padding:"10px",border:"none",borderRadius:10,
+                  background:decision?C.primary:"#D1D5DB",color:"white",
+                  cursor:decision?"pointer":"not-allowed",fontSize:13,fontWeight:700}}>
+                {submitting?"Submitting...":"Submit Decision →"}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }

@@ -95,11 +95,30 @@ class VectorStore:
         )
         return embeddings
 
+    async def delete_contract_family(self, org_id: UUID, family_id: UUID) -> None:
+        """Delete all vectors for a contract family (before indexing new version)."""
+        try:
+            namespace = self.get_namespace(org_id)
+            loop = asyncio.get_event_loop()
+            # Pinecone delete by metadata filter
+            await loop.run_in_executor(
+                None,
+                lambda: self.index.delete(
+                    filter={"family_id": str(family_id)},
+                    namespace=namespace,
+                )
+            )
+            logger.info("contract_family_deleted", family_id=str(family_id))
+        except Exception as e:
+            logger.warning("contract_family_delete_failed", error=str(e))
+
     async def upsert_contract(
         self,
         org_id: UUID,
         contract_id: UUID,
         chunks: list[dict],
+        family_id: UUID | None = None,
+        version_number: int = 1,
     ) -> int:
         """
         Index contract chunks into Pinecone.
@@ -108,6 +127,8 @@ class VectorStore:
             org_id: Organisation ID (determines namespace)
             contract_id: Contract ID (stored in metadata)
             chunks: List of {text, chunk_index, clause_type?, page?}
+            family_id: Root contract ID for version family
+            version_number: Version number (1, 2, 3...)
 
         Returns:
             Number of vectors upserted
@@ -127,8 +148,10 @@ class VectorStore:
             vector_id = f"{contract_id}_{i}"
             metadata = {
                 "contract_id":    str(contract_id),
+                "family_id":      str(family_id or contract_id),
                 "org_id":         str(org_id),
                 "chunk_index":    i,
+                "version_number": version_number,
                 "text":           chunk["text"][:1000],
                 "clause_type":    chunk.get("clause_type", ""),
                 "page":           chunk.get("page", 0),
@@ -197,6 +220,7 @@ class VectorStore:
         # Build metadata filter
         filter_dict: dict = {}
         if contract_id:
+            # Use family_id to always get latest version vectors
             filter_dict["contract_id"] = str(contract_id)
         if clause_type:
             filter_dict["clause_type"] = clause_type

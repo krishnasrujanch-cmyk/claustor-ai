@@ -6,7 +6,8 @@ Pydantic models for contract API request/response.
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel
+from uuid import UUID as PyUUID
 
 
 # ── Upload ────────────────────────────────────────────────
@@ -62,6 +63,13 @@ class ContractOut(BaseModel):
     backdating_risk: bool
     flagged_for_review: bool | None = False
     review_status: str | None = None
+    parent_contract_id: PyUUID | None = None
+    contract_family_id: PyUUID | None = None
+    version_number: int = 1
+    is_latest: bool = True
+    version_note: str | None = None
+    missing_clauses: list | None = None
+    detected_language: str | None = "en"
     review_notes: str | None = None
     created_at: datetime
     updated_at: datetime
