@@ -2,13 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { contracts as contractsAPI, Contract, Clause } from "@/lib/api";
-
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  error:"#EF4444", warning:"#F59E0B", success:"#22C55E",
-};
+import { C } from "@/lib/design-tokens";
 
 function RiskBadge({ level }: { level:string }) {
   const m: Record<string,any> = {

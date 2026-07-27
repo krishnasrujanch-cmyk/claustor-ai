@@ -4,22 +4,14 @@ import { useAuthStore } from "@/store/auth";
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { getToken } from "@/lib/api";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF", primaryDark:"#4338CA",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  error:"#EF4444", errorLight:"#FEF2F2",
-  success:"#22C55E", successLight:"#F0FDF4",
-  warning:"#F59E0B", warningLight:"#FFFBEB",
-};
-
 // Priority uses filled pills
 const PRIORITY_META: Record<string,{bg:string,text:string,label:string}> = {
   urgent: {bg:"#FEF2F2",text:"#DC2626",label:"🔴 URGENT"},
   high:   {bg:"#FFFBEB",text:"#D97706",label:"🟡 HIGH"},
-  normal: {bg:"#EEF0FF",text:"#5B4BFF",label:"🔵 NORMAL"},
+  normal: {bg:"#E6F0FF",text:"#0066FF",label:"🔵 NORMAL"},
   low:    {bg:"#F0FDF4",text:"#16A34A",label:"🟢 LOW"},
 };
 
@@ -112,9 +104,10 @@ export default function ReviewsPage() {
     try {
       const [qR, aR] = await Promise.all([
         fetch(`${API}/api/v1/reviews/my-queue`,{headers:h}).then(r=>r.json()),
-        fetch(`${API}/api/v1/reviews/`,{headers:h}).then(r=>r.json()),
+        fetch(`${API}/api/v1/reviews/?assigned_to_me=true`,{headers:h}).then(r=>r.json()),
       ]);
       setQueue(qR.queue||[]);
+      // For legal reviewer: show all their reviews (pending + completed)
       setAll(aR.reviews||[]);
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
@@ -192,7 +185,7 @@ export default function ReviewsPage() {
     {key:"approved",        label:"Approved",     icon:"✅"},
     {key:"rejected",        label:"Rejected",     icon:"❌"},
     {key:"revision_needed", label:"Revision",     icon:"🔄"},
-  ].filter(t=>isAdmin||t.key==="my-queue");
+  ];  // All users see all status tabs for their own reviews
 
   return (
     <div style={{padding:"28px 32px",maxWidth:1200,margin:"0 auto"}}>

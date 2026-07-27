@@ -1,15 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { billing as billingAPI, getToken } from "@/lib/api";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  success:"#22C55E", warning:"#F59E0B", error:"#EF4444",
-};
-
 const PLANS = [
   {
     id: "free", label: "Free", price: 0,
@@ -205,7 +199,7 @@ export default function BillingPage() {
 
               {/* Industry access badge */}
               <div style={{fontSize:11,fontWeight:600,padding:"3px 8px",borderRadius:6,
-                background: plan.id==="professional"||plan.id==="enterprise" ? "#EEF0FF" : "#F3F4F6",
+                background: plan.id==="professional"||plan.id==="enterprise" ? "#E6F0FF" : "#F3F4F6",
                 color: plan.id==="professional"||plan.id==="enterprise" ? C.primary : C.muted,
                 marginBottom:12, display:"inline-block", alignSelf:"flex-start"}}>
                 🏭 {plan.industries[0]}

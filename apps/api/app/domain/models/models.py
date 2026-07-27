@@ -66,6 +66,8 @@ class Organisation(Base):
 
     # SSO (Enterprise)
     sso_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    addon_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    industry: Mapped[str | None] = mapped_column(String(50), default="general")
     sso_provider: Mapped[str | None] = mapped_column(String(50))
     sso_config: Mapped[dict] = mapped_column(JSONB, default=dict)
 

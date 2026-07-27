@@ -6,15 +6,9 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { contracts as contractsAPI, chat as chatAPI, Contract, Clause, getToken } from "@/lib/api";
 import { MarkdownText } from "@/components/shared/MarkdownText";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  error:"#EF4444", warning:"#F59E0B", success:"#22C55E",
-};
-
 function RiskBadge({ level }: { level:string }) {
   const m: Record<string,any> = {
     high:{bg:"#FEF2F2",text:"#DC2626"},
@@ -289,7 +283,7 @@ export default function ContractDetailPage() {
               <select value={id}
                 onChange={e=>router.push("/dashboard/contracts/"+e.target.value)}
                 style={{fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,
-                  border:"1px solid #5B4BFF",color:"#5B4BFF",background:"#EEF0FF",
+                  border:"1px solid #0066FF",color:"#0066FF",background:"#E6F0FF",
                   cursor:"pointer"}}>
                 {versions.map((v:any)=>(
                   <option key={v.id} value={v.id}>
@@ -300,7 +294,7 @@ export default function ContractDetailPage() {
               </select>
             ) : (
               <span style={{fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,
-                background:"#EEF0FF",color:"#5B4BFF"}}>
+                background:"#E6F0FF",color:"#0066FF"}}>
                 v{contract.version||1}
               </span>
             )}
@@ -362,7 +356,7 @@ export default function ContractDetailPage() {
               </button>
             ) : (
               <button onClick={()=>{setShowAssign(true);loadUsers();}}
-                style={{padding:"8px 18px",background:"#5B4BFF",color:"white",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                style={{padding:"8px 18px",background:"#0066FF",color:"white",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>
                 📋 Assign for review
               </button>
             ))}
@@ -874,9 +868,9 @@ export default function ContractDetailPage() {
                 <div style={{display:"flex",gap:8}}>
                   {["low","normal","high","urgent"].map(p=>(
                     <button key={p} onClick={()=>setPriority(p)}
-                      style={{flex:1,padding:"8px",border:`2px solid ${priority===p?"#5B4BFF":C.border}`,
-                        borderRadius:8,background:priority===p?"#EEF0FF":"none",
-                        color:priority===p?"#5B4BFF":C.muted,fontSize:12,fontWeight:600,cursor:"pointer",textTransform:"capitalize"}}>
+                      style={{flex:1,padding:"8px",border:`2px solid ${priority===p?"#0066FF":C.border}`,
+                        borderRadius:8,background:priority===p?"#E6F0FF":"none",
+                        color:priority===p?"#0066FF":C.muted,fontSize:12,fontWeight:600,cursor:"pointer",textTransform:"capitalize"}}>
                       {p}
                     </button>
                   ))}
@@ -897,7 +891,7 @@ export default function ContractDetailPage() {
               </button>
               <button onClick={assignReview} disabled={!reviewerId||assigning}
                 style={{padding:"10px 20px",border:"none",borderRadius:8,
-                  background:!reviewerId||assigning?"#D1D5DB":"#5B4BFF",
+                  background:!reviewerId||assigning?"#D1D5DB":"#0066FF",
                   color:"white",fontSize:14,fontWeight:600,cursor:!reviewerId?"not-allowed":"pointer"}}>
                 {assigning?"Assigning...":"Assign review"}
               </button>

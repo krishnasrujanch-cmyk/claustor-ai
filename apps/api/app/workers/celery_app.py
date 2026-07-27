@@ -79,6 +79,13 @@ app.conf.update(
     worker_prefetch_multiplier=1,
     task_ignore_result=True,
     task_compression="gzip",
+    # ── Scalability settings ─────────────────────────────
+    worker_max_tasks_per_child=50,        # Restart worker after 50 tasks (memory leak prevention)
+    worker_max_memory_per_child=512000,   # 512MB max per worker process
+    task_time_limit=600,                  # 10 min hard limit per task
+    task_soft_time_limit=540,             # 9 min soft limit (sends SIGTERM)
+    broker_connection_retry_on_startup=True,
+    broker_pool_limit=10,                 # Connection pool size
 )
 
 # ── Beat Schedule ────────────────────────────────────

@@ -2,17 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { getToken } from "@/lib/api";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  error:"#EF4444", success:"#22C55E", warning:"#F59E0B",
-};
-
 const BUILT_IN_COLORS: Record<string,string> = {
-  super_admin:"#5B4BFF", dept_admin:"#7C3AED",
+  super_admin:"#0066FF", dept_admin:"#7C3AED",
   contract_manager:"#2563EB", legal_reviewer:"#0891B2",
   business_viewer:"#16A34A",
 };

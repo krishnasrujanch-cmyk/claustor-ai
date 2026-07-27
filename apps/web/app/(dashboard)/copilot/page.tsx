@@ -3,12 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { chat as chatAPI, contracts as contractsAPI, Contract } from "@/lib/api";
 import { MarkdownText } from "@/components/shared/MarkdownText";
-
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF", accent:"#06B6D4",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-};
+import { C } from "@/lib/design-tokens";
 
 interface Message {
   role: "user" | "assistant";

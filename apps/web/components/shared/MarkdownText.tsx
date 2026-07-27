@@ -6,17 +6,7 @@
  */
 
 import React from "react";
-
-const C = {
-  primary: "#5B4BFF",
-  heading: "#111827",
-  body:    "#374151",
-  muted:   "#6B7280",
-  border:  "#E5E7EB",
-  bg:      "#F9FAFB",
-  code:    "#1E293B",
-  codeBg:  "#F1F5F9",
-};
+import { C } from "@/lib/design-tokens";
 
 interface Props {
   content: string;

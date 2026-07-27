@@ -258,6 +258,70 @@ export default function DashboardPage() {
   return (
     <div style={{padding:"32px 36px",maxWidth:1400,margin:"0 auto"}}>
 
+      {/* ── Upgrade Banner ──────────────────────────────────────────────── */}
+      {user?.plan==="free" && (
+        <div style={{marginBottom:20,padding:"14px 20px",borderRadius:12,
+          background:"linear-gradient(135deg,#0A1128,#0A1F4A)",
+          border:"1px solid rgba(0,102,255,0.3)",
+          display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+          <div style={{fontSize:24}}>⚡</div>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:14,fontWeight:700,color:"white",marginBottom:2}}>
+              You're on the Free plan — unlock the full Claustor experience
+            </div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>
+              Review workflows · Team management · Obligations tracking ·
+              Audit log · Playbook similarity · 10× faster processing
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <Link href="/dashboard/admin/billing"
+              style={{padding:"9px 18px",background:"#0066FF",color:"white",
+                borderRadius:8,fontSize:13,fontWeight:700,textDecoration:"none",
+                boxShadow:"0 2px 8px rgba(0,102,255,0.4)",whiteSpace:"nowrap"}}>
+              Upgrade to Starter ₹3,999/mo →
+            </Link>
+            <Link href="/dashboard/admin/billing"
+              style={{padding:"9px 14px",background:"rgba(255,255,255,0.08)",
+                color:"rgba(255,255,255,0.7)",borderRadius:8,fontSize:13,
+                fontWeight:600,textDecoration:"none",whiteSpace:"nowrap"}}>
+              See all plans
+            </Link>
+          </div>
+        </div>
+      )}
+      {user?.plan==="starter" && (
+        <div style={{marginBottom:20,padding:"14px 20px",borderRadius:12,
+          background:"linear-gradient(135deg,#1a0533,#0A1128)",
+          border:"1px solid rgba(139,92,246,0.3)",
+          display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+          <div style={{fontSize:24}}>🚀</div>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:14,fontWeight:700,color:"white",marginBottom:2}}>
+              Unlock Professional — the full AI contract intelligence platform
+            </div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>
+              PII masking · Dedicated processing queue · 1,000 contracts ·
+              Playbook similarity · Industry risk weights · Full audit trail
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <Link href="/dashboard/admin/billing"
+              style={{padding:"9px 18px",background:"#7C3AED",color:"white",
+                borderRadius:8,fontSize:13,fontWeight:700,textDecoration:"none",
+                boxShadow:"0 2px 8px rgba(124,58,237,0.4)",whiteSpace:"nowrap"}}>
+              Upgrade to Pro ₹16,499/mo →
+            </Link>
+            <Link href="/dashboard/admin/billing"
+              style={{padding:"9px 14px",background:"rgba(255,255,255,0.08)",
+                color:"rgba(255,255,255,0.7)",borderRadius:8,fontSize:13,
+                fontWeight:600,textDecoration:"none",whiteSpace:"nowrap"}}>
+              Compare plans
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div style={{marginBottom:28}}>
         <h1 style={{fontSize:26,fontWeight:800,color:C.heading,marginBottom:4}}>

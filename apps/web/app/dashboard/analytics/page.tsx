@@ -3,15 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getToken, contracts as contractsAPI, Contract } from "@/lib/api";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF", accent:"#06B6D4",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  error:"#EF4444", warning:"#F59E0B", success:"#22C55E",
-};
-
 function StatCard({ label, value, sub, color=C.primary }: any) {
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"20px 24px" }}>

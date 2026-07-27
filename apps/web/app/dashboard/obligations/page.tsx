@@ -2,14 +2,9 @@
 import { useEffect, useState, useMemo } from "react";
 import { getToken } from "@/lib/api";
 import { Pagination } from "@/components/shared/Pagination";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  success:"#22C55E", warning:"#F59E0B", error:"#EF4444",
-};
 const PAGE_SIZE = 10;
 const URGENCY_COLOR: Record<string,string> = {
   urgent:"#EF4444", high:"#F97316", normal:"#F59E0B", low:"#22C55E"

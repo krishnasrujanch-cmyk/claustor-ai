@@ -4,13 +4,7 @@ const API = "http://localhost:8000";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { chat as chatAPI, contracts as contractsAPI, Contract, getToken } from "@/lib/api";
 import { MarkdownText } from "@/components/shared/MarkdownText";
-
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF", primaryDark:"#4338CA",
-  accent:"#06B6D4", heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  success:"#22C55E", error:"#EF4444", warning:"#F59E0B",
-};
+import { C } from "@/lib/design-tokens";
 
 interface Message {
   role: "user"|"assistant";
@@ -46,7 +40,7 @@ const PROMPT_CATEGORIES = [
   {
     label: "Legal & Governance",
     icon: "⚖️",
-    color: "#5B4BFF",
+    color: "#0066FF",
     prompts: [
       {icon:"⚖️", text:"What is the governing law?"},
       {icon:"👥", text:"Who are the parties to this contract?"},

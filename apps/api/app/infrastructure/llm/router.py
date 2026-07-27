@@ -22,6 +22,8 @@ from app.infrastructure.llm.base import (
 )
 from app.infrastructure.llm.providers.groq import GroqProvider
 from app.infrastructure.llm.providers.gemini import GeminiProvider
+from app.infrastructure.llm.providers.openai import OpenAIProvider
+from app.infrastructure.llm.providers.ollama import OllamaProvider
 
 logger = structlog.get_logger(__name__)
 
@@ -129,6 +131,20 @@ class LLMRouter:
                 model_pro=settings.GEMINI_MODEL_PRO,
             )
             logger.info("llm_provider_registered", provider="gemini", model=settings.GEMINI_MODEL)
+
+        if settings.OPENAI_API_KEY:
+            self.providers[LLMProvider.OPENAI] = OpenAIProvider(
+                api_key=settings.OPENAI_API_KEY,
+                model=settings.OPENAI_MODEL,
+            )
+            logger.info("llm_provider_registered", provider="openai", model=settings.OPENAI_MODEL)
+
+        if settings.OLLAMA_HOST:
+            self.providers[LLMProvider.OLLAMA] = OllamaProvider(
+                base_url=settings.OLLAMA_HOST,
+                model=settings.OLLAMA_MODEL,
+            )
+            logger.info("llm_provider_registered", provider="ollama", model=settings.OLLAMA_MODEL)
 
         # Initialize circuit breakers for all registered providers
         for provider in self.providers:
@@ -265,3 +281,4 @@ def get_llm_router() -> LLMRouter:
     if _router is None:
         _router = LLMRouter()
     return _router
+# providers already imported above

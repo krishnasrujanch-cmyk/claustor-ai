@@ -62,9 +62,7 @@ class StorageClient:
         filename: str,
         data: bytes = None, file_bytes: bytes = None,
         content_type: str = "application/pdf",
-        mime_type: str = None,
     ) -> dict:
-        content_type = mime_type or content_type
         path = f"orgs/{org_id}/contracts/{contract_id}/{filename}"
         payload = data or file_bytes or b""
 
@@ -85,6 +83,11 @@ class StorageClient:
 
         logger.info("file_uploaded", path=gcs_path, size=len(payload))
         return {"gcs_path": gcs_path, "size_bytes": len(payload)}
+
+    async def download_contract_concurrent(self, paths: list[str]) -> list[bytes]:
+        """Download multiple contracts concurrently."""
+        tasks = [self.download_contract(p) for p in paths]
+        return await asyncio.gather(*tasks)
 
     async def download_contract(self, gcs_path: str) -> bytes:
         if USE_GCS and gcs_path.startswith("gs://"):

@@ -2,14 +2,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getToken } from "@/lib/api";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  success:"#22C55E", warning:"#F59E0B", error:"#EF4444",
-};
 const RISK_COLOR: Record<string,string> = {high:C.error,medium:C.warning,low:C.success};
 
 type ClauseFlag = {clause_id:string;action:"accept"|"flag"|"comment";comment?:string};

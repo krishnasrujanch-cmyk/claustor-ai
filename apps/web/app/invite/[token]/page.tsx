@@ -1,14 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", heading:"#111827", body:"#374151",
-  muted:"#6B7280", border:"#E5E7EB", surface:"#FFFFFF",
-  success:"#22C55E", error:"#EF4444",
-};
-
 export default function InvitePage() {
   const { token } = useParams();
   const router    = useRouter();

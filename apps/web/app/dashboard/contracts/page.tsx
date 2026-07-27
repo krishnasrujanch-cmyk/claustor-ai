@@ -5,17 +5,9 @@ import { getToken } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { can } from "@/lib/permissions";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF", primaryDark:"#4338CA",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  error:"#EF4444", errorLight:"#FEF2F2",
-  success:"#22C55E", successLight:"#F0FDF4",
-  warning:"#F59E0B", warningLight:"#FFFBEB",
-};
-
 const RISK_META: Record<string,{bg:string,text:string,dot:string}> = {
   high:   {bg:"#FEF2F2",text:"#DC2626",dot:"#EF4444"},
   medium: {bg:"#FFFBEB",text:"#D97706",dot:"#F59E0B"},

@@ -7,9 +7,10 @@ export function ThemeToggle() {
 
   useEffect(() => {
     const saved = localStorage.getItem("claustor-theme");
-    const isDark = saved === "dark";
+    const isDark = saved === "dark";  // light is default — only dark if explicitly set
     setDark(isDark);
-    document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", "light");  // always start light
+    if (isDark) document.documentElement.setAttribute("data-theme", "dark");
   }, []);
 
   const toggle = () => {

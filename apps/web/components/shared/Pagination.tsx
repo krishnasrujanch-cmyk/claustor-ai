@@ -1,9 +1,5 @@
 "use client";
-
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF",
-  muted:"#6B7280", border:"#E5E7EB", surface:"#FFFFFF",
-};
+import { C } from "@/lib/design-tokens";
 
 interface PaginationProps {
   page: number;

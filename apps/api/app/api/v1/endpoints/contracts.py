@@ -11,6 +11,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies.auth import AuthUser, get_current_user
+from app.api.v1.endpoints.audit import write_audit
 from app.domain.models import Clause, Contract, Obligation
 from app.domain.schemas.contract import (
     ContractDetailOut, ContractListOut, ContractOut,
@@ -81,6 +82,11 @@ async def upload_contract(
 
     logger.info("contract_uploaded",
                 contract_id=str(contract.id), org_id=str(user.org_id))
+    await write_audit(db, user.org_id, user.id, user.role,
+        action="contract_upload", resource_type="contract",
+        resource_id=contract.id,
+        extra_data={"filename": file.filename})
+    await db.commit()
 
     return ContractUploadResponse(
         contract_id=str(contract.id),
@@ -310,6 +316,12 @@ async def get_contract(
     contract = await service.get_contract(contract_id=contract_id, org_id=user.org_id)
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
+    # Audit log
+    await write_audit(db, user.org_id, user.id, user.role,
+        action="contract_view", resource_type="contract",
+        resource_id=contract_id,
+        extra_data={"title": contract.title if contract else ""})
+    await db.commit()
     return ContractDetailOut.model_validate(contract)
 
 
@@ -338,6 +350,10 @@ async def delete_contract(
     deleted = await service.delete_contract(contract_id=contract_id, org_id=user.org_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Contract not found")
+    await write_audit(db, user.org_id, user.id, user.role,
+        action="contract_delete", resource_type="contract",
+        resource_id=contract_id)
+    await db.commit()
 
 
 @router.get("/{contract_id}/download")

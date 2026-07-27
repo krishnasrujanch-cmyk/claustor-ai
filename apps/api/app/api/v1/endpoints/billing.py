@@ -261,3 +261,108 @@ async def billing_summary(
         "extra_users_purchased": org.extra_users_purchased or 0,
         "upgrade_available": org.plan != "enterprise",
     }
+
+
+@router.post("/upgrade")
+async def upgrade_plan(
+    req: UpgradeRequest,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upgrade or downgrade plan."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Only admins can change plan")
+    if req.plan not in PLANS:
+        raise HTTPException(status_code=400, detail=f"Invalid plan: {req.plan}")
+    if req.plan == "enterprise":
+        raise HTTPException(status_code=400,
+            detail="Enterprise requires custom setup. Contact hello@claustor.ai")
+    from sqlalchemy import update as sa_update
+    from app.domain.models import Organisation
+    await db.execute(
+        sa_update(Organisation)
+        .where(Organisation.id == user.org_id)
+        .values(plan=req.plan)
+    )
+    await db.commit()
+    return {"success": True, "plan": req.plan,
+            "requires_relogin": True,
+            "message": f"Successfully changed to {req.plan} plan. Sign out and back in to activate new features."}
+
+
+@router.get("/invoice/{invoice_index}/pdf")
+async def download_invoice_pdf(
+    invoice_index: int,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate invoice PDF."""
+    import io
+    from datetime import datetime
+    from fastapi.responses import StreamingResponse
+    from sqlalchemy import select
+    from app.domain.models import Organisation
+
+    org_r = await db.execute(
+        select(Organisation).where(Organisation.id == user.org_id))
+    org = org_r.scalar_one_or_none()
+    plan = org.plan if org else "free"
+    prices = {"free":0,"starter":3999,"professional":16499,"enterprise":0}
+    base = prices.get(plan, 0)
+    gst  = round(base * 0.18)
+    total = base + gst
+    now  = datetime.now()
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib import colors as rl_colors
+        from reportlab.lib.units import cm
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4,
+            topMargin=2*cm, bottomMargin=2*cm, leftMargin=2*cm, rightMargin=2*cm)
+        styles = getSampleStyleSheet()
+        story = [
+            Paragraph("<b>CLAUSTOR AI — TAX INVOICE</b>", styles["Heading1"]),
+            Paragraph("DKU Technologies Pvt. Ltd. | Hyderabad, India", styles["Normal"]),
+            Spacer(1, 0.5*cm),
+            Paragraph(f"Invoice #{invoice_index+1:04d} | {now.strftime('%d %b %Y')}", styles["Normal"]),
+            Spacer(1, 0.5*cm),
+        ]
+        data = [
+            ["Description", "Amount (INR)"],
+            [f"{plan.title()} Plan — {now.strftime('%B %Y')}", f"Rs.{base:,}"],
+            ["GST @ 18%", f"Rs.{gst:,}"],
+            ["Total", f"Rs.{total:,}"],
+        ]
+        t = Table(data, colWidths=[12*cm, 5*cm])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), rl_colors.HexColor("#0066FF")),
+            ("TEXTCOLOR",  (0,0), (-1,0), rl_colors.white),
+            ("FONTNAME",   (0,0), (-1,-1), "Helvetica"),
+            ("FONTNAME",   (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTNAME",   (0,-1), (-1,-1), "Helvetica-Bold"),
+            ("ALIGN",      (1,0), (1,-1), "RIGHT"),
+            ("GRID",       (0,0), (-1,-1), 0.5, rl_colors.HexColor("#E5E7EB")),
+            ("BACKGROUND", (0,-1), (-1,-1), rl_colors.HexColor("#F0F7FF")),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 0.5*cm))
+        story.append(Paragraph("Thank you for using Claustor AI.", styles["Normal"]))
+        doc.build(story)
+        buffer.seek(0)
+        return StreamingResponse(buffer, media_type="application/pdf",
+            headers={"Content-Disposition":
+                f"attachment; filename=claustor-invoice-{invoice_index+1:04d}.pdf"})
+    except ImportError:
+        text = f"""CLAUSTOR AI - TAX INVOICE
+Invoice #{invoice_index+1:04d} | {now.strftime('%d %b %Y')}
+Plan: {plan.title()}
+Base: INR {base:,}
+GST (18%): INR {gst:,}
+Total: INR {total:,}
+"""
+        return StreamingResponse(io.BytesIO(text.encode()), media_type="text/plain",
+            headers={"Content-Disposition":
+                f"attachment; filename=claustor-invoice-{invoice_index+1:04d}.txt"})

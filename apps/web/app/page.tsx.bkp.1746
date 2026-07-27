@@ -1,0 +1,740 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { C } from "@/lib/design-tokens";
+
+// ── Pricing Data ───────────────────────────────────────────────────────────────
+const PLANS = [
+  {
+    name:"Free", price:"₹0", period:"forever",
+    desc:"Perfect for individuals and small teams exploring AI contract review.",
+    highlight:false,
+    features:[
+      "5 contracts/month","Basic clause extraction","AI Copilot chat",
+      "Risk scoring","PDF export","Email support",
+    ],
+    cta:"Start free", href:"/register",
+  },
+  {
+    name:"Starter", price:"₹3,999", period:"/month",
+    desc:"For growing legal teams managing 50–100 contracts.",
+    highlight:false,
+    features:[
+      "50 contracts/month","OCR for scanned PDFs","Table extraction",
+      "Excel support","Obligation tracking","Review workflow",
+      "User management","Priority support",
+    ],
+    addon:{name:"Industry Pack", price:"₹1,000/mo",
+      desc:"Pharma, BFSI, Tech — industry-specific clause taxonomy"},
+    cta:"Start Starter", href:"/register?plan=starter",
+  },
+  {
+    name:"Professional", price:"₹16,499", period:"/month",
+    desc:"For enterprise legal teams with high-volume contract workflows.",
+    highlight:true,
+    features:[
+      "Unlimited contracts","PII masking (Presidio AI)","All OCR + Excel features",
+      "Playbook similarity scoring","Industry risk weights","Clause relationship mapping",
+      "Missing clause detection","Audit log","Data export","Dedicated support",
+    ],
+    addon:{name:"Pro Industry Pack", price:"₹2,500/mo",
+      desc:"All 8 industries: Healthcare, BFSI, Tech, Pharma, Manufacturing, Retail, Energy, Legal"},
+    cta:"Start Professional", href:"/register?plan=professional",
+  },
+  {
+    name:"Enterprise", price:"Custom", period:"",
+    desc:"Unlimited scale, custom SLAs, on-prem deployment, SSO.",
+    highlight:false,
+    features:[
+      "Everything in Professional","Custom contract volume","On-premise deployment",
+      "SSO / SAML / Auth0","Custom clause taxonomy","Dedicated CSM",
+      "SLA guarantee","VAPT + SOC2 report","White-label option",
+    ],
+    cta:"Contact sales", href:"mailto:hello@claustor.ai",
+  },
+];
+
+const INDUSTRIES = [
+  {icon:"💊", name:"Pharma & Life Sciences",
+    clauses:["Royalty Schedules","Milestone Payments","IP Licensing","Clinical Trial Indemnity"]},
+  {icon:"🏦", name:"BFSI & Financial Services",
+    clauses:["Loan Covenants","Regulatory Compliance","Data Sharing Agreements","Audit Rights"]},
+  {icon:"💻", name:"Technology & SaaS",
+    clauses:["Source Code Escrow","SLA Credits","Data Processing Agreements","IP Ownership"]},
+  {icon:"🏥", name:"Healthcare",
+    clauses:["HIPAA BAAs","Patient Data Clauses","Clinical Agreements","Liability Waivers"]},
+  {icon:"🏭", name:"Manufacturing",
+    clauses:["Warranty Terms","Acceptance Testing","Force Majeure","Supply Chain SLAs"]},
+  {icon:"🛒", name:"Retail & Distribution",
+    clauses:["Exclusivity Zones","Price Adjustment","Returns Policy","Non-Compete"]},
+  {icon:"⚡", name:"Energy & Infrastructure",
+    clauses:["Offtake Agreements","Force Majeure","Environmental Compliance","Step-in Rights"]},
+  {icon:"⚖️", name:"Legal & Professional Services",
+    clauses:["Retainer Terms","Conflict of Interest","Privilege Waivers","Fee Arrangements"]},
+];
+
+const STEPS = [
+  {icon:"⬆️", title:"Upload", desc:"Drag & drop any PDF, DOCX, Excel, or XML contract. Scanned PDFs supported with OCR."},
+  {icon:"🤖", title:"AI Analysis", desc:"Claustor extracts clauses, scores risks, maps relationships, and checks against playbook — in under 60 seconds."},
+  {icon:"📋", title:"Review & Act", desc:"Legal team reviews clause-by-clause, assigns flags, submits decisions. AI Copilot answers any question with citations."},
+];
+
+const METRICS = [
+  {icon:"⚡", value:"< 60s",  label:"Contract analysis time",    sub:"vs 2–4 hours manually"},
+  {icon:"🎯", value:"94%",    label:"Clause extraction accuracy", sub:"across 25 clause types"},
+  {icon:"🚀", value:"8×",     label:"Faster than manual review",  sub:"legal team productivity"},
+  {icon:"🔒", value:"100%",   label:"Data isolation per org",     sub:"zero cross-tenant access"},
+];
+
+const TRUST = [
+  {icon:"🔒", label:"AES-256 Encryption"},
+  {icon:"🏢", label:"SOC2 Infrastructure"},
+  {icon:"🇮🇳", label:"India Data Residency"},
+  {icon:"✅", label:"GDPR Ready"},
+  {icon:"🔑", label:"Org-level Isolation"},
+  {icon:"📋", label:"Full Audit Logs"},
+];
+
+// ── Product Preview (ASCII art mock → SVG) ─────────────────────────────────────
+function ProductPreview() {
+  return (
+    <div style={{
+      width:"100%", maxWidth:900, margin:"0 auto",
+      borderRadius:16, overflow:"hidden",
+      border:`1px solid ${C.border}`,
+      boxShadow:"0 32px 100px rgba(91,75,255,0.2), 0 8px 32px rgba(0,0,0,0.12)",
+      border:"1px solid rgba(100,100,120,0.15)",
+      background:C.surface,
+    }}>
+      {/* Browser chrome */}
+      <div style={{background:"#F3F4F6",padding:"10px 16px",
+        display:"flex",alignItems:"center",gap:8,
+        borderBottom:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",gap:6}}>
+          {["#EF4444","#F59E0B","#22C55E"].map(c=>(
+            <div key={c} style={{width:10,height:10,borderRadius:"50%",background:c}}/>
+          ))}
+        </div>
+        <div style={{flex:1,background:"white",borderRadius:6,padding:"4px 12px",
+          fontSize:11,color:C.muted,border:`1px solid ${C.border}`}}>
+          app.claustor.ai/dashboard/contracts/pharma-license
+        </div>
+      </div>
+      {/* App content mock */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 380px",minHeight:420}}>
+        {/* Left: contract detail */}
+        <div style={{padding:24,borderRight:`1px solid ${C.border}`}}>
+          <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Contracts › Pharma License Distribution</div>
+          <div style={{fontSize:18,fontWeight:800,color:C.heading,marginBottom:8}}>
+            Pharma License Distribution Agreement
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+            {[
+              {label:"License",bg:"#F3F4F6",text:C.muted},
+              {label:"v2 (latest)",bg:"#E6F0FF",text:C.primary},
+              {label:"🔴 High Risk",bg:"#FEF2F2",text:"#DC2626"},
+              {label:"✅ Approved",bg:"#F0FDF4",text:"#16A34A"},
+            ].map(b=>(
+              <span key={b.label} style={{fontSize:10,fontWeight:700,padding:"2px 8px",
+                borderRadius:20,background:b.bg,color:b.text}}>{b.label}</span>
+            ))}
+          </div>
+          {/* Metadata cards */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+            {[
+              {label:"COUNTERPARTY",value:"MediCorp Asia Pvt. Ltd."},
+              {label:"VALUE",value:"$285,000,000"},
+              {label:"EFFECTIVE",value:"01 Jun 2026"},
+              {label:"AUTO-RENEWAL",value:"⚠️ Yes (540d notice)"},
+            ].map(m=>(
+              <div key={m.label} style={{background:C.bg,borderRadius:8,padding:"8px 12px",
+                border:`1px solid ${m.label==="AUTO-RENEWAL"?"#F59E0B40":C.border}`}}>
+                <div style={{fontSize:9,color:C.muted,marginBottom:2,textTransform:"uppercase"}}>{m.label}</div>
+                <div style={{fontSize:12,fontWeight:700,
+                  color:m.label==="AUTO-RENEWAL"?C.warning:C.heading}}>{m.value}</div>
+              </div>
+            ))}
+          </div>
+          {/* Clauses */}
+          {[
+            {type:"IP OWNERSHIP",title:"Intellectual Property Rights",risk:"high",score:95,
+             playbook:"12%",deviation:"Significantly deviates from standard"},
+            {type:"PAYMENT",title:"Royalty Payments",risk:"medium",score:40,
+             playbook:"50%",deviation:"Missing: 30 days, disputed"},
+            {type:"TERMINATION",title:"Termination for Convenience",risk:"high",score:90,
+             playbook:"13%",deviation:"Missing: 30 days, notice"},
+          ].map(cl=>(
+            <div key={cl.type} style={{border:`1px solid ${cl.risk==="high"?"#EF444430":C.border}`,
+              borderLeft:`3px solid ${cl.risk==="high"?C.error:cl.risk==="medium"?C.warning:C.success}`,
+              borderRadius:8,padding:"10px 12px",marginBottom:8,background:C.surface}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:9,fontWeight:700,color:C.primary,textTransform:"uppercase"}}>
+                  {cl.type}
+                </span>
+                <span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:20,
+                  background:cl.risk==="high"?"#FEF2F2":cl.risk==="medium"?"#FFFBEB":"#F0FDF4",
+                  color:cl.risk==="high"?"#DC2626":cl.risk==="medium"?"#D97706":"#16A34A"}}>
+                  {cl.score} · {cl.risk.toUpperCase()}
+                </span>
+              </div>
+              <div style={{fontSize:12,fontWeight:600,color:C.heading,marginBottom:4}}>{cl.title}</div>
+              <div style={{display:"flex",gap:6}}>
+                <span style={{fontSize:9,padding:"1px 6px",borderRadius:20,
+                  background:parseFloat(cl.playbook)>40?"#F0FDF4":"#FEF2F2",
+                  color:parseFloat(cl.playbook)>40?"#16A34A":"#DC2626",fontWeight:600}}>
+                  📋 Playbook {cl.playbook}
+                </span>
+                <span style={{fontSize:9,color:C.muted,fontStyle:"italic"}}>{cl.deviation}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Right: AI Copilot */}
+        <div style={{padding:20,background:"#FAFBFF",display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.heading,display:"flex",
+            alignItems:"center",gap:8}}>
+            <div style={{width:28,height:28,borderRadius:"50%",
+              background:`conic-gradient(from 0deg,${C.primary},${C.accent},#A855F7)`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:12,fontWeight:800,color:"white"}}>✦</div>
+            AI Copilot
+          </div>
+          {/* User message */}
+          <div style={{display:"flex",justifyContent:"flex-end"}}>
+            <div style={{background:C.primary,color:"white",borderRadius:"12px 12px 2px 12px",
+              padding:"8px 12px",fontSize:11,maxWidth:"80%"}}>
+              What is the IP ownership clause?
+            </div>
+          </div>
+          {/* AI response */}
+          <div style={{background:C.surface,border:`1px solid ${C.border}`,
+            borderRadius:"2px 12px 12px 12px",padding:"10px 12px",fontSize:11,color:C.body,
+            lineHeight:1.6}}>
+            The IP Ownership clause grants <strong>Licensor permanent ownership</strong> of all inventions.
+            This significantly deviates from standard templates — typically IP created jointly is co-owned.
+            <div style={{marginTop:6,padding:"4px 8px",background:"#FEF2F2",
+              borderRadius:6,fontSize:10,color:"#DC2626",fontWeight:600}}>
+              ⚠️ High Risk · Score: 95/100
+            </div>
+            <div style={{marginTop:6,display:"flex",gap:4}}>
+              {["[1] IP Rights §4.1","[2] Assignments §4.3"].map(c=>(
+                <span key={c} style={{fontSize:9,padding:"1px 6px",borderRadius:20,
+                  background:"#E6F0FF",color:C.primary,fontWeight:600}}>{c}</span>
+              ))}
+            </div>
+          </div>
+          {/* Follow-ups */}
+          <div style={{fontSize:10,color:C.muted,fontWeight:600}}>You might also ask:</div>
+          {["What royalties are owed?","Can this IP clause be negotiated?"].map(q=>(
+            <div key={q} style={{padding:"5px 10px",border:`1px solid ${C.primary}30`,
+              borderRadius:20,fontSize:10,color:C.primary,
+              background:C.primaryLight,cursor:"pointer",fontWeight:500}}>
+              {q}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Landing Page ──────────────────────────────────────────────────────────
+export default function LandingPage() {
+  const [scrolled, setScrolled] = useState(false);
+  const [activeIndustry, setActiveIndustry] = useState(0);
+  const [billingAnnual, setBillingAnnual] = useState(false);
+
+  useEffect(()=>{
+    const handler = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", handler);
+    return () => window.removeEventListener("scroll", handler);
+  },[]);
+
+  return (
+    <div style={{fontFamily:"Inter,system-ui,sans-serif",color:C.body,background:C.surface}}>
+
+      {/* ── Sticky Nav ──────────────────────────────────────────────────────── */}
+      <nav style={{
+        position:"sticky", top:0, zIndex:100,
+        background:scrolled?"rgba(255,255,255,0.9)":"white",
+        backdropFilter:scrolled?"blur(12px)":"none",
+        borderBottom:`1px solid ${scrolled?C.border:"transparent"}`,
+        transition:"all 0.3s",
+        padding:"0 48px",
+      }}>
+        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",
+          alignItems:"center",height:64,gap:32}}>
+          {/* Logo */}
+          <div style={{display:"flex",alignItems:"center",gap:10,fontWeight:800,
+            fontSize:20,color:C.heading,letterSpacing:"-0.02em"}}>
+            <div style={{width:36,height:36,borderRadius:10,
+              background:`linear-gradient(135deg,${C.primary},${C.accent})`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:18,fontWeight:900,color:"white",
+              boxShadow:`0 4px 12px ${C.primary}40`}}>C</div>
+            Claustor
+          </div>
+          {/* Nav links */}
+          <div style={{display:"flex",gap:24,flex:1}}>
+            {["Features","Pricing","Security","Industries"].map(l=>(
+              <a key={l} href={`#${l.toLowerCase()}`}
+                style={{fontSize:14,color:C.muted,textDecoration:"none",fontWeight:500,
+                  transition:"color 0.15s"}}
+                onMouseEnter={e=>e.currentTarget.style.color=C.heading}
+                onMouseLeave={e=>e.currentTarget.style.color=C.muted}>
+                {l}
+              </a>
+            ))}
+          </div>
+          {/* Auth buttons */}
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <Link href="/login"
+              style={{fontSize:14,color:C.muted,textDecoration:"none",
+                fontWeight:500,padding:"6px 14px"}}>
+              Sign in
+            </Link>
+            <Link href="/register"
+              style={{padding:"8px 20px",background:C.primary,color:"white",
+                borderRadius:8,fontSize:14,fontWeight:700,textDecoration:"none",
+                boxShadow:`0 2px 8px ${C.primary}40`,transition:"all 0.2s"}}
+              onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=C.primaryHover}
+              onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=C.primary}>
+              Start free
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* ── Hero ────────────────────────────────────────────────────────────── */}
+      <section style={{
+        background:`linear-gradient(180deg, #FAFBFF 0%, #FFFFFF 100%)`,
+        padding:"80px 48px 60px", textAlign:"center",
+      }}>
+        <div style={{maxWidth:800,margin:"0 auto"}}>
+          {/* Badge */}
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,
+            padding:"6px 16px",borderRadius:20,marginBottom:24,
+            background:`linear-gradient(135deg,${C.primaryLight},#F0FDFF)`,
+            border:`1px solid ${C.primary}30`}}>
+            <span style={{fontSize:14}}>✨</span>
+            <span style={{fontSize:13,fontWeight:700,color:C.primary}}>
+              Powered by Groq · Llama 3.3 70B
+            </span>
+            <span style={{fontSize:10,padding:"1px 6px",borderRadius:20,
+              background:C.primary,color:"white",fontWeight:700}}>FAST</span>
+          </div>
+
+          {/* Headline */}
+          <h1 style={{
+            fontSize:52, fontWeight:900, color:C.heading,
+            lineHeight:1.15, letterSpacing:"-0.03em", marginBottom:20,
+            maxWidth:720, margin:"0 auto 20px",
+          }}>
+            Your contracts,{" "}
+            <span style={{
+              background:`linear-gradient(135deg,${C.primary},${C.accent})`,
+              WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
+            }}>
+              understood
+            </span>
+            {" "}in seconds
+          </h1>
+
+          {/* Subheadline */}
+          <p style={{fontSize:18,color:C.muted,lineHeight:1.7,marginBottom:32,maxWidth:600,margin:"0 auto 32px"}}>
+            Upload any PDF or DOCX. Claustor extracts every clause, scores every risk,
+            and answers any question — with citations from the actual contract.
+          </p>
+
+          {/* CTAs */}
+          <div style={{display:"flex",gap:12,justifyContent:"center",
+            flexWrap:"wrap",marginBottom:16}}>
+            <Link href="/register"
+              style={{padding:"14px 28px",background:C.primary,color:"white",
+                borderRadius:10,fontSize:16,fontWeight:700,textDecoration:"none",
+                boxShadow:`0 4px 16px ${C.primary}40`,transition:"all 0.2s"}}>
+              Start free — no card required
+            </Link>
+            <a href="#features"
+              style={{padding:"14px 28px",background:"transparent",color:C.heading,
+                border:`1.5px solid ${C.border}`,borderRadius:10,fontSize:16,
+                fontWeight:600,textDecoration:"none",transition:"all 0.2s"}}
+              onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C.primary;(e.currentTarget as HTMLElement).style.color=C.primary;}}
+              onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C.border;(e.currentTarget as HTMLElement).style.color=C.heading;}}>
+              ⏯ See how it works
+            </a>
+          </div>
+          <p style={{fontSize:12,color:C.muted}}>
+            Free forever · No credit card · 5 contracts included
+          </p>
+        </div>
+
+        {/* Product preview */}
+        <div style={{maxWidth:1000,margin:"48px auto 0",padding:"0 24px"}}>
+          <ProductPreview/>
+        </div>
+      </section>
+
+      {/* ── Metrics Bar ─────────────────────────────────────────────────────── */}
+      <section style={{background:C.bg,borderTop:`1px solid ${C.border}`,
+        borderBottom:`1px solid ${C.border}`,padding:"40px 48px"}}>
+        <div style={{maxWidth:1200,margin:"0 auto",
+          display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:24}}>
+          {METRICS.map(m=>(
+            <div key={m.value} style={{textAlign:"center",padding:"20px 16px",
+              background:C.surface,borderRadius:12,border:`1px solid ${C.border}`,
+              boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:28,marginBottom:6}}>{m.icon}</div>
+              <div style={{fontSize:32,fontWeight:900,color:C.primary,
+                letterSpacing:"-0.02em",marginBottom:4}}>{m.value}</div>
+              <div style={{fontSize:13,fontWeight:600,color:C.heading,marginBottom:2}}>
+                {m.label}
+              </div>
+              <div style={{fontSize:11,color:C.muted}}>{m.sub}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How it works ────────────────────────────────────────────────────── */}
+      <section id="features" style={{padding:"80px 48px",background:C.surface}}>
+        <div style={{maxWidth:1100,margin:"0 auto"}}>
+          <div style={{textAlign:"center",marginBottom:48}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.primary,letterSpacing:"0.1em",
+              textTransform:"uppercase",marginBottom:8}}>How it works</div>
+            <h2 style={{fontSize:36,fontWeight:800,color:C.heading,letterSpacing:"-0.02em"}}>
+              From upload to insight in 3 steps
+            </h2>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:24,position:"relative"}}>
+            {/* Connector line */}
+            <div style={{position:"absolute",top:52,left:"calc(33% + 12px)",
+              right:"calc(33% + 12px)",height:2,
+              background:`linear-gradient(90deg,${C.primary}40,${C.primary},${C.primary}40)`,
+              zIndex:0}}/>
+            {STEPS.map((s,i)=>(
+              <div key={i} style={{textAlign:"center",padding:"32px 24px",
+                background:i===1?C.primaryLight:C.bg,borderRadius:16,
+                border:i===1?`2px solid ${C.primary}`:`1px solid ${C.border}`,
+                position:"relative",zIndex:1}}>
+                {i===1&&(
+                  <div style={{position:"absolute",top:-12,left:"50%",
+                    transform:"translateX(-50%)",fontSize:10,fontWeight:700,
+                    padding:"3px 12px",background:C.primary,color:"white",
+                    borderRadius:20,whiteSpace:"nowrap"}}>
+                    ⚡ Core AI Engine
+                  </div>
+                )}
+                <div style={{width:56,height:56,borderRadius:"50%",
+                  background:`linear-gradient(135deg,${C.primary}15,${C.accent}15)`,
+                  border:`2px solid ${C.primary}30`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:24,margin:"0 auto 16px"}}>
+                  {s.icon}
+                </div>
+                <div style={{fontSize:11,fontWeight:700,color:C.primary,
+                  marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                  Step {i+1}
+                </div>
+                <h3 style={{fontSize:18,fontWeight:700,color:C.heading,marginBottom:8}}>
+                  {s.title}
+                </h3>
+                <p style={{fontSize:14,color:i===1?C.primary:C.muted,lineHeight:1.6}}>{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features Grid ───────────────────────────────────────────────────── */}
+      <section style={{padding:"80px 48px",background:C.bg}}>
+        <div style={{maxWidth:1100,margin:"0 auto"}}>
+          <div style={{textAlign:"center",marginBottom:48}}>
+            <h2 style={{fontSize:36,fontWeight:800,color:C.heading,letterSpacing:"-0.02em",marginBottom:12}}>
+              Everything your legal team needs
+            </h2>
+            <p style={{fontSize:16,color:C.muted}}>
+              25 clause types · Playbook scoring · Industry weights · Full audit trail
+            </p>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
+            {[
+              {icon:"🤖",title:"Hybrid Boundary Detection",desc:"Regex + LLM detects exact clause boundaries. 25 clause types including royalties, escrow, benchmarking, audit rights."},
+              {icon:"🛡️",title:"Risk Scoring 0-100",desc:"Every clause scored with full range. Industry weights: Healthcare data_protection 2×, Tech IP ownership 2×."},
+              {icon:"📋",title:"Playbook Similarity",desc:"Compare every clause against your standard templates. See % match and exact deviations flagged."},
+              {icon:"🔗",title:"Clause Relationships",desc:"Payment → Termination → SLA cross-references mapped automatically. Click related clause to scroll directly."},
+              {icon:"⚠️",title:"Missing Clause Detection",desc:"Automatically flags expected clauses not found. Pharma contract missing Insurance? Critical alert shown."},
+              {icon:"🌍",title:"Multi-language Support",desc:"Detect contract language (EN/HI/FR/DE/ES) automatically. Clause extraction adapts accordingly."},
+              {icon:"📋",title:"Legal Review Workflow",desc:"Clause-by-clause Accept/Flag/Note. Single CTA per state. SLA tracker. Reject → revision upload cycle."},
+              {icon:"💬",title:"AI Copilot",desc:"Categorised prompt library. Follow-up suggestions. Cited responses. Rejection banner for flagged contracts."},
+              {icon:"📊",title:"Audit Log + Data Export",desc:"Complete event trail. Export all data as ZIP. GDPR Article 20 data portability. Full org isolation."},
+            ].map(f=>(
+              <div key={f.title} style={{padding:"24px",background:C.surface,
+                borderRadius:12,border:`1px solid ${C.border}`,
+                transition:"all 0.15s"}}
+                onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C.primary;(e.currentTarget as HTMLElement).style.boxShadow=`0 4px 16px ${C.primary}15`;}}
+                onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C.border;(e.currentTarget as HTMLElement).style.boxShadow="none";}}>
+                <div style={{fontSize:28,marginBottom:12}}>{f.icon}</div>
+                <h3 style={{fontSize:15,fontWeight:700,color:C.heading,marginBottom:6}}>{f.title}</h3>
+                <p style={{fontSize:13,color:C.muted,lineHeight:1.6}}>{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Industries ──────────────────────────────────────────────────────── */}
+      <section id="industries" style={{padding:"80px 48px",background:C.surface}}>
+        <div style={{maxWidth:1100,margin:"0 auto"}}>
+          <div style={{textAlign:"center",marginBottom:48}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.primary,letterSpacing:"0.1em",
+              textTransform:"uppercase",marginBottom:8}}>Industry Intelligence</div>
+            <h2 style={{fontSize:36,fontWeight:800,color:C.heading,letterSpacing:"-0.02em",marginBottom:12}}>
+              Built for your industry's contracts
+            </h2>
+            <p style={{fontSize:16,color:C.muted}}>
+              Industry-specific clause taxonomy, risk weights, and playbook templates.
+              Available as an add-on to Starter and Professional plans.
+            </p>
+          </div>
+          {/* Industry tabs */}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",marginBottom:32}}>
+            {INDUSTRIES.map((ind,i)=>(
+              <button key={ind.name} onClick={()=>setActiveIndustry(i)}
+                style={{padding:"8px 16px",borderRadius:20,border:"none",
+                  cursor:"pointer",fontSize:13,fontWeight:600,transition:"all 0.15s",
+                  background:activeIndustry===i?C.primary:"#F3F4F6",
+                  color:activeIndustry===i?"white":C.muted}}>
+                {ind.icon} {ind.name}
+              </button>
+            ))}
+          </div>
+          {/* Active industry detail */}
+          <div style={{background:C.bg,borderRadius:16,border:`1px solid ${C.border}`,
+            padding:"32px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:32,
+            alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:40,marginBottom:12}}>{INDUSTRIES[activeIndustry].icon}</div>
+              <h3 style={{fontSize:22,fontWeight:800,color:C.heading,marginBottom:8}}>
+                {INDUSTRIES[activeIndustry].name}
+              </h3>
+              <p style={{fontSize:14,color:C.muted,lineHeight:1.6,marginBottom:16}}>
+                Industry-specific risk weights and clause taxonomy optimised for {INDUSTRIES[activeIndustry].name} contracts.
+              </p>
+              <Link href="/register"
+                style={{padding:"10px 20px",background:C.primary,color:"white",
+                  borderRadius:8,fontSize:13,fontWeight:700,textDecoration:"none"}}>
+                Get industry pack →
+              </Link>
+            </div>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",
+                letterSpacing:"0.05em",marginBottom:12}}>Key Clause Types</div>
+              {INDUSTRIES[activeIndustry].clauses.map(cl=>(
+                <div key={cl} style={{display:"flex",alignItems:"center",gap:10,
+                  padding:"10px 14px",background:C.surface,borderRadius:8,
+                  border:`1px solid ${C.border}`,marginBottom:8}}>
+                  <div style={{width:6,height:6,borderRadius:"50%",background:C.primary,flexShrink:0}}/>
+                  <span style={{fontSize:13,fontWeight:600,color:C.heading}}>{cl}</span>
+                  <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,padding:"1px 6px",
+                    borderRadius:20,background:"#FEF2F2",color:"#DC2626"}}>HIGH WEIGHT</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Pricing ─────────────────────────────────────────────────────────── */}
+      <section id="pricing" style={{padding:"80px 48px",background:C.bg}}>
+        <div style={{maxWidth:1200,margin:"0 auto"}}>
+          <div style={{textAlign:"center",marginBottom:48}}>
+            <h2 style={{fontSize:36,fontWeight:800,color:C.heading,letterSpacing:"-0.02em",marginBottom:12}}>
+              Simple, transparent pricing
+            </h2>
+            <p style={{fontSize:16,color:C.muted,marginBottom:20}}>
+              Start free. Scale as you grow. Industry packs available as add-ons.
+            </p>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16}}>
+            {PLANS.map(plan=>(
+              <div key={plan.name} style={{
+                background:plan.highlight?C.primary:C.surface,
+                color:plan.highlight?"white":C.body,
+                borderRadius:16,padding:24,
+                border:plan.highlight?`none`:`1px solid ${C.border}`,
+                boxShadow:plan.highlight?`0 8px 32px ${C.primary}40`:"none",
+                display:"flex",flexDirection:"column",gap:16,
+              }}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,
+                    color:plan.highlight?"rgba(255,255,255,0.8)":C.muted,
+                    marginBottom:4}}>
+                    {plan.name}
+                  </div>
+                  <div style={{fontSize:28,fontWeight:900,
+                    color:plan.highlight?"white":C.heading,letterSpacing:"-0.02em"}}>
+                    {plan.price}
+                    <span style={{fontSize:14,fontWeight:500,
+                      color:plan.highlight?"rgba(255,255,255,0.7)":C.muted}}>
+                      {plan.period}
+                    </span>
+                  </div>
+                  <p style={{fontSize:12,marginTop:6,lineHeight:1.5,
+                    color:plan.highlight?"rgba(255,255,255,0.8)":C.muted}}>
+                    {plan.desc}
+                  </p>
+                </div>
+
+                {/* Industry addon */}
+                {(plan as any).addon && (
+                  <div style={{padding:"10px 12px",borderRadius:8,
+                    background:plan.highlight?"rgba(255,255,255,0.15)":"#FFF8F0",
+                    border:`1px solid ${plan.highlight?"rgba(255,255,255,0.3)":"#F59E0B40"}`}}>
+                    <div style={{fontSize:11,fontWeight:700,
+                      color:plan.highlight?"white":C.warning,marginBottom:2}}>
+                      🏭 Industry Pack Add-on
+                    </div>
+                    <div style={{fontSize:13,fontWeight:700,
+                      color:plan.highlight?"white":C.heading}}>
+                      +{(plan as any).addon.price}
+                    </div>
+                    <div style={{fontSize:11,
+                      color:plan.highlight?"rgba(255,255,255,0.7)":C.muted}}>
+                      {(plan as any).addon.desc}
+                    </div>
+                  </div>
+                )}
+
+                {/* Features */}
+                <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                  {plan.features.map(f=>(
+                    <div key={f} style={{display:"flex",gap:8,alignItems:"flex-start",fontSize:13}}>
+                      <span style={{color:plan.highlight?"rgba(255,255,255,0.9)":C.success,
+                        flexShrink:0,marginTop:1}}>✓</span>
+                      <span style={{color:plan.highlight?"rgba(255,255,255,0.9)":C.body}}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* CTA */}
+                <Link href={plan.href}
+                  style={{
+                    padding:"12px",borderRadius:8,fontSize:14,fontWeight:700,
+                    textAlign:"center",textDecoration:"none",transition:"all 0.2s",
+                    background:plan.highlight?"white":"transparent",
+                    color:plan.highlight?C.primary:C.primary,
+                    border:plan.highlight?"none":`2px solid ${C.primary}`,
+                  }}>
+                  {plan.cta}
+                </Link>
+              </div>
+            ))}
+          </div>
+          <p style={{textAlign:"center",fontSize:13,color:C.muted,marginTop:24}}>
+            All plans include org-level data isolation, audit logs, and data export.
+            Industry packs add domain-specific clause weights and taxonomy.
+          </p>
+        </div>
+      </section>
+
+      {/* ── Security ────────────────────────────────────────────────────────── */}
+      <section id="security" style={{padding:"80px 48px",background:C.surface}}>
+        <div style={{maxWidth:900,margin:"0 auto",textAlign:"center"}}>
+          <div style={{fontSize:12,fontWeight:700,color:C.primary,letterSpacing:"0.1em",
+            textTransform:"uppercase",marginBottom:8}}>Enterprise Security</div>
+          <h2 style={{fontSize:36,fontWeight:800,color:C.heading,
+            letterSpacing:"-0.02em",marginBottom:12}}>
+            Bank-grade security for your contracts
+          </h2>
+          <p style={{fontSize:16,color:C.muted,marginBottom:48}}>
+            Your contracts never leave your encrypted namespace. We process — you own it.
+          </p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,marginBottom:32}}>
+            {TRUST.map(t=>(
+              <div key={t.label} style={{padding:"20px 16px",background:C.bg,
+                borderRadius:12,border:`1px solid ${C.border}`,
+                display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+                <span style={{fontSize:28}}>{t.icon}</span>
+                <span style={{fontSize:13,fontWeight:700,color:C.heading}}>{t.label}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{background:`linear-gradient(135deg,${C.primaryLight},#F0FDFF)`,
+            border:`1px solid ${C.primary}30`,borderRadius:16,padding:"24px 32px",
+            fontSize:14,color:C.body,lineHeight:1.7}}>
+            <strong>Data isolation guarantee:</strong> Each organisation gets a dedicated Pinecone namespace,
+            isolated PostgreSQL rows scoped by org_id, and separate storage paths.
+            No Claustor employee can query across organisations. Full audit log of every access.
+          </div>
+        </div>
+      </section>
+
+      {/* ── Footer CTA ──────────────────────────────────────────────────────── */}
+      <section style={{
+        padding:"80px 48px",
+        background:`linear-gradient(135deg,${C.primary},${C.primaryHover})`,
+        textAlign:"center",
+      }}>
+        <div style={{maxWidth:600,margin:"0 auto"}}>
+          <h2 style={{fontSize:36,fontWeight:900,color:"white",
+            letterSpacing:"-0.02em",marginBottom:12}}>
+            Ready to understand your contracts?
+          </h2>
+          <p style={{fontSize:16,color:"rgba(255,255,255,0.8)",marginBottom:32}}>
+            Join legal teams using Claustor to review contracts 8× faster.
+            Start free, no credit card required.
+          </p>
+          <div style={{display:"flex",gap:12,justifyContent:"center"}}>
+            <Link href="/register"
+              style={{padding:"14px 32px",background:"white",color:C.primary,
+                borderRadius:10,fontSize:16,fontWeight:800,textDecoration:"none",
+                boxShadow:"0 4px 16px rgba(0,0,0,0.2)"}}>
+              Start free today →
+            </Link>
+            <Link href="/login"
+              style={{padding:"14px 28px",background:"transparent",color:"white",
+                border:"2px solid rgba(255,255,255,0.4)",borderRadius:10,
+                fontSize:16,fontWeight:600,textDecoration:"none"}}>
+              Sign in
+            </Link>
+          </div>
+          <p style={{fontSize:12,color:"rgba(255,255,255,0.6)",marginTop:16}}>
+            Free forever · 5 contracts · No credit card
+          </p>
+        </div>
+      </section>
+
+      {/* ── Footer ──────────────────────────────────────────────────────────── */}
+      <footer style={{padding:"32px 48px",background:C.heading,color:"rgba(255,255,255,0.5)"}}>
+        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",
+          justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,
+            fontWeight:800,fontSize:18,color:"white"}}>
+            <div style={{width:32,height:32,borderRadius:8,
+              background:`linear-gradient(135deg,${C.primary},${C.accent})`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:16,fontWeight:900,color:"white"}}>C</div>
+            Claustor
+          </div>
+          <div style={{fontSize:12}}>
+            © 2026 DKU Technologies Pvt. Ltd. · Built with ❤️ in Hyderabad, India
+          </div>
+          <div style={{display:"flex",gap:16,fontSize:12}}>
+            {["Privacy","Terms","Security","Contact"].map(l=>(
+              <a key={l} href="#"
+                style={{color:"rgba(255,255,255,0.5)",textDecoration:"none"}}>{l}</a>
+            ))}
+          </div>
+        </div>
+      </footer>
+
+      <style>{`
+        @keyframes orb-spin{from{filter:hue-rotate(0deg)}to{filter:hue-rotate(360deg)}}
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+      `}</style>
+    </div>
+  );
+}

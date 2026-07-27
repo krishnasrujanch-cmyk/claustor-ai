@@ -84,6 +84,8 @@ class Settings(BaseSettings):
     # ── LLM Providers ─────────────────────────────
     # Primary: Groq
     GROQ_API_KEY: str = ""
+    GROQ_API_KEY_2: str = ""  # Second Groq key for rotation
+    GROQ_API_KEY_3: str = ""  # Third Groq key for rotation
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_MODEL_FAST: str = "llama-3.1-8b-instant"
 
@@ -159,18 +161,12 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_database_url(cls, v: str) -> str:
-        import re
         if not v:
             raise ValueError("DATABASE_URL is required")
         if not v.startswith(("postgresql://", "postgresql+asyncpg://")):
             raise ValueError("DATABASE_URL must be a PostgreSQL connection string")
-        v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
-        # Strip sslmode and channel_binding — asyncpg uses connect_args instead
-        v = re.sub(r"[?&]sslmode=[^&]*", "", v)
-        v = re.sub(r"[?&]channel_binding=[^&]*", "", v)
-        v = re.sub(r"[?&]$", "", v)
-        v = re.sub(r"\?$", "", v)
-        return v
+        # Convert to asyncpg if needed
+        return v.replace("postgresql://", "postgresql+asyncpg://", 1)
 
     @field_validator("REDIS_URL")
     @classmethod
@@ -211,7 +207,3 @@ def get_settings() -> Settings:
 
 # Global settings instance
 settings = get_settings()
-# Note: DATABASE_URL in .env should be:
-# postgresql+asyncpg://user:pass@host/db
-# WITHOUT sslmode or channel_binding params
-# SSL is handled via connect_args in session.py

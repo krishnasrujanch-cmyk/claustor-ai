@@ -3,15 +3,9 @@
 import { useEffect, useState } from "react";
 import { getToken } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
-const C = {
-  primary:"#5B4BFF", primaryLight:"#EEF0FF",
-  heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
-  success:"#22C55E", warning:"#F59E0B", error:"#EF4444",
-};
-
 export default function SettingsPage() {
   const { user, loadUser } = useAuthStore();
   const [industries, setIndustries] = useState<any[]>([]);

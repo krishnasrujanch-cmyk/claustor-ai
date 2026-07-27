@@ -26,7 +26,11 @@ class Base(DeclarativeBase):
 async def init_db(database_url: str, connect_args: dict = None) -> None:
     global async_session_factory
     if connect_args is None:
-        connect_args = {}
+        import ssl as _ssl
+        ssl_ctx = _ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = _ssl.CERT_NONE
+        connect_args = {"ssl": ssl_ctx}
 
     engine = create_async_engine(
         database_url,

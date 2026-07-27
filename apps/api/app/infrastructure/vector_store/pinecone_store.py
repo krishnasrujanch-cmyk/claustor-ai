@@ -165,20 +165,31 @@ class VectorStore:
                 "metadata": metadata,
             })
 
-        # Upsert in batches of 100 (Pinecone limit)
+        # Upsert in concurrent batches of 100 (Pinecone limit)
+        # Run up to 3 batches concurrently for 3x throughput
         batch_size = 100
+        max_concurrent = 3
         total_upserted = 0
-        for i in range(0, len(vectors), batch_size):
-            batch = vectors[i:i + batch_size]
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                lambda b=batch: self.index.upsert(
-                    vectors=b,
-                    namespace=namespace,
+        loop = asyncio.get_event_loop()
+        batches = [vectors[i:i+batch_size] for i in range(0, len(vectors), batch_size)]
+
+        for chunk_start in range(0, len(batches), max_concurrent):
+            concurrent_batches = batches[chunk_start:chunk_start+max_concurrent]
+            tasks = [
+                loop.run_in_executor(
+                    None,
+                    lambda b=batch: self.index.upsert(
+                        vectors=b,
+                        namespace=namespace,
+                    )
                 )
-            )
-            total_upserted += len(batch)
+                for batch in concurrent_batches
+            ]
+            await asyncio.gather(*tasks)
+            total_upserted += sum(len(b) for b in concurrent_batches)
+            logger.debug("pinecone_batch_upserted",
+                        batch_count=len(concurrent_batches),
+                        total_so_far=total_upserted)
 
         logger.info(
             "contract_indexed",
@@ -220,7 +231,6 @@ class VectorStore:
         # Build metadata filter
         filter_dict: dict = {}
         if contract_id:
-            # Use family_id to always get latest version vectors
             filter_dict["contract_id"] = str(contract_id)
         if clause_type:
             filter_dict["clause_type"] = clause_type

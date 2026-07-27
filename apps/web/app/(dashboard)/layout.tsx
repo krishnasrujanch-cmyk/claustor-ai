@@ -6,20 +6,7 @@ import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/auth";
-
-const C = {
-  primary: "#5B4BFF",
-  primaryLight: "#EEF0FF",
-  heading: "#111827",
-  body: "#374151",
-  muted: "#6B7280",
-  border: "#E5E7EB",
-  surface: "#FFFFFF",
-  bg: "#FAFBFC",
-  sidebar: "#1C1B2E",
-  sidebarText: "rgba(255,255,255,0.7)",
-  sidebarActive: "rgba(91,75,255,0.25)",
-};
+import { C } from "@/lib/design-tokens";
 
 const NAV = [
   { href: "/dashboard",             icon: "◻",  label: "Overview" },
@@ -89,7 +76,7 @@ export default function DashboardLayout({
   const planBadgeColor: Record<string, string> = {
     free: "#6B7280",
     starter: "#3B82F6",
-    professional: "#5B4BFF",
+    professional: "#0066FF",
     enterprise: "#F59E0B",
   };
 

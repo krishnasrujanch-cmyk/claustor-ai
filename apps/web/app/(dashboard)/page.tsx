@@ -4,20 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth";
 import { contracts as contractsAPI, billing as billingAPI, Contract } from "@/lib/api";
-
-const C = {
-  primary: "#5B4BFF",
-  primaryLight: "#EEF0FF",
-  heading: "#111827",
-  body: "#374151",
-  muted: "#6B7280",
-  border: "#E5E7EB",
-  surface: "#FFFFFF",
-  bg: "#FAFBFC",
-  success: "#22C55E",
-  warning: "#F59E0B",
-  error: "#EF4444",
-};
+import { C } from "@/lib/design-tokens";
 
 function StatCard({
   label,
