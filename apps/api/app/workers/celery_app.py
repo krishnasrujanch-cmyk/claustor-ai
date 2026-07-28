@@ -108,3 +108,28 @@ app.conf.beat_schedule = {
         "options":  {"queue": "alerts"},
     },
 }
+
+
+@celery_app.task(name="run_canary_evaluation", bind=True, max_retries=1)
+def run_canary_evaluation(self):
+    """Weekly canary evaluation to detect model degradation."""
+    import asyncio
+    from app.infrastructure.security.canary import run_canary
+    import structlog
+    _logger = structlog.get_logger(__name__)
+    try:
+        result = asyncio.run(run_canary())
+        _logger.info("canary_task_complete",
+            accuracy=result.accuracy,
+            passed=result.passed,
+            total=result.total_cases,
+            below_threshold=result.below_threshold)
+        return {
+            "accuracy": result.accuracy,
+            "passed":   result.passed,
+            "total":    result.total_cases,
+            "failed_cases": [r.case_id for r in result.results if not r.passed],
+        }
+    except Exception as e:
+        _logger.error("canary_task_failed", error=str(e))
+        raise self.retry(exc=e, countdown=3600)

@@ -37,6 +37,9 @@ class GroqProvider(BaseLLMProvider):
         max_tokens: int = 4096,
         json_mode: bool = False,
         use_fast_model: bool = False,
+        frequency_penalty: float = 0.1,
+        seed: int | None = None,
+        logprobs: bool = False,
     ) -> LLMResponse:
         """Send messages to Groq and return completion."""
         model = self.model_fast if use_fast_model else self.model
@@ -44,13 +47,19 @@ class GroqProvider(BaseLLMProvider):
 
         try:
             kwargs = {
-                "model": model,
-                "messages": [m.to_dict() for m in messages],
-                "temperature": temperature,
-                "max_tokens": max_tokens,
+                "model":             model,
+                "messages":          [m.to_dict() for m in messages],
+                "temperature":       temperature,
+                "max_tokens":        max_tokens,
+                "frequency_penalty": frequency_penalty,
             }
             if json_mode:
                 kwargs["response_format"] = {"type": "json_object"}
+            if seed is not None:
+                kwargs["seed"] = seed
+            if logprobs:
+                kwargs["logprobs"] = True
+                kwargs["top_logprobs"] = 3
 
             response = await self.client.chat.completions.create(**kwargs)
 
@@ -68,6 +77,21 @@ class GroqProvider(BaseLLMProvider):
                 latency_ms=latency,
             )
 
+            # Extract logprob confidence if requested
+            avg_logprob = None
+            if logprobs and response.choices[0].logprobs:
+                lp_list = response.choices[0].logprobs.content or []
+                if lp_list:
+                    import math
+                    avg_lp = sum(t.logprob for t in lp_list) / len(lp_list)
+                    avg_logprob = round(math.exp(avg_lp), 4)  # convert to probability
+
+            extra = {}
+            if avg_logprob is not None:
+                extra["confidence"] = avg_logprob
+            if seed is not None:
+                extra["seed"] = seed
+
             return LLMResponse(
                 content=response.choices[0].message.content,
                 provider=LLMProvider.GROQ,
@@ -76,6 +100,7 @@ class GroqProvider(BaseLLMProvider):
                 output_tokens=output_tokens,
                 cost_usd=cost,
                 latency_ms=latency,
+                extra=extra,
             )
 
         except RateLimitError as e:

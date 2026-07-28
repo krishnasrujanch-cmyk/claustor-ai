@@ -8,6 +8,12 @@ import json
 from uuid import UUID
 
 import structlog
+from app.infrastructure.security.sanitizer import (
+    check_query_for_jailbreak, validate_context_window
+)
+from app.infrastructure.security.hallucination import (
+    verify_citations, append_confidence_note
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.rag.retriever import RAGRetriever, get_retriever
@@ -118,7 +124,21 @@ class ChatAgent:
         Process a chat query and return an answer with citations.
         """
 
-        # ── Step 1: Safety Check ──────────────────────
+        # ── Step 0: Jailbreak Pattern Check (fast, local) ───
+        jailbreak_result = check_query_for_jailbreak(
+            query, org_id=str(org_id), user_id=str(user_id))
+        if not jailbreak_result.is_clean:
+            logger.warning("jailbreak_blocked_before_llm",
+                org_id=str(org_id), user_id=str(user_id),
+                types=jailbreak_result.detection_types)
+            return ChatResponse(
+                answer="Your query contains patterns that cannot be processed. "
+                       "Please ask a question about contracts or legal documents.",
+                citations=[], contract_id=str(contract_id) if contract_id else None,
+                is_safe=False, tokens_used=0, provider="jailbreak_guard", query=query,
+            )
+
+        # ── Step 1: Safety Check (LLM) ───────────────────
         is_safe = await self._safety_check(query)
         if not is_safe:
             logger.warning(
@@ -171,12 +191,32 @@ class ChatAgent:
                 review_status = _row.review_status
                 review_notes  = _row.review_notes
 
-                # Version resolution disabled — use requested contract_id directly
+                # If not latest version, resolve to latest for RAG
+                if not _row.is_latest and _row.contract_family_id:
+                    _latest_result = await db.execute(
+                        _sel(_Contract.id)
+                        .where(
+                            _Contract.contract_family_id == _row.contract_family_id,
+                            _Contract.is_latest == True,
+                        )
+                    )
+                    _latest_row = _latest_result.fetchone()
+                    if _latest_row:
+                        logger.info("version_resolved_to_latest",
+                                   requested=str(contract_id),
+                                   latest=str(_latest_row.id))
+                        contract_id = _latest_row.id
 
         # ── Step 5: Build Messages ────────────────────
+        # Validate context window before injection
+        safe_context, ctx_truncated = validate_context_window(
+            context.context_text, max_tokens=80000)
+        if ctx_truncated:
+            logger.warning("copilot_context_truncated", org_id=str(org_id))
+
         messages = self._build_messages(
             query=query,
-            context=context.context_text,
+            context=safe_context,
             history=history,
             summary=mem_ctx.get("summary"),
             review_status=review_status,
@@ -261,13 +301,22 @@ class ChatAgent:
         """Build message list for LLM with context + history."""
         system = SYSTEM_PROMPT
         if review_status == "rejected":
-            reason = review_notes or "See review notes"
-            system += ("\n\nIMPORTANT: This contract was REJECTED. Reason: " + reason + ". Advise user to address flagged issues.")
+            system += f"""
+
+⚠️ IMPORTANT: This contract was REJECTED by the legal reviewer.
+Rejection reason: {review_notes or 'See review notes'}
+When answering questions, always mention this contract has been rejected
+and advise the user to address the flagged issues before proceeding."""
         elif review_status == "revision_needed":
-            notes = review_notes or "See review notes"
-            system += ("\n\nIMPORTANT: This contract requires REVISION. Notes: " + notes + ". Advise user to address changes.")
+            system += f"""
+
+⚠️ IMPORTANT: This contract requires REVISION before approval.
+Revision notes: {review_notes or 'See review notes'}
+Advise the user to address the requested changes."""
         elif review_status == "approved":
-            system += "\n\nThis contract has been approved by the legal reviewer."
+            system += "\n\n✅ This contract has been approved by the legal reviewer."
+
+
 
         messages = [LLMMessage(role="system", content=system)]
 

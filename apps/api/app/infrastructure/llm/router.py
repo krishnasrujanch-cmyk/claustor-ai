@@ -24,6 +24,7 @@ from app.infrastructure.llm.providers.groq import GroqProvider
 from app.infrastructure.llm.providers.gemini import GeminiProvider
 from app.infrastructure.llm.providers.openai import OpenAIProvider
 from app.infrastructure.llm.providers.ollama import OllamaProvider
+from app.infrastructure.llm.providers.anthropic import AnthropicProvider
 
 logger = structlog.get_logger(__name__)
 
@@ -94,12 +95,31 @@ class LLMRouter:
         - Fallback chain determined by LLM_FALLBACK_CHAIN config
     """
 
+    # Role → optimal LLM parameters (based on task requirements)
+    ROLE_PARAMS: dict = {
+        # AgentRole → {temperature, frequency_penalty, logprobs, seed, max_tokens}
+        "safety_guard": {"temperature": 0.0, "frequency_penalty": 0.0,
+                         "logprobs": False, "max_tokens": 100},
+        "extractor":    {"temperature": 0.0, "frequency_penalty": 0.0,
+                         "logprobs": True,  "max_tokens": 2000},
+        "reasoner":     {"temperature": 0.2, "frequency_penalty": 0.2,
+                         "logprobs": True,  "max_tokens": 4000},
+        "judge":        {"temperature": 0.0, "frequency_penalty": 0.0,
+                         "logprobs": False, "max_tokens": 2000},
+        "answerer":     {"temperature": 0.3, "frequency_penalty": 0.2,
+                         "logprobs": False, "max_tokens": 1500},
+        "negotiator":   {"temperature": 0.5, "frequency_penalty": 0.3,
+                         "logprobs": False, "max_tokens": 2000},
+        "vision":       {"temperature": 0.1, "frequency_penalty": 0.0,
+                         "logprobs": False, "max_tokens": 4000},
+    }
+
     # Role → preferred providers (first available in list wins)
     ROLE_PROVIDER_MAP: dict[AgentRole, list[LLMProvider]] = {
         AgentRole.SAFETY_GUARD: [LLMProvider.GROQ, LLMProvider.GEMINI],
         AgentRole.EXTRACTOR:    [LLMProvider.GROQ, LLMProvider.GEMINI],
         AgentRole.REASONER:     [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI],
-        AgentRole.JUDGE:        [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI],
+        AgentRole.JUDGE:        [LLMProvider.ANTHROPIC, LLMProvider.GROQ, LLMProvider.OPENAI],
         AgentRole.ANSWERER:     [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI],
         AgentRole.VISION:       [LLMProvider.GEMINI],   # Gemini only for vision
         AgentRole.NEGOTIATOR:   [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI],
@@ -139,6 +159,14 @@ class LLMRouter:
             )
             logger.info("llm_provider_registered", provider="openai", model=settings.OPENAI_MODEL)
 
+        if getattr(settings, "ANTHROPIC_API_KEY", None):
+            self.providers[LLMProvider.ANTHROPIC] = AnthropicProvider(
+                api_key=settings.ANTHROPIC_API_KEY,
+                model=getattr(settings, "ANTHROPIC_MODEL", "claude-sonnet-4-5"),
+            )
+            logger.info("llm_provider_registered", provider="anthropic",
+                        model=getattr(settings, "ANTHROPIC_MODEL", "claude-sonnet-4-5"))
+
         if settings.OLLAMA_HOST:
             self.providers[LLMProvider.OLLAMA] = OllamaProvider(
                 base_url=settings.OLLAMA_HOST,
@@ -174,8 +202,11 @@ class LLMRouter:
         role: AgentRole,
         org_id: UUID | None = None,
         json_mode: bool = False,
-        temperature: float = 0.1,
-        max_tokens: int = 4096,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        frequency_penalty: float | None = None,
+        logprobs: bool | None = None,
+        seed: int | None = None,
     ) -> LLMResponse:
         """
         Route completion request through provider chain.
@@ -184,6 +215,13 @@ class LLMRouter:
         chain = self._get_chain(role)
         use_fast = role in self.FAST_MODEL_ROLES
         last_error: Exception | None = None
+
+        # Apply role-specific params (caller override takes priority)
+        role_defaults = self.ROLE_PARAMS.get(role.value, {})
+        _temperature       = temperature       if temperature       is not None else role_defaults.get("temperature", 0.1)
+        _max_tokens        = max_tokens        if max_tokens        is not None else role_defaults.get("max_tokens", 2000)
+        _frequency_penalty = frequency_penalty if frequency_penalty is not None else role_defaults.get("frequency_penalty", 0.1)
+        _logprobs          = logprobs          if logprobs          is not None else role_defaults.get("logprobs", False)
 
         for provider_type in chain:
             breaker = self.circuit_breakers[provider_type]
@@ -204,9 +242,12 @@ class LLMRouter:
 
                 response = await provider.complete(
                     messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
+                    temperature=_temperature,
+                    max_tokens=_max_tokens,
                     json_mode=json_mode,
+                    frequency_penalty=_frequency_penalty,
+                    logprobs=_logprobs,
+                    seed=seed,
                 )
 
                 breaker.record_success()

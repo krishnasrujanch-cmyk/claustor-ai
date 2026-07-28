@@ -16,7 +16,8 @@ class LLMProvider(str, Enum):
     GROQ    = "groq"
     GEMINI  = "gemini"
     OPENAI  = "openai"
-    OLLAMA  = "ollama"   # on-premise
+    OLLAMA      = "ollama"       # on-premise
+    ANTHROPIC   = "anthropic"    # Claude — Judge role only
 
 
 class AgentRole(str, Enum):

@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
 
     # On-premise: Ollama
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL:   str = "claude-sonnet-4-5"
+
     OLLAMA_HOST: str = ""          # empty = disabled
     OLLAMA_MODEL: str = "llama3.3:70b"
 
@@ -112,7 +115,10 @@ class Settings(BaseSettings):
             chain.append("gemini")
         if self.OPENAI_API_KEY:
             chain.append("openai")
+        if self.ANTHROPIC_API_KEY:
+            chain.append("anthropic")
         if self.OLLAMA_HOST:
+            chain.append("ollama")
             chain.append("ollama")
         return chain
 

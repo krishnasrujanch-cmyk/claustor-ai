@@ -21,6 +21,13 @@ from typing import Any
 
 logger = structlog.get_logger(__name__)
 
+# Import sanitizer — lazy to avoid circular imports
+def _get_sanitizer():
+    from app.infrastructure.security.sanitizer import (
+        sanitize_document_text, validate_context_window
+    )
+    return sanitize_document_text, validate_context_window
+
 
 class DocumentProcessor:
     """
@@ -167,7 +174,20 @@ class DocumentProcessor:
                 has_text = True
             pages_text.append(text)
 
-        result["full_text"] = "\n".join(pages_text)
+        raw_text = "\n".join(pages_text)
+
+        # ── Security: sanitize extracted text ────────────
+        sanitize_fn, window_fn = _get_sanitizer()
+        san_result = sanitize_fn(raw_text, contract_id=contract_id if "contract_id" in dir() else "")
+        if not san_result.is_clean:
+            logger.warning("pdf_injection_sanitized",
+                detections=san_result.detection_count,
+                types=san_result.detection_types)
+        # Validate context window
+        validated_text, truncated = window_fn(san_result.sanitized_text)
+        result["full_text"] = validated_text
+        result["injection_detected"] = not san_result.is_clean
+        result["context_truncated"] = truncated
 
         # Detect scanned PDF (little/no extractable text)
         if not has_text or len(result["full_text"].strip()) < 100:
@@ -287,7 +307,11 @@ class DocumentProcessor:
                 mat  = fitz.Matrix(300 / 72, 300 / 72)
                 pix  = page.get_pixmap(matrix=mat)
                 img  = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                text = pytesseract.image_to_string(img, lang="eng")
+                # Try with Indian language support first, fallback to eng only
+                try:
+                    text = pytesseract.image_to_string(img, lang="eng+hin+tam+tel+kan+ben")
+                except Exception:
+                    text = pytesseract.image_to_string(img, lang="eng")
                 texts.append(text)
             doc.close()
             return "\n".join(texts)
@@ -559,70 +583,6 @@ class DocumentProcessor:
         except Exception as e:
             logger.warning("metadata_extraction_failed", error=str(e))
             return {"page_count": 0, "backdating_risk": False}
-
-    def extract_images_from_pdf(self, file_bytes: bytes) -> list[dict]:
-        """Extract images embedded in PDF pages."""
-        images = []
-        try:
-            import fitz
-            doc = fitz.open(stream=file_bytes, filetype="pdf")
-            for page_num, page in enumerate(doc, 1):
-                for img_idx, img in enumerate(page.get_images()):
-                    xref = img[0]
-                    try:
-                        base_image = doc.extract_image(xref)
-                        images.append({
-                            "page":   page_num,
-                            "index":  img_idx,
-                            "width":  base_image["width"],
-                            "height": base_image["height"],
-                            "ext":    base_image["ext"],
-                            "data":   base_image["image"],
-                        })
-                    except Exception:
-                        pass
-            doc.close()
-        except Exception as e:
-            logger.warning("image_extraction_failed", error=str(e))
-        return images
-
-    async def analyze_images_with_vision(self, images: list[dict], plan: str) -> str:
-        """Analyze images using Gemini Vision. Professional+ only."""
-        if plan not in ("professional", "enterprise") or not images:
-            return ""
-        try:
-            import base64, httpx
-            from app.core.config import settings
-            descriptions = []
-            for img in images[:3]:
-                img_b64 = base64.b64encode(img["data"]).decode()
-                ext  = img.get("ext", "png")
-                mime = "image/jpeg" if ext == "jpg" else f"image/{ext}"
-                payload = {
-                    "contents": [{"parts": [
-                        {"text": (
-                            "Analyze this image from a legal contract. "
-                            "Describe: 1) Image type (chart/org-chart/signature/table) "
-                            "2) Key information relevant to the contract "
-                            "3) Any numbers, dates, names visible. Be concise."
-                        )},
-                        {"inline_data": {"mime_type": mime, "data": img_b64}}
-                    ]}],
-                    "generationConfig": {"maxOutputTokens": 300}
-                }
-                async with httpx.AsyncClient(timeout=30) as client:
-                    r = await client.post(
-                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.GEMINI_API_KEY}",
-                        json=payload,
-                    )
-                    if r.status_code == 200:
-                        text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                        descriptions.append(f"[Image Page {img['page']}]: {text}")
-                        logger.info("vision_image_analyzed", page=img["page"])
-            return "\n\n".join(descriptions)
-        except Exception as e:
-            logger.warning("vision_analysis_failed", error=str(e))
-            return ""
 
     @classmethod
     def status(cls) -> dict:
