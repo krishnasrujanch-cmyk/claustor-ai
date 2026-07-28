@@ -349,6 +349,7 @@ export default function BillingPage() {
   const [invoices, setInvoices]         = useState<any[]>([]);
   const [orgInd, setOrgInd]             = useState<any>(null);
   const [addonEnabled, setAddonEnabled] = useState(false);
+  const [aiStats, setAiStats] = useState<any>(null);
   const [loading, setLoading]           = useState(true);
   const [upgrading, setUpgrading]       = useState<string|null>(null);
   const [togglingAddon, setTogglingAddon] = useState(false);
@@ -361,15 +362,17 @@ export default function BillingPage() {
     const token = getToken();
     const h = { Authorization: `Bearer ${token}` };
     try {
-      const [s, inv, ind] = await Promise.all([
+      const [s, inv, ind, aiRes] = await Promise.all([
         billingAPI.summary(),
         billingAPI.invoices(),
         fetch(`${API}/api/v1/industries/org`, { headers: h }).then(r=>r.json()),
+        fetch(`${API}/api/v1/observability/summary?days=30`, { headers: h }).then(r=>r.json()).catch(()=>null),
       ]);
       setSummary(s);
       setInvoices((inv as any).invoices || []);
       setOrgInd(ind);
       setAddonEnabled(ind.addon_enabled || false);
+      if (aiRes) setAiStats(aiRes);
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -450,6 +453,31 @@ export default function BillingPage() {
 
   if (loading) return (
     <div style={{padding:60,textAlign:"center",color:C.muted}}>
+          {/* AI Usage Metrics */}
+          {aiStats && (aiStats.total_calls || 0) > 0 && (
+            <div style={{background:"#F8FAFC",border:"1px solid #E5E7EB",
+              borderRadius:12,padding:"16px 20px",marginBottom:20}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:12}}>
+                Your AI Usage This Month
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+                {[
+                  {label:"AI Queries",  value:(aiStats.total_calls||0).toLocaleString(), sub:"answered"},
+                  {label:"Confidence",  value:Math.round((aiStats.avg_groundedness||1)*100)+"%", sub:"avg accuracy"},
+                  {label:"Avg Response",value:(aiStats.avg_latency_ms||0)+"ms", sub:"latency"},
+                  {label:"Cache Rate",  value:Math.round((aiStats.cache_hit_rate||0)*100)+"%", sub:"efficiency"},
+                ].map(m=>(
+                  <div key={m.label} style={{textAlign:"center",padding:"10px",
+                    background:"white",borderRadius:8,border:"1px solid #E5E7EB"}}>
+                    <div style={{fontSize:20,fontWeight:800,color:"#0066FF"}}>{m.value}</div>
+                    <div style={{fontSize:11,fontWeight:600,color:"#374151"}}>{m.label}</div>
+                    <div style={{fontSize:10,color:"#6B7280"}}>{m.sub}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
       <div style={{width:32,height:32,borderRadius:"50%",
         border:`2px solid ${C.primary}`,borderTopColor:"transparent",
         animation:"spin 0.8s linear infinite",margin:"0 auto 12px"}}/>
@@ -803,7 +831,8 @@ export default function BillingPage() {
         borderRadius:14,overflow:"hidden"}}>
         <div style={{padding:"16px 24px",borderBottom:`1px solid ${C.border}`,
           display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <h2 style={{fontSize:16,fontWeight:700,color:C.heading}}>Invoice History</h2>
+          
+<h2 style={{fontSize:16,fontWeight:700,color:C.heading}}>Invoice History</h2>
           <span style={{fontSize:12,color:C.muted}}>All amounts include GST</span>
         </div>
         <div style={{display:"grid",

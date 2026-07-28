@@ -70,7 +70,8 @@ const ADMIN_NAV = [
   { href:"/dashboard/admin/users",  Icon:Users,       label:"Users",     permission:"users:view" },
   { href:"/dashboard/admin/roles",  Icon:ShieldCheck, label:"Roles",     permission:"users:manage" },
   { href:"/dashboard/admin/billing",Icon:CreditCard,  label:"Billing",   permission:"billing:view" },
-  { href:"/dashboard/admin/audit",  Icon:History,     label:"Audit Log", permission:"audit:view" },
+  { href:"/dashboard/admin/audit",  Icon:History,     label:"Audit Log",  permission:"audit:view" },
+  { href:"/dashboard/admin/observability", Icon:BarChart2,  label:"AI Metrics", permission:"observability:view" },
   { href:"/dashboard/settings",     Icon:Settings,    label:"Settings",  permission:"settings:manage" },
 ];
 
@@ -91,8 +92,9 @@ const PLAN_FEATURES: Record<string, string[]> = {
   enterprise:   ["*"],
 };
 
-function hasPermission(role: string, permission: string | null, plan = "free"): boolean {
+function hasPermission(role: string, permission: string | null, plan = "free", orgId = ""): boolean {
   if (!permission) return true;
+  if (permission === "observability:view") return orgId === "00000000-0000-0000-0000-000000000002"; // DKU only — hidden for all other orgs
   // Check role permission
   const rolePerms = ROLE_PERMISSIONS[role] || [];
   const hasRole = rolePerms.includes("*") || rolePerms.includes(permission);
@@ -272,7 +274,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Filter nav based on role permissions
   const visibleNav = NAV_ITEMS.filter(item => hasPermission(user.role, item.permission, user.plan));
-  const visibleAdmin = ADMIN_NAV.filter(item => hasPermission(user.role, item.permission, user.plan));
+  const visibleAdmin = ADMIN_NAV.filter(item => hasPermission(user.role, item.permission, user.plan, user.org_id||""));
 
 
   return (
@@ -451,7 +453,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               })}
           {/* Locked admin items */}
           {!collapsed && ADMIN_NAV.filter(item=>
-            item.permission && !hasPermission(user.role, item.permission, user.plan)
+            item.permission && item.permission !== "observability:view" && !hasPermission(user.role, item.permission, user.plan, user.org_id||"")
           ).map(item=>{
             const { Icon } = item;
             const isBilling = item.href.includes("billing");
