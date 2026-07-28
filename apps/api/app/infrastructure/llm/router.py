@@ -118,11 +118,11 @@ class LLMRouter:
     ROLE_PROVIDER_MAP: dict[AgentRole, list[LLMProvider]] = {
         AgentRole.SAFETY_GUARD: [LLMProvider.GROQ],
         AgentRole.EXTRACTOR:    [LLMProvider.GROQ],
-        AgentRole.REASONER:     [LLMProvider.GROQ, LLMProvider.OPENAI],
-        AgentRole.JUDGE:        [LLMProvider.ANTHROPIC, LLMProvider.GROQ, LLMProvider.OPENAI],
-        AgentRole.ANSWERER:     [LLMProvider.GROQ, LLMProvider.OPENAI],
+        AgentRole.REASONER:     [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
+        AgentRole.JUDGE:        [LLMProvider.ANTHROPIC, LLMProvider.GROQ],
+        AgentRole.ANSWERER:     [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
         AgentRole.VISION:       [LLMProvider.ANTHROPIC, LLMProvider.GROQ],   # Gemini only for vision
-        AgentRole.NEGOTIATOR:   [LLMProvider.GROQ, LLMProvider.OPENAI],
+        AgentRole.NEGOTIATOR:   [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
     }
 
     # Roles that use the fast/cheap model (8b)
