@@ -19,8 +19,9 @@ async def get_summary(
     db: AsyncSession = Depends(get_db),
 ):
     """AI usage summary for the org — last N days."""
-    is_super = user.role == "super_admin"
-    org_filter = "" if is_super else "AND org_id = :org_id"
+    DKU_ORG_ID = "00000000-0000-0000-0000-000000000002"
+    is_dku = str(user.org_id) == DKU_ORG_ID
+    org_filter = "" if is_dku else "AND org_id = :org_id"
 
     r = await db.execute(text(f"""
         SELECT
@@ -42,7 +43,7 @@ async def get_summary(
         FROM ai_observability
         WHERE created_at > NOW() - INTERVAL '{days} days'
         {org_filter}
-    """), {"org_id": str(user.org_id)} if not is_super else {})
+    """), {"org_id": str(user.org_id)} if not is_dku else {})
 
     row = r.fetchone()
     if not row:
@@ -78,8 +79,9 @@ async def get_by_role(
     db: AsyncSession = Depends(get_db),
 ):
     """Cost and usage broken down by agent role."""
-    is_super = user.role == "super_admin"
-    org_filter = "" if is_super else "AND org_id = :org_id"
+    DKU_ORG_ID = "00000000-0000-0000-0000-000000000002"
+    is_dku = str(user.org_id) == DKU_ORG_ID
+    org_filter = "" if is_dku else "AND org_id = :org_id"
 
     r = await db.execute(text(f"""
         SELECT
@@ -93,7 +95,7 @@ async def get_by_role(
         {org_filter}
         GROUP BY agent_role
         ORDER BY cost_usd DESC
-    """), {"org_id": str(user.org_id)} if not is_super else {})
+    """), {"org_id": str(user.org_id)} if not is_dku else {})
 
     return {"roles": [
         {"role": row[0], "calls": row[1], "tokens": row[2],
@@ -142,8 +144,9 @@ async def get_latency_trend(
     db: AsyncSession = Depends(get_db),
 ):
     """Daily P50/P95 latency trend."""
-    is_super = user.role == "super_admin"
-    org_filter = "" if is_super else "AND org_id = :org_id"
+    DKU_ORG_ID = "00000000-0000-0000-0000-000000000002"
+    is_dku = str(user.org_id) == DKU_ORG_ID
+    org_filter = "" if is_dku else "AND org_id = :org_id"
 
     r = await db.execute(text(f"""
         SELECT
@@ -159,7 +162,7 @@ async def get_latency_trend(
         {org_filter}
         GROUP BY DATE(created_at)
         ORDER BY day DESC
-    """), {"org_id": str(user.org_id)} if not is_super else {})
+    """), {"org_id": str(user.org_id)} if not is_dku else {})
 
     return {"trend": [
         {"day": str(row[0]), "p50_ms": int(row[1] or 0),
@@ -176,8 +179,9 @@ async def get_feedback_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """User feedback (thumbs up/down) stats."""
-    is_super = user.role == "super_admin"
-    org_filter = "" if is_super else "AND org_id = :org_id"
+    DKU_ORG_ID = "00000000-0000-0000-0000-000000000002"
+    is_dku = str(user.org_id) == DKU_ORG_ID
+    org_filter = "" if is_dku else "AND org_id = :org_id"
 
     r = await db.execute(text(f"""
         SELECT
@@ -188,7 +192,7 @@ async def get_feedback_stats(
           AND user_feedback IS NOT NULL
           {org_filter}
         GROUP BY user_feedback
-    """), {"org_id": str(user.org_id)} if not is_super else {})
+    """), {"org_id": str(user.org_id)} if not is_dku else {})
 
     rows = r.fetchall()
     total = sum(row[1] for row in rows)

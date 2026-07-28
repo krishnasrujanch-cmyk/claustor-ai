@@ -411,7 +411,7 @@ export default function ContractsPage() {
 
       {/* ── Table ───────────────────────────────────────────────────────── */}
       <div style={{background:C.surface,border:`1px solid ${C.border}`,
-        borderRadius:12,overflow:"hidden",
+        borderRadius:12,overflow:"visible",
         boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
 
         {loading ? (

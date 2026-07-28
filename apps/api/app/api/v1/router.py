@@ -13,6 +13,7 @@ from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.webhooks import router as webhooks_router
 from app.api.v1.endpoints.audit import router as audit_router
 from app.api.v1.endpoints.canary import router as canary_router
+from app.api.v1.endpoints.observability import router as observability_router
 from app.api.v1.endpoints.playbook import router as playbook_router
 from app.api.v1.endpoints.roles import router as roles_router
 from app.api.v1.endpoints.insights import router as insights_router
@@ -46,3 +47,4 @@ api_router.include_router(reviews_router,    prefix="/reviews",   tags=["reviews
 api_router.include_router(users_router,     prefix="/users",     tags=["users"])
 api_router.include_router(api_keys_router,  prefix="/api-keys",  tags=["api-keys"])
 api_router.include_router(canary_router)
+api_router.include_router(observability_router)

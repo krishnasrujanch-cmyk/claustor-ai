@@ -7,9 +7,14 @@ import {
   CreditCard, ChevronDown, ChevronUp, Plus, Shield, Zap,
   Eye, Database, Globe, Clock, BarChart2, Upload,
 } from "lucide-react";
-import { C } from "@/lib/design-tokens";
 
 const API = "http://localhost:8000";
+const C = {
+  primary:"#0066FF", primaryLight:"#E6F0FF",
+  heading:"#111827", body:"#374151", muted:"#6B7280",
+  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
+  success:"#22C55E", warning:"#F59E0B", error:"#EF4444",
+};
 const GST = 0.18;
 
 function formatStorage(mb: number): string {
@@ -24,15 +29,6 @@ function usageColor(pct: number): string {
   if (pct >= 70) return C.warning;
   return C.success;
 }
-
-// Industries available per plan
-
-const PLAN_INDUSTRIES: Record<string, string[]> = {
-  free:         ["general"],
-  starter:      ["general","it_saas","manufacturing","hr_employment"],
-  professional: ["general","it_saas","manufacturing","hr_employment","legal","real_estate","pharma","banking"],
-  enterprise:   ["general","it_saas","manufacturing","hr_employment","legal","real_estate","pharma","banking"],
-};
 
 const INDUSTRIES = [
   {id:"general",       Icon:FileText,  label:"General / Other",        desc:"Standard analysis"},
@@ -349,30 +345,24 @@ export default function BillingPage() {
   const [invoices, setInvoices]         = useState<any[]>([]);
   const [orgInd, setOrgInd]             = useState<any>(null);
   const [addonEnabled, setAddonEnabled] = useState(false);
-  const [aiStats, setAiStats] = useState<any>(null);
   const [loading, setLoading]           = useState(true);
   const [upgrading, setUpgrading]       = useState<string|null>(null);
   const [togglingAddon, setTogglingAddon] = useState(false);
   const [msg, setMsg]                   = useState("");
-  const [reloginWarning, setReloginWarning] = useState(false);
-  const [upgradeConfirm, setUpgradeConfirm] = useState<{plan:string;price:number;addonPrice:number}|null>(null);
-  const [includeAddon, setIncludeAddon] = useState(false);
 
   const load = async () => {
     const token = getToken();
     const h = { Authorization: `Bearer ${token}` };
     try {
-      const [s, inv, ind, aiRes] = await Promise.all([
+      const [s, inv, ind] = await Promise.all([
         billingAPI.summary(),
         billingAPI.invoices(),
         fetch(`${API}/api/v1/industries/org`, { headers: h }).then(r=>r.json()),
-        fetch(`${API}/api/v1/observability/summary?days=30`, { headers: h }).then(r=>r.json()).catch(()=>null),
       ]);
       setSummary(s);
       setInvoices((inv as any).invoices || []);
       setOrgInd(ind);
       setAddonEnabled(ind.addon_enabled || false);
-      if (aiRes) setAiStats(aiRes);
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -392,42 +382,26 @@ export default function BillingPage() {
       if (!r.ok) throw new Error(d.detail);
       setAddonEnabled(enabled);
       setMsg(`✅ ${d.message}`);
-      if (d.requires_relogin) setReloginWarning(true);
       await load();
     } catch(e: any) { setMsg(`❌ ${e.message}`); }
     finally { setTogglingAddon(false); }
   };
 
-  const doUpgrade = async (planId: string, withAddon: boolean) => {
-    setUpgrading(planId); setMsg(""); setUpgradeConfirm(null);
+  const handlePlanAction = async (planId: string, action: string) => {
+    setUpgrading(planId); setMsg("");
     const token = getToken();
     try {
       const r = await fetch(`${API}/api/v1/billing/upgrade`, {
         method:"POST",
         headers:{ Authorization:`Bearer ${token}`, "Content-Type":"application/json" },
-        body: JSON.stringify({ plan: planId, addon_enabled: withAddon }),
+        body: JSON.stringify({ plan: planId }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail);
       setMsg(`✅ ${d.message}`);
-      if (d.requires_relogin) setReloginWarning(true);
       await load();
     } catch(e: any) { setMsg(`❌ ${e.message}`); }
     finally { setUpgrading(null); }
-  };
-
-  const handlePlanAction = (planId: string, action: string) => {
-    const plan = PLANS.find(p=>p.id===planId);
-    if (action==="upgrade" && plan && (plan as any).addon > 0) {
-      setIncludeAddon(false);
-      setUpgradeConfirm({
-        plan: planId,
-        price: plan.base,
-        addonPrice: (plan as any).addon,
-      });
-    } else {
-      doUpgrade(planId, false);
-    }
   };
 
   const downloadInvoicePDF = async (idx: number) => {
@@ -453,129 +427,9 @@ export default function BillingPage() {
 
   if (loading) return (
     <div style={{padding:60,textAlign:"center",color:C.muted}}>
-          {/* AI Usage Metrics */}
-          {aiStats && (aiStats.total_calls || 0) > 0 && (
-            <div style={{background:"#F8FAFC",border:"1px solid #E5E7EB",
-              borderRadius:12,padding:"16px 20px",marginBottom:20}}>
-              <div style={{fontSize:13,fontWeight:700,color:"#111827",marginBottom:12}}>
-                Your AI Usage This Month
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
-                {[
-                  {label:"AI Queries",  value:(aiStats.total_calls||0).toLocaleString(), sub:"answered"},
-                  {label:"Confidence",  value:Math.round((aiStats.avg_groundedness||1)*100)+"%", sub:"avg accuracy"},
-                  {label:"Avg Response",value:(aiStats.avg_latency_ms||0)+"ms", sub:"latency"},
-                  {label:"Cache Rate",  value:Math.round((aiStats.cache_hit_rate||0)*100)+"%", sub:"efficiency"},
-                ].map(m=>(
-                  <div key={m.label} style={{textAlign:"center",padding:"10px",
-                    background:"white",borderRadius:8,border:"1px solid #E5E7EB"}}>
-                    <div style={{fontSize:20,fontWeight:800,color:"#0066FF"}}>{m.value}</div>
-                    <div style={{fontSize:11,fontWeight:600,color:"#374151"}}>{m.label}</div>
-                    <div style={{fontSize:10,color:"#6B7280"}}>{m.sub}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
       <div style={{width:32,height:32,borderRadius:"50%",
         border:`2px solid ${C.primary}`,borderTopColor:"transparent",
         animation:"spin 0.8s linear infinite",margin:"0 auto 12px"}}/>
-      {/* Upgrade confirm modal with addon option */}
-      {upgradeConfirm && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",
-          display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{background:"white",borderRadius:16,padding:28,
-            width:"100%",maxWidth:460,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-            <h3 style={{fontSize:18,fontWeight:700,color:"#111827",marginBottom:4}}>
-              Upgrade to {upgradeConfirm.plan.charAt(0).toUpperCase()+upgradeConfirm.plan.slice(1)}
-            </h3>
-            <p style={{fontSize:13,color:"#6B7280",marginBottom:20}}>
-              Choose your plan configuration before upgrading.
-            </p>
-
-            {/* Base plan */}
-            <div style={{padding:"14px 16px",borderRadius:10,marginBottom:10,
-              background:"#F8FAFC",border:"1px solid #E2E8F0"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:700,color:"#111827"}}>
-                    {upgradeConfirm.plan.charAt(0).toUpperCase()+upgradeConfirm.plan.slice(1)} Plan
-                  </div>
-                  <div style={{fontSize:12,color:"#6B7280"}}>Base plan features</div>
-                </div>
-                <div style={{fontSize:16,fontWeight:700,color:"#0066FF"}}>
-                  ₹{upgradeConfirm.price.toLocaleString()}/mo
-                </div>
-              </div>
-            </div>
-
-            {/* Addon option */}
-            <div
-              onClick={()=>setIncludeAddon(!includeAddon)}
-              style={{padding:"14px 16px",borderRadius:10,marginBottom:20,
-                background:includeAddon?"rgba(0,102,255,0.04)":"#FAFBFC",
-                border:`1.5px solid ${includeAddon?"#0066FF":"#E2E8F0"}`,
-                cursor:"pointer",transition:"all 0.15s"}}>
-              <div style={{display:"flex",justifyContent:"space-between",
-                alignItems:"flex-start",gap:12}}>
-                <div style={{flex:1}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                    <div style={{width:18,height:18,borderRadius:4,
-                      border:`2px solid ${includeAddon?"#0066FF":"#D1D5DB"}`,
-                      background:includeAddon?"#0066FF":"white",
-                      display:"flex",alignItems:"center",justifyContent:"center",
-                      flexShrink:0}}>
-                      {includeAddon&&<span style={{color:"white",fontSize:11,fontWeight:700}}>✓</span>}
-                    </div>
-                    <div style={{fontSize:14,fontWeight:700,color:"#111827"}}>
-                      Add Industry Pack
-                    </div>
-                  </div>
-                  <div style={{fontSize:12,color:"#6B7280",paddingLeft:26}}>
-                    {upgradeConfirm.plan==="starter"
-                      ? "IT/SaaS, Manufacturing, HR/Employment scoring"
-                      : "All 8 industries · Custom weights · Priority queue"}
-                  </div>
-                </div>
-                <div style={{fontSize:15,fontWeight:700,color:"#F59E0B",flexShrink:0}}>
-                  +₹{upgradeConfirm.addonPrice.toLocaleString()}/mo
-                </div>
-              </div>
-            </div>
-
-            {/* Total */}
-            <div style={{padding:"12px 16px",borderRadius:8,marginBottom:20,
-              background:"#F0F7FF",border:"1px solid #E6F0FF",
-              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:13,fontWeight:600,color:"#334155"}}>
-                Total (+ 18% GST)
-              </span>
-              <span style={{fontSize:18,fontWeight:800,color:"#0066FF"}}>
-                ₹{((upgradeConfirm.price+(includeAddon?upgradeConfirm.addonPrice:0))*1.18).toLocaleString(undefined,{maximumFractionDigits:0})}/mo
-              </span>
-            </div>
-
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setUpgradeConfirm(null)}
-                style={{flex:1,padding:"11px",border:"1px solid #E2E8F0",
-                  borderRadius:8,background:"none",cursor:"pointer",
-                  fontSize:13,color:"#6B7280"}}>
-                Cancel
-              </button>
-              <button onClick={()=>doUpgrade(upgradeConfirm.plan, includeAddon)}
-                disabled={!!upgrading}
-                style={{flex:2,padding:"11px",border:"none",borderRadius:8,
-                  background:"#0066FF",color:"white",cursor:"pointer",
-                  fontSize:13,fontWeight:700,
-                  boxShadow:"0 2px 8px rgba(0,102,255,0.3)"}}>
-                {upgrading?"Upgrading...":"Confirm Upgrade →"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -586,30 +440,6 @@ export default function BillingPage() {
         <h1 style={{fontSize:22,fontWeight:800,color:C.heading,marginBottom:4}}>Billing & Plans</h1>
         <p style={{fontSize:13,color:C.muted}}>Manage your subscription, add-ons, and invoices</p>
       </div>
-
-      {reloginWarning && (
-        <div style={{padding:"14px 20px",borderRadius:10,marginBottom:16,
-          background:"linear-gradient(135deg,#0A1128,#0A1F4A)",
-          border:"1px solid rgba(0,102,255,0.3)",
-          display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-          <span style={{fontSize:20}}>🔄</span>
-          <div style={{flex:1}}>
-            <div style={{fontSize:14,fontWeight:700,color:"white",marginBottom:2}}>
-              Sign out and back in to activate your new plan
-            </div>
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>
-              Your plan has been updated. Sign out and sign back in to unlock new features.
-            </div>
-          </div>
-          <button onClick={()=>{
-            localStorage.removeItem("claustor-auth");
-            window.location.href="/login";
-          }} style={{padding:"8px 16px",background:"#0066FF",color:"white",
-            border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
-            Sign out now →
-          </button>
-        </div>
-      )}
 
       {msg && (
         <div style={{padding:"12px 16px",borderRadius:8,marginBottom:16,
@@ -716,8 +546,8 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* Industry Add-on — only show if plan has addon AND user is on that plan */}
-      {currentPlanObj && (currentPlanObj as any).addon > 0 && summary?.plan !== 'free' && (
+      {/* Industry Add-on */}
+      {currentPlanObj && (currentPlanObj as any).addon > 0 && (
         <div style={{background:C.surface,border:`1px solid ${C.border}`,
           borderRadius:14,padding:24,marginBottom:20}}>
           <div style={{display:"flex",justifyContent:"space-between",
@@ -751,15 +581,12 @@ export default function BillingPage() {
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
             {INDUSTRIES.map(ind=>{
-              const planInds = PLAN_INDUSTRIES[summary?.plan||"free"] || ["general"];
-              const inPlan = planInds.includes(ind.id);
-              const active = addonEnabled && inPlan;
-              const proOnly = !inPlan;
+              const active = addonEnabled;
               return (
                 <div key={ind.id} style={{padding:"12px",borderRadius:10,
                   background:active?`${C.primary}08`:C.bg,
                   border:`1px solid ${active?`${C.primary}30`:C.border}`,
-                  opacity:proOnly?0.35:active?1:0.7,transition:"all 0.2s"}}>
+                  opacity:active?1:0.6,transition:"all 0.2s"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                     <div style={{width:24,height:24,borderRadius:6,
                       background:active?`${C.primary}15`:"#F3F4F6",
@@ -831,8 +658,7 @@ export default function BillingPage() {
         borderRadius:14,overflow:"hidden"}}>
         <div style={{padding:"16px 24px",borderBottom:`1px solid ${C.border}`,
           display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          
-<h2 style={{fontSize:16,fontWeight:700,color:C.heading}}>Invoice History</h2>
+          <h2 style={{fontSize:16,fontWeight:700,color:C.heading}}>Invoice History</h2>
           <span style={{fontSize:12,color:C.muted}}>All amounts include GST</span>
         </div>
         <div style={{display:"grid",
@@ -882,101 +708,6 @@ export default function BillingPage() {
           </div>
         ))}
       </div>
-      {/* Upgrade confirm modal with addon option */}
-      {upgradeConfirm && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",
-          display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{background:"white",borderRadius:16,padding:28,
-            width:"100%",maxWidth:460,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-            <h3 style={{fontSize:18,fontWeight:700,color:"#111827",marginBottom:4}}>
-              Upgrade to {upgradeConfirm.plan.charAt(0).toUpperCase()+upgradeConfirm.plan.slice(1)}
-            </h3>
-            <p style={{fontSize:13,color:"#6B7280",marginBottom:20}}>
-              Choose your plan configuration before upgrading.
-            </p>
-
-            {/* Base plan */}
-            <div style={{padding:"14px 16px",borderRadius:10,marginBottom:10,
-              background:"#F8FAFC",border:"1px solid #E2E8F0"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:700,color:"#111827"}}>
-                    {upgradeConfirm.plan.charAt(0).toUpperCase()+upgradeConfirm.plan.slice(1)} Plan
-                  </div>
-                  <div style={{fontSize:12,color:"#6B7280"}}>Base plan features</div>
-                </div>
-                <div style={{fontSize:16,fontWeight:700,color:"#0066FF"}}>
-                  ₹{upgradeConfirm.price.toLocaleString()}/mo
-                </div>
-              </div>
-            </div>
-
-            {/* Addon option */}
-            <div
-              onClick={()=>setIncludeAddon(!includeAddon)}
-              style={{padding:"14px 16px",borderRadius:10,marginBottom:20,
-                background:includeAddon?"rgba(0,102,255,0.04)":"#FAFBFC",
-                border:`1.5px solid ${includeAddon?"#0066FF":"#E2E8F0"}`,
-                cursor:"pointer",transition:"all 0.15s"}}>
-              <div style={{display:"flex",justifyContent:"space-between",
-                alignItems:"flex-start",gap:12}}>
-                <div style={{flex:1}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                    <div style={{width:18,height:18,borderRadius:4,
-                      border:`2px solid ${includeAddon?"#0066FF":"#D1D5DB"}`,
-                      background:includeAddon?"#0066FF":"white",
-                      display:"flex",alignItems:"center",justifyContent:"center",
-                      flexShrink:0}}>
-                      {includeAddon&&<span style={{color:"white",fontSize:11,fontWeight:700}}>✓</span>}
-                    </div>
-                    <div style={{fontSize:14,fontWeight:700,color:"#111827"}}>
-                      Add Industry Pack
-                    </div>
-                  </div>
-                  <div style={{fontSize:12,color:"#6B7280",paddingLeft:26}}>
-                    {upgradeConfirm.plan==="starter"
-                      ? "IT/SaaS, Manufacturing, HR/Employment scoring"
-                      : "All 8 industries · Custom weights · Priority queue"}
-                  </div>
-                </div>
-                <div style={{fontSize:15,fontWeight:700,color:"#F59E0B",flexShrink:0}}>
-                  +₹{upgradeConfirm.addonPrice.toLocaleString()}/mo
-                </div>
-              </div>
-            </div>
-
-            {/* Total */}
-            <div style={{padding:"12px 16px",borderRadius:8,marginBottom:20,
-              background:"#F0F7FF",border:"1px solid #E6F0FF",
-              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:13,fontWeight:600,color:"#334155"}}>
-                Total (+ 18% GST)
-              </span>
-              <span style={{fontSize:18,fontWeight:800,color:"#0066FF"}}>
-                ₹{((upgradeConfirm.price+(includeAddon?upgradeConfirm.addonPrice:0))*1.18).toLocaleString(undefined,{maximumFractionDigits:0})}/mo
-              </span>
-            </div>
-
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setUpgradeConfirm(null)}
-                style={{flex:1,padding:"11px",border:"1px solid #E2E8F0",
-                  borderRadius:8,background:"none",cursor:"pointer",
-                  fontSize:13,color:"#6B7280"}}>
-                Cancel
-              </button>
-              <button onClick={()=>doUpgrade(upgradeConfirm.plan, includeAddon)}
-                disabled={!!upgrading}
-                style={{flex:2,padding:"11px",border:"none",borderRadius:8,
-                  background:"#0066FF",color:"white",cursor:"pointer",
-                  fontSize:13,fontWeight:700,
-                  boxShadow:"0 2px 8px rgba(0,102,255,0.3)"}}>
-                {upgrading?"Upgrading...":"Confirm Upgrade →"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );

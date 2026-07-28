@@ -70,8 +70,8 @@ const ADMIN_NAV = [
   { href:"/dashboard/admin/users",  Icon:Users,       label:"Users",     permission:"users:view" },
   { href:"/dashboard/admin/roles",  Icon:ShieldCheck, label:"Roles",     permission:"users:manage" },
   { href:"/dashboard/admin/billing",Icon:CreditCard,  label:"Billing",   permission:"billing:view" },
-  { href:"/dashboard/admin/audit",  Icon:History,     label:"Audit Log",  permission:"audit:view" },
-  { href:"/dashboard/admin/observability", Icon:BarChart2,  label:"AI Metrics", permission:"observability:view" },
+  { href:"/dashboard/admin/observability", Icon:BarChart2, label:"AI Insights", permission:"ai_insights:view" },
+  { href:"/dashboard/admin/audit",  Icon:History,     label:"Audit Log", permission:"audit:view" },
   { href:"/dashboard/settings",     Icon:Settings,    label:"Settings",  permission:"settings:manage" },
 ];
 
@@ -81,20 +81,19 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   dept_admin:       ["contracts:view","contracts:upload","contracts:delete","contracts:reprocess","chat:use","reviews:assign","reviews:view","analytics:view","analytics:export","users:view","users:invite","obligations:view","obligations:complete","playbook:view","playbook:manage","bulk:import","settings:manage","billing:view"],
   contract_manager: ["contracts:view","contracts:upload","contracts:delete","contracts:reprocess","chat:use","reviews:assign","reviews:view","analytics:view","obligations:view","obligations:complete","playbook:view","bulk:import"],
   legal_reviewer:   ["contracts:view","chat:use","reviews:view","reviews:decide","analytics:view","obligations:view","playbook:view"],
-  business_viewer:  ["contracts:view","chat:use","analytics:view","obligations:view","billing:view"],
+  business_viewer:  ["contracts:view","chat:use","analytics:view","obligations:view"],
 };
 
 // Plan → features unlocked
 const PLAN_FEATURES: Record<string, string[]> = {
-  free:         ["contracts:view","contracts:upload","chat:use","analytics:view","billing:view"],
-  starter:      ["contracts:view","contracts:upload","contracts:delete","chat:use","reviews:view","reviews:assign","analytics:view","analytics:export","obligations:view","obligations:complete","bulk:import","playbook:view","users:view","billing:view","settings:manage"],
+  free:         ["contracts:view","chat:use","analytics:view"],
+  starter:      ["contracts:view","contracts:upload","contracts:delete","chat:use","reviews:view","reviews:assign","analytics:view","analytics:export","obligations:view","obligations:complete","bulk:import","playbook:view"],
   professional: ["*"],
   enterprise:   ["*"],
 };
 
-function hasPermission(role: string, permission: string | null, plan = "free", orgId = ""): boolean {
+function hasPermission(role: string, permission: string | null, plan = "free"): boolean {
   if (!permission) return true;
-  if (permission === "observability:view") return orgId === "00000000-0000-0000-0000-000000000002"; // DKU only — hidden for all other orgs
   // Check role permission
   const rolePerms = ROLE_PERMISSIONS[role] || [];
   const hasRole = rolePerms.includes("*") || rolePerms.includes(permission);
@@ -215,9 +214,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router   = useRouter();
   const { user, token, loadUser, logout } = useAuthStore();
   const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    const init = async () => {
+      if (!token) { router.push("/login"); return; }
+      // Always reload user to get latest plan from DB
+      await loadUser();
+      setChecked(true);
+    };
+    init();
+  }, []);
+
+  useEffect(() => {
+    if (checked && !user && !token) router.push("/login");
+  }, [checked, user, token]);
+
   const [collapsed, setCollapsed] = useState(false);
   const [upgradeModal, setUpgradeModal] = useState<{feature:string;plan:string}|null>(null);
   const [navBadges, setNavBadges] = useState<Record<string,number>>({});
+
   useEffect(()=>{
     if(!user) return;
     const token = typeof window!=="undefined"
@@ -237,21 +252,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       });
     });
   },[user]);
-
-  useEffect(() => {
-    const init = async () => {
-      if (!token) { router.push("/login"); return; }
-      // Always reload user to get latest plan from DB
-      await loadUser();
-      setChecked(true);
-    };
-    init();
-  }, []);
-
-  useEffect(() => {
-    if (checked && !user && !token) router.push("/login");
-  }, [checked, user, token]);
-
   if (!checked || !user) {
     return (
       <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.bg}}>
@@ -274,7 +274,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Filter nav based on role permissions
   const visibleNav = NAV_ITEMS.filter(item => hasPermission(user.role, item.permission, user.plan));
-  const visibleAdmin = ADMIN_NAV.filter(item => hasPermission(user.role, item.permission, user.plan, user.org_id||""));
+  const visibleAdmin = ADMIN_NAV.filter(item => hasPermission(user.role, item.permission, user.plan));
 
 
   return (
@@ -381,35 +381,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Link>
             );
           })}
-          {/* Locked nav items — upgrade nudge */}
-          {!collapsed && NAV_ITEMS.filter(item=>
-            item.permission && !hasPermission(user.role, item.permission, user.plan)
-          ).map(item=>{
-            const { Icon } = item;
-            const lockInfo = LOCKED_FEATURES[item.permission!];
-            return (
-              <button key={item.href}
-                onClick={()=>lockInfo&&setUpgradeModal({feature:item.permission!,plan:lockInfo.plan})}
-                title={`Upgrade to ${lockInfo?.plan||"starter"} to unlock`}
-                style={{display:"flex",alignItems:"center",gap:12,
-                  padding:"9px 10px",borderRadius:8,border:"none",
-                  fontSize:14,marginBottom:2,fontWeight:400,
-                  color:"rgba(255,255,255,0.2)",background:"transparent",
-                  cursor:"pointer",width:"100%",textAlign:"left",transition:"all 0.15s"}}
-                onMouseEnter={e=>{
-                  (e.currentTarget as HTMLElement).style.background="rgba(255,255,255,0.03)";
-                  (e.currentTarget as HTMLElement).style.color="rgba(255,255,255,0.3)";
-                }}
-                onMouseLeave={e=>{
-                  (e.currentTarget as HTMLElement).style.background="transparent";
-                  (e.currentTarget as HTMLElement).style.color="rgba(255,255,255,0.2)";
-                }}>
-                <Icon size={16} style={{flexShrink:0,color:"rgba(255,255,255,0.15)"}}/>
-                <span style={{flex:1}}>{item.label}</span>
-                <span style={{fontSize:9}}>🔒</span>
-              </button>
-            );
-          })}
 
           {/* Admin section */}
           {visibleAdmin.length > 0 && (
@@ -453,7 +424,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               })}
           {/* Locked admin items */}
           {!collapsed && ADMIN_NAV.filter(item=>
-            item.permission && item.permission !== "observability:view" && !hasPermission(user.role, item.permission, user.plan, user.org_id||"")
+            item.permission && !hasPermission(user.role, item.permission, user.plan)
           ).map(item=>{
             const { Icon } = item;
             const isBilling = item.href.includes("billing");

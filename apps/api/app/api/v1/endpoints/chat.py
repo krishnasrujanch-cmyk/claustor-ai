@@ -346,6 +346,33 @@ async def chat_stream(
             yield "data: " + _meta + "\n\n"
             yield "data: " + json.dumps({"type":"done"}) + "\n\n"
 
+            # ── Observability logging ─────────────────────
+            try:
+                from app.infrastructure.observability.logger import (
+                    ObservabilityEvent, fire_and_forget_log)
+                fire_and_forget_log(ObservabilityEvent(
+                    agent_role="answerer",
+                    model=response.model,
+                    provider=str(response.provider),
+                    prompt_tokens=response.input_tokens,
+                    completion_tokens=response.output_tokens,
+                    cost_usd=response.cost_usd,
+                    latency_ms=response.latency_ms,
+                    hallucination=halluc.is_hallucinated,
+                    groundedness=halluc.groundedness,
+                    citations_verified=halluc.verified_citations,
+                    citations_total=halluc.total_citations,
+                    chunks_retrieved=len(raw_chunks),
+                    chunks_used=len(citations),
+                    safety_passed=True,
+                    org_id=str(user.org_id),
+                    user_id=str(user.id),
+                    contract_id=str(req.contract_id) if req.contract_id else None,
+                    query_preview=req.query[:200],
+                ))
+            except Exception:
+                pass
+
             # Increment usage counter
             try:
                 from sqlalchemy import text as _text

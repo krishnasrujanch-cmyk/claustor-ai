@@ -116,13 +116,13 @@ class LLMRouter:
 
     # Role → preferred providers (first available in list wins)
     ROLE_PROVIDER_MAP: dict[AgentRole, list[LLMProvider]] = {
-        AgentRole.SAFETY_GUARD: [LLMProvider.GROQ, LLMProvider.GEMINI],
+        AgentRole.SAFETY_GUARD: [LLMProvider.GROQ],
         AgentRole.EXTRACTOR:    [LLMProvider.GROQ],
-        AgentRole.REASONER:     [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI],
+        AgentRole.REASONER:     [LLMProvider.GROQ, LLMProvider.OPENAI],
         AgentRole.JUDGE:        [LLMProvider.ANTHROPIC, LLMProvider.GROQ, LLMProvider.OPENAI],
-        AgentRole.ANSWERER:     [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI],
-        AgentRole.VISION:       [LLMProvider.GEMINI],   # Gemini only for vision
-        AgentRole.NEGOTIATOR:   [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI],
+        AgentRole.ANSWERER:     [LLMProvider.GROQ, LLMProvider.OPENAI],
+        AgentRole.VISION:       [LLMProvider.ANTHROPIC, LLMProvider.GROQ],   # Gemini only for vision
+        AgentRole.NEGOTIATOR:   [LLMProvider.GROQ, LLMProvider.OPENAI],
     }
 
     # Roles that use the fast/cheap model (8b)
@@ -144,14 +144,7 @@ class LLMRouter:
             )
             logger.info("llm_provider_registered", provider="groq", model=settings.GROQ_MODEL)
 
-        if settings.GEMINI_API_KEY:
-            self.providers[LLMProvider.GEMINI] = GeminiProvider(
-                api_key=settings.GEMINI_API_KEY,
-                model=settings.GEMINI_MODEL,
-                model_pro=settings.GEMINI_MODEL_PRO,
-            )
-            logger.info("llm_provider_registered", provider="gemini", model=settings.GEMINI_MODEL)
-
+        # Gemini removed — quota exhausted, replaced by Claude for vision
         if settings.OPENAI_API_KEY:
             self.providers[LLMProvider.OPENAI] = OpenAIProvider(
                 api_key=settings.OPENAI_API_KEY,

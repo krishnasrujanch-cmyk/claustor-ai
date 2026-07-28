@@ -239,7 +239,10 @@ class DocumentProcessor:
                     {"page": i["page"], "width": i["width"], "height": i["height"]}
                     for i in images
                 ]
-                result["_raw_images"] = images  # for async vision analysis
+                result["_raw_images"] = images
+                # Vision analysis scheduled async — raw images stored for pipeline
+                result["vision_pending"] = True
+                logger.info("vision_images_queued", count=len(images))
                 logger.info("images_found_in_pdf",
                            count=len(images), plan=plan)
 
@@ -292,6 +295,31 @@ class DocumentProcessor:
         return "\n".join(lines)
 
     # ── OCR ───────────────────────────────────────────────
+
+
+    def extract_images_from_pdf(self, file_bytes: bytes) -> list:
+        """Extract images from PDF for vision analysis."""
+        images = []
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                image_list = page.get_images(full=True)
+                for img in image_list:
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    images.append({
+                        "page":   page_num + 1,
+                        "width":  base_image.get("width", 0),
+                        "height": base_image.get("height", 0),
+                        "bytes":  base_image.get("image", b""),
+                        "ext":    base_image.get("ext", "png"),
+                    })
+            doc.close()
+        except Exception as e:
+            logger.warning("image_extraction_failed", error=str(e))
+        return images
 
     def _ocr_pdf(self, file_bytes: bytes) -> str:
         """OCR scanned PDF using Tesseract."""

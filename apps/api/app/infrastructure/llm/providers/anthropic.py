@@ -46,6 +46,20 @@ class AnthropicProvider(BaseLLMProvider):
         for m in messages:
             if m.role == "system":
                 system_content = m.content
+            elif hasattr(m, "images") and m.images:
+                # Vision message with images
+                content_parts = []
+                for img in m.images:
+                    content_parts.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": img.get("media_type", "image/jpeg"),
+                            "data": img["data"],
+                        }
+                    })
+                content_parts.append({"type": "text", "text": m.content})
+                chat_messages.append({"role": m.role, "content": content_parts})
             else:
                 chat_messages.append({"role": m.role, "content": m.content})
 
