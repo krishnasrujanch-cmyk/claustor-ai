@@ -101,9 +101,9 @@ class LLMRouter:
         "safety_guard": {"temperature": 0.0, "frequency_penalty": 0.0,
                          "logprobs": False, "max_tokens": 100},
         "extractor":    {"temperature": 0.0, "frequency_penalty": 0.0,
-                         "logprobs": True,  "max_tokens": 2000},
+                         "logprobs": False, "max_tokens": 2000},
         "reasoner":     {"temperature": 0.2, "frequency_penalty": 0.2,
-                         "logprobs": True,  "max_tokens": 4000},
+                         "logprobs": False, "max_tokens": 4000},
         "judge":        {"temperature": 0.0, "frequency_penalty": 0.0,
                          "logprobs": False, "max_tokens": 2000},
         "answerer":     {"temperature": 0.3, "frequency_penalty": 0.2,
@@ -117,7 +117,7 @@ class LLMRouter:
     # Role → preferred providers (first available in list wins)
     ROLE_PROVIDER_MAP: dict[AgentRole, list[LLMProvider]] = {
         AgentRole.SAFETY_GUARD: [LLMProvider.GROQ, LLMProvider.GEMINI],
-        AgentRole.EXTRACTOR:    [LLMProvider.GROQ, LLMProvider.GEMINI],
+        AgentRole.EXTRACTOR:    [LLMProvider.GROQ],
         AgentRole.REASONER:     [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI],
         AgentRole.JUDGE:        [LLMProvider.ANTHROPIC, LLMProvider.GROQ, LLMProvider.OPENAI],
         AgentRole.ANSWERER:     [LLMProvider.GROQ, LLMProvider.GEMINI, LLMProvider.OPENAI],

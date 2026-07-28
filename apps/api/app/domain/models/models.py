@@ -8,7 +8,7 @@ from datetime import datetime, date
 from typing import Any
 
 from sqlalchemy import (
-    Boolean, BigInteger, Date, DateTime, Float, ForeignKey,
+    Boolean, BigInteger, Column, Date, DateTime, Float, ForeignKey,
     Integer, LargeBinary, String, Text, UniqueConstraint,
     func, text,
 )
@@ -420,3 +420,37 @@ class AuditLog(Base):
     status: Mapped[str] = mapped_column(String(20))                  # ALLOWED | DENIED | SUCCESS | FAILED
     extra_data: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AIObservability(Base):
+    """Tracks every LLM call — cost, latency, quality, guardrails."""
+    __tablename__ = "ai_observability"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id              = Column(UUID(as_uuid=True), ForeignKey("organisations.id"), nullable=True)
+    user_id             = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    contract_id         = Column(UUID(as_uuid=True), nullable=True)
+    agent_role          = Column(String(50),  nullable=False)
+    model               = Column(String(100), nullable=False)
+    provider            = Column(String(50),  nullable=False)
+    prompt_tokens       = Column(Integer, default=0)
+    completion_tokens   = Column(Integer, default=0)
+    total_tokens        = Column(Integer, default=0)
+    cost_usd            = Column(Float,   default=0.0)
+    latency_ms          = Column(Integer, default=0)
+    retrieval_time_ms   = Column(Integer, default=0)
+    first_token_ms      = Column(Integer, default=0)
+    hallucination       = Column(Boolean, default=False)
+    groundedness        = Column(Float,   nullable=True)
+    confidence          = Column(Float,   nullable=True)
+    citations_verified  = Column(Integer, default=0)
+    citations_total     = Column(Integer, default=0)
+    chunks_retrieved    = Column(Integer, default=0)
+    chunks_used         = Column(Integer, default=0)
+    cache_hit           = Column(Boolean, default=False)
+    safety_passed       = Column(Boolean, default=True)
+    injection_detected  = Column(Boolean, default=False)
+    judge_triggered     = Column(Boolean, default=False)
+    user_feedback       = Column(String(20), nullable=True)
+    query_preview       = Column(String(200), nullable=True)
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())

@@ -7,7 +7,7 @@ import uuid
 from typing import Annotated
 
 import structlog
-
+from fastapi import APIRouter
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -260,9 +260,7 @@ async def chat_stream(
             jailbreak = check_query_for_jailbreak(
                 req.query, org_id=str(user.org_id), user_id=str(user.id))
             if not jailbreak.is_clean:
-                err_msg = json.dumps({"type":"error","message":"Query blocked by security filter."})
-                yield f"data: {err_msg}\n\n"
-
+                yield "data: " + json.dumps({"type":"error","message":"Query blocked by security filter."}) + "\n\n"
                 return
 
             # Step 1: Safety + retrieval (non-streaming portion)
@@ -316,44 +314,36 @@ async def chat_stream(
                     await asyncio.sleep(0.01)
 
             # Step 3: Citations + hallucination check
-            chunks = context.chunks if hasattr(context, "chunks") else []
-            # Convert chunks to dicts for hallucination verifier
+            # Convert chunks to dicts + verify citations
             chunk_dicts = []
-            for i, c in enumerate(chunks):
-                if hasattr(c, "to_dict"):
-                    d = c.to_dict()
-                elif hasattr(c, "clause_type"):
-                    d = {"index": i+1, "text": c.text, "clause_type": c.clause_type}
+            raw_chunks = context.chunks if hasattr(context, "chunks") else []
+            for ci, ch in enumerate(raw_chunks):
+                if hasattr(ch, "to_dict"):
+                    d = ch.to_dict()
+                elif hasattr(ch, "clause_type"):
+                    d = {"clause_type": ch.clause_type, "text": ch.text}
                 else:
-                    d = c if isinstance(c, dict) else {"index": i+1}
-                d["index"] = i + 1
+                    d = ch if isinstance(ch, dict) else {}
+                d["index"] = ci + 1
                 chunk_dicts.append(d)
             halluc = verify_citations(full_answer, chunk_dicts)
 
-            # Extract citations from answer
+            # Extract citations
             import re
             cited = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", full_answer)))
             citations = []
             for idx in cited:
-                if idx <= len(chunks):
-                    c = chunks[idx-1] if idx-1 < len(chunks) else None
-                    if c is None:
-                        continue
-                    # HybridSearchResult has attributes not dict keys
-                    if hasattr(c, "to_dict"):
-                        cd = c.to_dict()
-                    elif hasattr(c, "clause_type"):
-                        cd = {"clause_type": c.clause_type, "text": c.text}
-                    else:
-                        cd = c if isinstance(c, dict) else {}
+                if idx <= len(chunk_dicts):
+                    c = chunk_dicts[idx-1]
                     citations.append({
                         "index":       idx,
-                        "clause_type": cd.get("clause_type",""),
-                        "text":        cd.get("text","")[:200],
+                        "clause_type": c.get("clause_type",""),
+                        "text":        c.get("text","")[:200],
                     })
 
             yield "data: " + json.dumps({"type":"citations","citations":citations}) + "\n\n"
-            yield "data: " + json.dumps({"type":"meta","groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6)}) + "\n\n"
+            _meta = json.dumps({"type":"meta","groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6)})
+            yield "data: " + _meta + "\n\n"
             yield "data: " + json.dumps({"type":"done"}) + "\n\n"
 
             # Increment usage counter

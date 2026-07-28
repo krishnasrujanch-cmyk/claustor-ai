@@ -4,7 +4,7 @@ Claustor AI — Canary & Health endpoints
 from fastapi import APIRouter, Depends
 from app.api.v1.dependencies.auth import get_current_user
 
-router = APIRouter(prefix="/api/v1/canary", tags=["canary"])
+router = APIRouter(prefix="/canary", tags=["canary"])
 
 
 @router.post("/run")

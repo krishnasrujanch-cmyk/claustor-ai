@@ -37,6 +37,7 @@ class GeminiProvider(BaseLLMProvider):
         max_tokens: int = 4096,
         json_mode: bool = False,
         use_pro: bool = False,
+        **kwargs,  # absorb unsupported params
     ) -> LLMResponse:
         model = self.model_pro if use_pro else self.model
         model_name = self.model_pro_name if use_pro else self.model_name
