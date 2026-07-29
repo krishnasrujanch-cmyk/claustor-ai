@@ -1,0 +1,19 @@
+# ── Terminal 1: API ───────────────────────────────────────
+cd /Users/srujan/Downloads/PYTHON/claustor-ai/apps/api
+source .venv/bin/activate
+python3 -m uvicorn app.main:app --reload --port 8000
+
+# ── Terminal 2: Celery Worker ─────────────────────────────
+cd /Users/srujan/Downloads/PYTHON/claustor-ai/apps/api
+source .venv/bin/activate
+celery -A app.workers.celery_app worker --loglevel=info \
+  -Q free_queue,starter_queue,pro_queue,enterprise_queue,alerts --concurrency=4
+
+# ── Terminal 3: Celery Beat (scheduled tasks) ─────────────
+cd /Users/srujan/Downloads/PYTHON/claustor-ai/apps/api
+source .venv/bin/activate
+celery -A app.workers.celery_app beat --loglevel=info
+
+# ── Terminal 4: Frontend ──────────────────────────────────
+cd /Users/srujan/Downloads/PYTHON/claustor-ai/apps/web
+npm run dev

@@ -102,6 +102,11 @@ app.conf.beat_schedule = {
         "schedule": crontab(day_of_month=1, hour=0, minute=0),
         "options":  {"queue": "alerts"},
     },
+    "run-canary": {
+        "task":     "app.workers.celery_app.run_canary_evaluation",
+        "schedule": crontab(day_of_week=1, hour=2, minute=0),
+        "options":  {"queue": "alerts"},
+    },
     "cleanup-expired-guests": {
         "task":     "app.workers.tasks.alert_tasks.cleanup_expired_guests",
         "schedule": crontab(hour=1, minute=0),
@@ -110,7 +115,7 @@ app.conf.beat_schedule = {
 }
 
 
-@celery_app.task(name="run_canary_evaluation", bind=True, max_retries=1)
+@app.task(name="run_canary_evaluation", bind=True, max_retries=1)
 def run_canary_evaluation(self):
     """Weekly canary evaluation to detect model degradation."""
     import asyncio
