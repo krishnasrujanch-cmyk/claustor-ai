@@ -12,33 +12,6 @@ const C = {
   success:"#22C55E", warning:"#F59E0B", error:"#EF4444",
 };
 
-const PROMPT_SUBTITLES: Record<string,[string,string][]> = {
-  risk: [
-    ["What are the high-risk clauses?",     "Extract liability exclusions, penalties and breach terms"],
-    ["What is the liability cap?",          "Check financial exposure limits across contracts"],
-    ["Are there indemnification issues?",   "Identify unbudgeted third-party indemnity obligations"],
-    ["What penalty clauses exist?",         "Review SLA breach penalties and liquidated damages"],
-  ],
-  financial: [
-    ["What are the payment terms?",         "Net days, milestones, and invoice conditions"],
-    ["Are there hidden fees?",              "Identify unexpected costs and escalation clauses"],
-    ["What is the total contract value?",   "Aggregate value across all contract tiers"],
-    ["What royalties are owed?",            "Review royalty rates, reporting, and audit rights"],
-  ],
-  legal: [
-    ["Who are the contracting parties?",    "Names, roles, and signatory authority"],
-    ["What is the governing law?",          "Jurisdiction and dispute resolution forum"],
-    ["What are the termination conditions?","Notice periods, for-cause and convenience terms"],
-    ["Is there an auto-renewal clause?",    "Review evergreen provisions and opt-out windows"],
-  ],
-  ip: [
-    ["Who owns the intellectual property?", "Ownership, assignment, and work-for-hire terms"],
-    ["What data sharing is permitted?",     "Data use, processing, and cross-border transfer"],
-    ["Are there exclusivity clauses?",      "Scope, territory, and duration of exclusivity"],
-    ["What are the non-compete terms?",     "Restrictions on competitive activity post-term"],
-  ],
-};
-
 const PROMPT_TABS = [
   { key:"risk",      label:"Risk",      Icon:AlertTriangle, color:"#EF4444",
     prompts:["What are the high-risk clauses?","What is the liability cap?","Are there indemnification issues?","What penalty clauses exist?"]},
@@ -91,14 +64,13 @@ function RichText({ text, citations }: { text: string; citations?: any[] }) {
               <div style={{flex:1,background:C.bg,border:`1px solid ${riskColor||C.border}`,
                 borderLeft:`3px solid ${riskColor||C.primary}`,
                 borderRadius:"0 8px 8px 0",padding:"8px 12px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:rest?4:0,flexWrap:"wrap"}}>
-                  <span style={{fontSize:13,fontWeight:700,color:C.heading}}>{inlineParse(title,citations)}</span>
-                  {riskColor && (
-                    <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:20,
-                      background:riskBg,color:riskColor,border:`1px solid ${riskColor}30`,whiteSpace:"nowrap"}}>
-                      {risk!.toUpperCase()} RISK
-                    </span>
-                  )}
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:rest?4:0,flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,fontWeight:700,color:C.heading,marginRight:2}}>{inlineParse(title,citations)}</span>
+                  <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,
+                    background:riskBg,color:riskColor,border:`1px solid ${riskColor}30`,
+                    whiteSpace:"nowrap",flexShrink:0}}>
+                    {(risk||"low").toUpperCase()} RISK
+                  </span>
                 </div>
                 {rest && <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>{inlineParse(rest,citations)}</div>}
               </div>
@@ -365,7 +337,7 @@ export default function CopilotPage() {
             <textarea
               value={input} onChange={e=>setInput(e.target.value)}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send(input);}}}
-              placeholder={sel ? `Ask about ${selName}...` : "Ask anything about your contracts..."}
+              placeholder="Ask about this contract... (Enter to send)"
               rows={1} disabled={loading}
               style={{width:"100%",padding:"10px 14px",border:"none",fontSize:13,color:C.heading,background:"transparent",resize:"none",outline:"none",fontFamily:"inherit",lineHeight:1.5,maxHeight:120,overflowY:"auto",boxSizing:"border-box"}}
               onInput={e=>{const t=e.currentTarget;t.style.height="auto";t.style.height=Math.min(t.scrollHeight,120)+"px";}}

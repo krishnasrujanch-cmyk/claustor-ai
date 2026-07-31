@@ -269,25 +269,33 @@ async def upgrade_plan(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upgrade or downgrade plan."""
+    """Upgrade or downgrade plan. Works for any plan change."""
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Only admins can change plan")
+
     if req.plan not in PLANS:
         raise HTTPException(status_code=400, detail=f"Invalid plan: {req.plan}")
+
     if req.plan == "enterprise":
         raise HTTPException(status_code=400,
             detail="Enterprise requires custom setup. Contact hello@claustor.ai")
-    from sqlalchemy import update as sa_update
+
+    # Direct plan update in DB (no payment processor in dev)
+    from sqlalchemy import update
     from app.domain.models import Organisation
     await db.execute(
-        sa_update(Organisation)
+        update(Organisation)
         .where(Organisation.id == user.org_id)
         .values(plan=req.plan)
     )
     await db.commit()
-    return {"success": True, "plan": req.plan,
-            "requires_relogin": True,
-            "message": f"Successfully changed to {req.plan} plan. Sign out and back in to activate new features."}
+
+    action = "upgraded" if req.plan != "free" else "downgraded"
+    return {
+        "success": True,
+        "plan": req.plan,
+        "message": f"Successfully {action} to {req.plan} plan.",
+    }
 
 
 @router.get("/invoice/{invoice_index}/pdf")
@@ -296,22 +304,10 @@ async def download_invoice_pdf(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate invoice PDF."""
+    """Generate and download invoice PDF."""
     import io
-    from datetime import datetime
     from fastapi.responses import StreamingResponse
-    from sqlalchemy import select
-    from app.domain.models import Organisation
-
-    org_r = await db.execute(
-        select(Organisation).where(Organisation.id == user.org_id))
-    org = org_r.scalar_one_or_none()
-    plan = org.plan if org else "free"
-    prices = {"free":0,"starter":3999,"professional":16499,"enterprise":0}
-    base = prices.get(plan, 0)
-    gst  = round(base * 0.18)
-    total = base + gst
-    now  = datetime.now()
+    from datetime import datetime
 
     try:
         from reportlab.lib.pagesizes import A4
@@ -319,32 +315,49 @@ async def download_invoice_pdf(
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
         from reportlab.lib import colors as rl_colors
         from reportlab.lib.units import cm
+
+        # Get org info
+        from app.domain.models import Organisation
+        from sqlalchemy import select
+        org_result = await db.execute(
+            select(Organisation).where(Organisation.id == user.org_id)
+        )
+        org = org_result.scalar_one_or_none()
+        plan = org.plan if org else "professional"
+        plan_prices = {"free":0,"starter":3999,"professional":16499,"enterprise":0}
+        base = plan_prices.get(plan, 0)
+        gst = round(base * 0.18)
+        total = base + gst
+        now = datetime.now()
+
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4,
-            topMargin=2*cm, bottomMargin=2*cm, leftMargin=2*cm, rightMargin=2*cm)
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm,
+                               leftMargin=2*cm, rightMargin=2*cm)
         styles = getSampleStyleSheet()
-        story = [
-            Paragraph("<b>CLAUSTOR AI — TAX INVOICE</b>", styles["Heading1"]),
-            Paragraph("DKU Technologies Pvt. Ltd. | Hyderabad, India", styles["Normal"]),
-            Spacer(1, 0.5*cm),
-            Paragraph(f"Invoice #{invoice_index+1:04d} | {now.strftime('%d %b %Y')}", styles["Normal"]),
-            Spacer(1, 0.5*cm),
-        ]
+        story = []
+
+        story.append(Paragraph("<b>CLAUSTOR AI</b>", styles["Heading1"]))
+        story.append(Paragraph("DKU Technologies Pvt. Ltd.", styles["Normal"]))
+        story.append(Paragraph("Hyderabad, India | hello@claustor.ai", styles["Normal"]))
+        story.append(Spacer(1, 0.5*cm))
+        story.append(Paragraph(f"<b>TAX INVOICE</b>", styles["Heading2"]))
+        story.append(Paragraph(f"Invoice #{invoice_index+1:04d} | {now.strftime('%d %b %Y')}", styles["Normal"]))
+        story.append(Spacer(1, 0.5*cm))
+
         data = [
             ["Description", "Amount (INR)"],
-            [f"{plan.title()} Plan — {now.strftime('%B %Y')}", f"Rs.{base:,}"],
-            ["GST @ 18%", f"Rs.{gst:,}"],
-            ["Total", f"Rs.{total:,}"],
+            [f"{plan.title()} Plan - {now.strftime('%B %Y')}", f"₹{base:,}"],
+            ["GST @ 18%", f"₹{gst:,}"],
+            ["Total", f"₹{total:,}"],
         ]
         t = Table(data, colWidths=[12*cm, 5*cm])
         t.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), rl_colors.HexColor("#0066FF")),
             ("TEXTCOLOR",  (0,0), (-1,0), rl_colors.white),
-            ("FONTNAME",   (0,0), (-1,-1), "Helvetica"),
             ("FONTNAME",   (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTNAME",   (0,-1), (-1,-1), "Helvetica-Bold"),
             ("ALIGN",      (1,0), (1,-1), "RIGHT"),
             ("GRID",       (0,0), (-1,-1), 0.5, rl_colors.HexColor("#E5E7EB")),
+            ("FONTNAME",   (0,-1), (-1,-1), "Helvetica-Bold"),
             ("BACKGROUND", (0,-1), (-1,-1), rl_colors.HexColor("#F0F7FF")),
         ]))
         story.append(t)
@@ -353,16 +366,227 @@ async def download_invoice_pdf(
         doc.build(story)
         buffer.seek(0)
         return StreamingResponse(buffer, media_type="application/pdf",
-            headers={"Content-Disposition":
-                f"attachment; filename=claustor-invoice-{invoice_index+1:04d}.pdf"})
+            headers={"Content-Disposition": f"attachment; filename=claustor-invoice-{invoice_index+1:04d}.pdf"})
+
     except ImportError:
+        # Fallback text invoice
+        import io as _io
         text = f"""CLAUSTOR AI - TAX INVOICE
-Invoice #{invoice_index+1:04d} | {now.strftime('%d %b %Y')}
+DKU Technologies Pvt. Ltd.
+Invoice #{invoice_index+1:04d} | {datetime.now().strftime('%d %b %Y')}
+
 Plan: {plan.title()}
-Base: INR {base:,}
+Amount: INR {base:,}
 GST (18%): INR {gst:,}
 Total: INR {total:,}
+
+Thank you for using Claustor AI.
 """
-        return StreamingResponse(io.BytesIO(text.encode()), media_type="text/plain",
-            headers={"Content-Disposition":
-                f"attachment; filename=claustor-invoice-{invoice_index+1:04d}.txt"})
+        return StreamingResponse(_io.BytesIO(text.encode()),
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename=claustor-invoice-{invoice_index+1:04d}.txt"})
+
+# ── Razorpay Standard Checkout ────────────────────────────────────
+
+class RazorpayOrderRequest(BaseModel):
+    plan: str
+    addon: bool = False
+
+
+@router.post("/razorpay/create-order")
+async def razorpay_create_order(
+    req: RazorpayOrderRequest,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create Razorpay order for plan upgrade."""
+    from app.core.config import settings
+    import razorpay
+    import uuid as _uuid
+
+    # Base plan amounts in paise (INR × 100)
+    PLAN_AMOUNTS = {
+        "starter":      399900,   # ₹3,999
+        "professional": 1649900,  # ₹16,499
+    }
+    ADDON_AMOUNTS = {
+        "starter":      100000,   # ₹1,000
+        "professional": 250000,   # ₹2,500
+    }
+    GST_RATE = 0.18  # 18% GST
+
+    if req.plan not in PLAN_AMOUNTS:
+        raise HTTPException(status_code=400, detail=f"Invalid plan: {req.plan}")
+
+    base_amount  = PLAN_AMOUNTS[req.plan]
+    addon_amount = ADDON_AMOUNTS.get(req.plan, 0) if req.addon else 0
+    subtotal     = base_amount + addon_amount
+    gst_amount   = int(subtotal * GST_RATE)
+    amount       = subtotal + gst_amount
+
+    if amount < 100:
+        raise HTTPException(status_code=400, detail="Amount must be at least ₹1")
+
+    if not settings.RAZORPAY_KEY_ID:
+        raise HTTPException(status_code=503, detail="Razorpay not configured")
+
+    try:
+        client = razorpay.Client(
+            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        order = client.order.create({
+            "amount":   amount,
+            "currency": "INR",
+            "receipt":  f"claustor_{str(user.org_id)[:8]}_{_uuid.uuid4().hex[:8]}",
+            "notes": {
+                "org_id":       str(user.org_id),
+                "plan":         req.plan,
+                "addon":        str(req.addon),
+                "base_amount":  str(base_amount),
+                "addon_amount": str(addon_amount),
+                "gst_amount":   str(gst_amount),
+            },
+        })
+        return {
+            "order_id":    order["id"],
+            "amount":      order["amount"],
+            "currency":    order["currency"],
+            "key_id":      settings.RAZORPAY_KEY_ID,
+            "breakdown": {
+                "base":    base_amount / 100,
+                "addon":   addon_amount / 100,
+                "gst":     gst_amount / 100,
+                "total":   amount / 100,
+            },
+        }
+    except Exception as e:
+        logger.error("razorpay_create_order_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create payment order")
+
+
+class RazorpayVerifyRequest(BaseModel):
+    razorpay_order_id:   str
+    razorpay_payment_id: str
+    razorpay_signature:  str
+    plan:                str
+    addon:               bool = False
+
+
+@router.post("/razorpay/verify-payment")
+async def razorpay_verify_payment(
+    req: RazorpayVerifyRequest,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify Razorpay payment signature and activate plan."""
+    import hmac
+    import hashlib
+    from app.core.config import settings
+    from sqlalchemy import update
+    from app.domain.models import Organisation
+
+    if not settings.RAZORPAY_KEY_SECRET:
+        raise HTTPException(status_code=503, detail="Razorpay not configured")
+
+    # Verify HMAC-SHA256 signature
+    payload   = f"{req.razorpay_order_id}|{req.razorpay_payment_id}"
+    expected  = hmac.new(
+        settings.RAZORPAY_KEY_SECRET.encode(),
+        payload.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, req.razorpay_signature):
+        logger.warning("razorpay_signature_mismatch",
+            org_id=str(user.org_id), order_id=req.razorpay_order_id)
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+
+    # Activate plan
+    update_vals: dict = {"plan": req.plan}
+    if req.addon:
+        update_vals["addon_enabled"] = True
+
+    await db.execute(
+        update(Organisation)
+        .where(Organisation.id == user.org_id)
+        .values(**update_vals)
+    )
+    await db.commit()
+
+    logger.info("razorpay_payment_verified",
+        org_id=str(user.org_id), plan=req.plan,
+        payment_id=req.razorpay_payment_id)
+
+    # Store payment record in audit log
+    try:
+        from app.domain.models.models import AuditLog
+        import uuid as _uuid2
+        from datetime import datetime, timezone
+        from app.services.billing.billing_service import PLANS
+        plan_info = PLANS.get(req.plan, {})
+        base_amt  = plan_info.get("price_monthly", 0) if hasattr(plan_info, "get") else 0
+        db.add(AuditLog(
+            id=_uuid2.uuid4(),
+            org_id=user.org_id,
+            user_id=user.id,
+            action="payment_completed",
+            resource_type="billing",
+            resource_id=str(_uuid2.uuid4()),
+            status="success",
+            user_role=user.role,
+            extra_data={
+                "payment_id":  req.razorpay_payment_id,
+                "order_id":    req.razorpay_order_id,
+                "plan":        req.plan,
+                "addon":       req.addon,
+                "provider":    "razorpay",
+                "timestamp":   datetime.now(timezone.utc).isoformat(),
+                "base_amount": 16499 if req.plan=="professional" else 3999,
+                "addon_amount": (2500 if req.plan=="professional" else 1000) if req.addon else 0,
+                "gst_amount":  round(((16499 if req.plan=="professional" else 3999) + ((2500 if req.plan=="professional" else 1000) if req.addon else 0)) * 0.18),
+                "total_amount": round(((16499 if req.plan=="professional" else 3999) + ((2500 if req.plan=="professional" else 1000) if req.addon else 0)) * 1.18),
+            },
+        ))
+        await db.commit()
+    except Exception as _ae:
+        logger.warning("audit_log_failed", error=str(_ae))
+
+    return {
+        "success": True,
+        "plan":    req.plan,
+        "message": f"Payment verified. Successfully upgraded to {req.plan} plan.",
+        "payment_id": req.razorpay_payment_id,
+    }
+
+@router.get("/razorpay/payments")
+async def get_razorpay_payments(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get Razorpay payment history from audit log."""
+    from sqlalchemy import text
+    r = await db.execute(text("""
+        SELECT extra_data, created_at
+        FROM audit_log
+        WHERE org_id = :org_id
+          AND action = 'payment_completed'
+        ORDER BY created_at DESC
+        LIMIT 20
+    """), {"org_id": str(user.org_id)})
+    rows = r.fetchall()
+    payments = []
+    for row in rows:
+        d = row[0] or {}
+        payments.append({
+            "id":           d.get("payment_id",""),
+            "order_id":     d.get("order_id",""),
+            "plan":         d.get("plan",""),
+            "addon":        d.get("addon", False),
+            "base_amount":  d.get("base_amount", 0),
+            "addon_amount": d.get("addon_amount", 0),
+            "gst_amount":   d.get("gst_amount", 0),
+            "total_amount": d.get("total_amount", 0),
+            "provider":     "razorpay",
+            "created_at":   row[1].isoformat() if row[1] else "",
+            "status":       "paid",
+        })
+    return {"payments": payments}

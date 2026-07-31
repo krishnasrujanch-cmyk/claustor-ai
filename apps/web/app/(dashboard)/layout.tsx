@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { NotificationBell } from "@/components/layout/NotificationBell";
-import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/auth";
@@ -132,7 +131,7 @@ export default function DashboardLayout({
           </Link>
           <div style={{display:"flex",gap:6}}>
             <NotificationBell />
-            <ThemeToggle />
+            
           </div>
           </div>
         </div>

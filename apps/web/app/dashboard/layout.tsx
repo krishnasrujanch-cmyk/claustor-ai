@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { NotificationBell } from "@/components/layout/NotificationBell";
-import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import {
   LayoutDashboard, FileText, Sparkles, CheckSquare,
   GitCompare, BookOpen, Clock, BarChart2, UploadCloud,
@@ -34,7 +33,7 @@ const LOCKED_FEATURES: Record<string,{plan:string;label:string;benefits:string[]
     benefits:["Assign contracts to legal reviewers","Clause-by-clause approval","SLA tracking"]},
   "users:view":      {plan:"starter",  label:"Team Management",
     benefits:["Invite team members","Role-based access control","Activity tracking per user"]},
-  "billing:view":    {plan:"starter",  label:"Billing",
+  "billing:view":    {plan:"free",     label:"Billing",
     benefits:["Manage subscription","Add industry packs","Download invoices"]},
   "audit:view":      {plan:"professional", label:"Audit Log",
     benefits:["Full access trail — who viewed what","Export audit CSV","GDPR compliance proof"]},
@@ -87,7 +86,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 // Plan → features unlocked
 const PLAN_FEATURES: Record<string, string[]> = {
   free:         ["contracts:view","chat:use","analytics:view"],
-  starter:      ["contracts:view","contracts:upload","contracts:delete","chat:use","reviews:view","reviews:assign","analytics:view","analytics:export","obligations:view","obligations:complete","bulk:import","playbook:view"],
+  starter:      ["contracts:view","contracts:upload","contracts:delete","chat:use","reviews:view","reviews:assign","analytics:view","analytics:export","obligations:view","obligations:complete","bulk:import","playbook:view","billing:view","settings:manage","users:view"],
   professional: ["*"],
   enterprise:   ["*"],
 };
@@ -265,7 +264,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const isActive = (href: string) => href === "/dashboard" ? pathname === href : pathname.startsWith(href);
-  const isAdmin  = ["super_admin","dept_admin"].includes(user.role);
+  const isAdmin  = ["super_admin","dept_admin","member"].includes(user.role);
   const sidebarWidth = collapsed ? 64 : 240;
 
   const planBadgeColor: Record<string,string> = {
@@ -549,7 +548,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           display:"flex",alignItems:"center",justifyContent:"flex-end",
           padding:"0 24px",gap:8,flexShrink:0}}>
           <NotificationBell />
-          <ThemeToggle />
+          
         </header>
         <main style={{flex:1,overflowY:"auto",background:C.bg}}>
           {children}

@@ -446,7 +446,7 @@ export default function LandingPage() {
           alignItems:"center",height:64,gap:32}}>
           <Link href="/" style={{textDecoration:"none",
             display:"flex",alignItems:"center",gap:10}}>
-            <ClauStorLogoLight size={52}/>
+            <ClauStorLogoLight size={36}/>
             <div>
               <div style={{fontWeight:800,fontSize:18,color:C.heading,
                 letterSpacing:"-0.01em",lineHeight:1}}>
@@ -1009,7 +1009,7 @@ export default function LandingPage() {
         textAlign:"center"}}>
         <div style={{maxWidth:600,margin:"0 auto"}}>
           <div style={{marginBottom:24,display:"flex",justifyContent:"center"}}>
-            <ClauStorLogo size={80}/>
+            <ClauStorLogo size={56}/>
           </div>
           <h2 style={{fontSize:36,fontWeight:900,color:"white",
             letterSpacing:"-0.02em",marginBottom:12}}>
@@ -1048,7 +1048,7 @@ export default function LandingPage() {
             {/* Brand */}
             <div>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                <ClauStorLogo size={44}/>
+                <ClauStorLogo size={32}/>
                 <span style={{fontWeight:800,fontSize:16,color:"white"}}>Claustor</span>
               </div>
               <p style={{fontSize:13,lineHeight:1.7,maxWidth:260}}>

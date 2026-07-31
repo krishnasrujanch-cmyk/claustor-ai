@@ -336,6 +336,7 @@ function PlanCard({ plan, isCurrent, isUpgrade, isDowngrade, onAction, upgrading
           )}
         </div>
       </div>
+
     </div>
   );
 }
@@ -345,6 +346,8 @@ export default function BillingPage() {
   const [invoices, setInvoices]         = useState<any[]>([]);
   const [orgInd, setOrgInd]             = useState<any>(null);
   const [addonEnabled, setAddonEnabled] = useState(false);
+  const [addonPrompt, setAddonPrompt] = useState<{planId:string;action:string}|null>(null);
+  const [addonChoice, setAddonChoice] = useState(false);
   const [loading, setLoading]           = useState(true);
   const [upgrading, setUpgrading]       = useState<string|null>(null);
   const [togglingAddon, setTogglingAddon] = useState(false);
@@ -354,13 +357,30 @@ export default function BillingPage() {
     const token = getToken();
     const h = { Authorization: `Bearer ${token}` };
     try {
-      const [s, inv, ind] = await Promise.all([
+      const [s, inv, ind, aiRes, rzpPayments] = await Promise.all([
         billingAPI.summary(),
         billingAPI.invoices(),
         fetch(`${API}/api/v1/industries/org`, { headers: h }).then(r=>r.json()),
+        fetch(`${API}/api/v1/observability/summary?days=30`, { headers: h }).then(r=>r.json()).catch(()=>null),
+        fetch(`${API}/api/v1/billing/razorpay/payments`, { headers: h }).then(r=>r.json()).catch(()=>({payments:[]})),
       ]);
       setSummary(s);
-      setInvoices((inv as any).invoices || []);
+      const rzpInvs = (rzpPayments?.payments||[]).map((p:any,i:number)=>({
+        id: i,
+        payment_id: p.id,
+        order_id:   p.order_id,
+        plan:        p.plan,
+        addon:       p.addon,
+        amount:      p.base_amount || (p.plan==="professional"?16499:3999),
+        addon_amount:p.addon_amount || (p.addon?(p.plan==="professional"?2500:1000):0),
+        gst_amount:  p.gst_amount  || 0,
+        total_amount:p.total_amount || 0,
+        status:      "paid",
+        provider:    "razorpay",
+        created_at:  p.created_at,
+      }));
+      const existingInvs = (inv as any).invoices || [];
+      setInvoices([...rzpInvs, ...existingInvs]);
       setOrgInd(ind);
       setAddonEnabled(ind.addon_enabled || false);
     } catch(e) { console.error(e); }
@@ -387,9 +407,108 @@ export default function BillingPage() {
     finally { setTogglingAddon(false); }
   };
 
-  const handlePlanAction = async (planId: string, action: string) => {
+  // Load Razorpay checkout.js
+  const loadRazorpay = (): Promise<boolean> =>
+    new Promise(res=>{
+      if ((window as any).Razorpay) return res(true);
+      const s = document.createElement("script");
+      s.src = "https://checkout.razorpay.com/v1/checkout.js";
+      s.onload=()=>res(true); s.onerror=()=>res(false);
+      document.body.appendChild(s);
+    });
+
+  const startPlanAction = (planId: string, action: string) => {
+    if (planId === "free" || action === "downgrade") {
+      handlePlanAction(planId, action, false);
+      return;
+    }
+    // Show addon prompt for paid plan upgrades
+    const plan = PLANS.find(p=>p.id===planId);
+    if (plan && plan.addon > 0) {
+      setAddonChoice(false);
+      setAddonPrompt({planId, action});
+    } else {
+      handlePlanAction(planId, action, false);
+    }
+  };
+
+  const handlePlanAction = async (planId: string, action: string, includeAddon = false) => {
     setUpgrading(planId); setMsg("");
     const token = getToken();
+
+    // Free plan downgrade — no payment needed
+    if (planId === "free") {
+      try {
+        const r = await fetch(`${API}/api/v1/billing/upgrade`, {
+          method:"POST",
+          headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+          body: JSON.stringify({plan: planId}),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail);
+        setMsg("✅ Downgraded to free plan.");
+        setTimeout(()=>window.location.reload(), 1200);
+      } catch(e:any){ setMsg(`❌ ${e.message}`); }
+      finally{ setUpgrading(null); }
+      return;
+    }
+
+    // Paid plan — use Razorpay
+    try {
+      const loaded = await loadRazorpay();
+      if (!loaded) { setMsg("❌ Payment gateway failed to load"); setUpgrading(null); return; }
+
+      const orderRes = await fetch(`${API}/api/v1/billing/razorpay/create-order`, {
+        method:"POST",
+        headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+        body: JSON.stringify({plan: planId, addon: includeAddon}),
+      });
+      if (!orderRes.ok) { setMsg("❌ Failed to create payment order"); setUpgrading(null); return; }
+      const order = await orderRes.json();
+
+      const options = {
+        key:         order.key_id,
+        amount:      order.amount,
+        currency:    order.currency,
+        name:        "Claustor AI",
+        description: order.breakdown
+          ? `${planId.charAt(0).toUpperCase()+planId.slice(1)} Plan — Base: ₹${order.breakdown.base.toLocaleString()} + GST (18%): ₹${order.breakdown.gst.toLocaleString()} = ₹${order.breakdown.total.toLocaleString()}`
+          : `${planId.charAt(0).toUpperCase()+planId.slice(1)} Plan`,
+        order_id:    order.order_id,
+        prefill:     {email: summary?.email||""},
+        theme:       {color:"#0066FF"},
+        handler: async (resp: any) => {
+          const verRes = await fetch(`${API}/api/v1/billing/razorpay/verify-payment`,{
+            method:"POST",
+            headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+            body: JSON.stringify({
+              razorpay_order_id:   resp.razorpay_order_id,
+              razorpay_payment_id: resp.razorpay_payment_id,
+              razorpay_signature:  resp.razorpay_signature,
+              plan: planId, addon: includeAddon,
+            }),
+          });
+          const ver = await verRes.json();
+          if (ver.success) {
+            setMsg("✅ Payment successful! Plan upgraded.");
+            setTimeout(()=>window.location.reload(), 1500);
+          } else {
+            setMsg("❌ Payment verification failed. Contact support.");
+          }
+          setUpgrading(null);
+        },
+        modal: { ondismiss: ()=>{ setMsg("Payment cancelled."); setUpgrading(null); } },
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on("payment.failed",(e:any)=>{ setMsg(`❌ Payment failed: ${e.error.description}`); setUpgrading(null); });
+      rzp.open();
+      return; // don't setUpgrading(null) here — modal handles it
+    } catch(e:any){
+      setMsg(`❌ ${e.message}`);
+      setUpgrading(null);
+    }
+
+    // Legacy fallback (should not reach here for paid plans)
     try {
       const r = await fetch(`${API}/api/v1/billing/upgrade`, {
         method:"POST",
@@ -643,7 +762,7 @@ export default function BillingPage() {
                 isCurrent={isCurrent}
                 isUpgrade={isUpgrade}
                 isDowngrade={isDowngrade}
-                onAction={handlePlanAction}
+                onAction={startPlanAction}
                 upgrading={upgrading}/>
             );
           })}
@@ -709,6 +828,116 @@ export default function BillingPage() {
         ))}
       </div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      {/* Addon Prompt Modal */}
+      {addonPrompt && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",
+          display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
+          <div style={{background:"white",borderRadius:16,padding:28,
+            maxWidth:420,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
+            <h3 style={{fontSize:17,fontWeight:800,color:"#111827",marginBottom:6}}>
+              Add Industry Pack?
+            </h3>
+            <p style={{fontSize:13,color:"#6B7280",marginBottom:20}}>
+              Enhance your plan with industry-specific clause scoring, playbooks, and risk benchmarks.
+            </p>
+
+            {/* Base plan */}
+            <div style={{padding:"12px 16px",borderRadius:10,marginBottom:10,
+              background:"#F8FAFC",border:"1px solid #E5E7EB"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#111827"}}>
+                    {PLANS.find(p=>p.id===addonPrompt.planId)?.label} Plan
+                  </div>
+                  <div style={{fontSize:11,color:"#6B7280"}}>Base plan features</div>
+                </div>
+                <div style={{fontSize:15,fontWeight:700,color:"#0066FF"}}>
+                  ₹{PLANS.find(p=>p.id===addonPrompt.planId)?.base.toLocaleString()}/mo
+                </div>
+              </div>
+            </div>
+
+            {/* Addon option */}
+            <div onClick={()=>setAddonChoice(!addonChoice)}
+              style={{padding:"12px 16px",borderRadius:10,marginBottom:16,
+                background:addonChoice?"#EFF6FF":"#F8FAFC",
+                border:`2px solid ${addonChoice?"#0066FF":"#E5E7EB"}`,
+                cursor:"pointer",transition:"all 0.15s"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:20,height:20,borderRadius:5,
+                    background:addonChoice?"#0066FF":"white",
+                    border:`2px solid ${addonChoice?"#0066FF":"#D1D5DB"}`,
+                    display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {addonChoice&&<span style={{color:"white",fontSize:12,fontWeight:900}}>✓</span>}
+                  </div>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#111827"}}>
+                      Industry Pack Add-on
+                    </div>
+                    <div style={{fontSize:11,color:"#6B7280"}}>
+                      8 industries · custom scoring · priority queue
+                    </div>
+                  </div>
+                </div>
+                <div style={{fontSize:14,fontWeight:700,color:"#F59E0B",flexShrink:0}}>
+                  +₹{PLANS.find(p=>p.id===addonPrompt.planId)?.addon.toLocaleString()}/mo
+                </div>
+              </div>
+            </div>
+
+            {/* Total */}
+            <div style={{padding:"10px 16px",borderRadius:8,marginBottom:20,
+              background:"#F0FDF4",border:"1px solid #22C55E30"}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                <span style={{color:"#6B7280"}}>Subtotal</span>
+                <span style={{fontWeight:700,color:"#111827"}}>
+                  ₹{((PLANS.find(p=>p.id===addonPrompt.planId)?.base||0) +
+                     (addonChoice?(PLANS.find(p=>p.id===addonPrompt.planId)?.addon||0):0)
+                    ).toLocaleString()}/mo
+                </span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginTop:4}}>
+                <span style={{color:"#6B7280"}}>GST (18%)</span>
+                <span style={{fontWeight:700,color:"#111827"}}>
+                  ₹{Math.round(((PLANS.find(p=>p.id===addonPrompt.planId)?.base||0) +
+                     (addonChoice?(PLANS.find(p=>p.id===addonPrompt.planId)?.addon||0):0)
+                    ) * 0.18).toLocaleString()}/mo
+                </span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",
+                fontSize:15,fontWeight:800,marginTop:8,paddingTop:8,
+                borderTop:"1px solid #E5E7EB"}}>
+                <span style={{color:"#111827"}}>Total</span>
+                <span style={{color:"#22C55E"}}>
+                  ₹{Math.round(((PLANS.find(p=>p.id===addonPrompt.planId)?.base||0) +
+                     (addonChoice?(PLANS.find(p=>p.id===addonPrompt.planId)?.addon||0):0)
+                    ) * 1.18).toLocaleString()}/mo
+                </span>
+              </div>
+            </div>
+
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setAddonPrompt(null)}
+                style={{flex:1,padding:"11px",border:"1px solid #E5E7EB",
+                  borderRadius:10,background:"white",cursor:"pointer",
+                  fontSize:13,color:"#6B7280",fontWeight:600}}>
+                Cancel
+              </button>
+              <button onClick={()=>{
+                const {planId,action}=addonPrompt;
+                setAddonPrompt(null);
+                handlePlanAction(planId, action, addonChoice);
+              }}
+                style={{flex:2,padding:"11px",border:"none",
+                  borderRadius:10,background:"#0066FF",cursor:"pointer",
+                  fontSize:13,color:"white",fontWeight:700}}>
+                Proceed to Payment →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
 
     # On-premise: Ollama
+    RAZORPAY_KEY_ID:     str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL:   str = "claude-sonnet-4-5"
 
@@ -115,14 +119,18 @@ class Settings(BaseSettings):
             chain.append("gemini")
         if self.OPENAI_API_KEY:
             chain.append("openai")
-        if self.ANTHROPIC_API_KEY:
-            chain.append("anthropic")
+        if self.RAZORPAY_KEY_ID:
+            chain.append("razorpay")
         if self.OLLAMA_HOST:
-            chain.append("ollama")
             chain.append("ollama")
         return chain
 
-    # ── Email (Resend) ────────────────────────────
+    RAZORPAY_KEY_ID:         str = ""
+    RAZORPAY_KEY_SECRET:     str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL:   str = "claude-sonnet-4-5"
     RESEND_API_KEY: str = ""
     RESEND_FROM: str = "hello@claustor.com"
     RESEND_FROM_NAME: str = "Claustor AI"
