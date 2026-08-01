@@ -507,6 +507,8 @@ class RazorpayVerifyRequest(BaseModel):
     addon:               bool = False
     period:              str  = "monthly"
     total_amount:        int  = 0
+    free_upgrade:        bool = False
+    extended_days:       int  = 0
 
 
 @router.post("/razorpay/verify-payment")
@@ -525,18 +527,18 @@ async def razorpay_verify_payment(
     if not settings.RAZORPAY_KEY_SECRET:
         raise HTTPException(status_code=503, detail="Razorpay not configured")
 
-    # Verify HMAC-SHA256 signature
-    payload   = f"{req.razorpay_order_id}|{req.razorpay_payment_id}"
-    expected  = hmac.new(
-        settings.RAZORPAY_KEY_SECRET.encode(),
-        payload.encode(),
-        hashlib.sha256,
-    ).hexdigest()
-
-    if not hmac.compare_digest(expected, req.razorpay_signature):
-        logger.warning("razorpay_signature_mismatch",
-            org_id=str(user.org_id), order_id=req.razorpay_order_id)
-        raise HTTPException(status_code=400, detail="Payment verification failed")
+    # Skip signature check for free upgrades (credit covers full amount)
+    if not req.free_upgrade:
+        payload   = f"{req.razorpay_order_id}|{req.razorpay_payment_id}"
+        expected  = hmac.new(
+            settings.RAZORPAY_KEY_SECRET.encode(),
+            payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, req.razorpay_signature):
+            logger.warning("razorpay_signature_mismatch",
+                org_id=str(user.org_id), order_id=req.razorpay_order_id)
+            raise HTTPException(status_code=400, detail="Payment verification failed")
 
     # Calculate next billing date based on period
     from datetime import datetime, timezone, timedelta
@@ -545,7 +547,10 @@ async def razorpay_verify_payment(
     total_months = period_info["charge_months"] + period_info["free_months"]
     now          = datetime.now(timezone.utc)
     # Approximate months as 30 days each
-    next_billing = now + timedelta(days=total_months * 30)
+    if req.free_upgrade and req.extended_days > 0:
+        next_billing = now + timedelta(days=req.extended_days)
+    else:
+        next_billing = now + timedelta(days=total_months * 30)
 
     # Activate plan with expiry tracking (raw SQL to avoid ORM column cache)
     from sqlalchemy import text as _txt
@@ -672,13 +677,32 @@ async def get_prorate_credit(
         )
 
     # Apply credit
+    from app.core.pricing import BILLING_PERIODS, calculate_amount
     credit        = credit_info["credit"]
     subtotal      = pricing["base_amount"] + pricing["addon_amount"]
-    credit_applied = min(credit, subtotal)  # can't credit more than new price
-    discounted     = max(0, subtotal - credit_applied)
-    gst            = round(discounted * 0.18)
-    total_to_pay   = discounted + gst
-    total_paise    = total_to_pay * 100
+    period_info   = BILLING_PERIODS.get(period, BILLING_PERIODS["monthly"])
+    new_days      = (period_info["charge_months"] + period_info["free_months"]) * 30
+
+    if credit >= subtotal:
+        # Credit covers full plan — free upgrade + extend expiry by remaining credit days
+        credit_applied   = subtotal
+        discounted       = 0
+        gst              = 0
+        total_to_pay     = 0
+        total_paise      = 0
+        # Extra credit days — use Professional daily rate
+        extra_credit_inr  = credit - subtotal
+        pro_daily_rate    = subtotal / 30  # professional monthly / 30 days
+        extra_days        = round(extra_credit_inr / pro_daily_rate) if pro_daily_rate > 0 else 0
+        extended_days     = new_days + extra_days
+    else:
+        credit_applied   = credit
+        discounted       = max(0, subtotal - credit_applied)
+        gst              = round(discounted * 0.18)
+        total_to_pay     = discounted + gst
+        total_paise      = total_to_pay * 100
+        extra_days       = 0
+        extended_days    = new_days
 
     return {
         "current_plan":    current_plan,
@@ -695,6 +719,9 @@ async def get_prorate_credit(
         "total_paise":     total_paise,
         "is_upgrade":      allowed,
         "has_credit":      credit_applied > 0,
+        "free_upgrade":    credit >= subtotal,
+        "extended_days":   extended_days,
+        "extra_days":      extra_days,
     }
 
 

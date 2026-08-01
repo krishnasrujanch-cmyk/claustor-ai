@@ -310,12 +310,12 @@ function PlanCard({ plan, isCurrent, isUpgrade, isDowngrade, onAction, upgrading
               Active Plan ✓
             </div>
           ) : plan.id==="enterprise" ? (
-            <a href="mailto:hello@claustor.ai"
-              style={{padding:"9px",borderRadius:8,display:"block",
+            <button onClick={()=>onAction(plan.id,"enterprise")}
+              style={{padding:"9px",borderRadius:8,display:"block",width:"100%",
                 border:`1.5px solid ${C.border}`,fontSize:13,fontWeight:600,
-                color:C.body,textAlign:"center",textDecoration:"none"}}>
+                color:C.body,textAlign:"center",background:"white",cursor:"pointer"}}>
               Contact Sales
-            </a>
+            </button>
           ) : isUpgrade ? (
             <button onClick={()=>onAction(plan.id,"upgrade")}
               disabled={upgrading===plan.id}
@@ -354,6 +354,10 @@ export default function BillingPage() {
   const [orgInd, setOrgInd]             = useState<any>(null);
   const router = useRouter();
   const [addonEnabled, setAddonEnabled]   = useState(false);
+  const [enterpriseModal, setEnterpriseModal] = useState(false);
+  const [enterpriseForm, setEnterpriseForm]   = useState({business_name:"",industry:"",company_size:"",contact_name:"",business_email:"",mobile:"",contracts_per_month:"",message:""});
+  const [enterpriseMsg, setEnterpriseMsg]     = useState("");
+  const [enterpriseSending, setEnterpriseSending] = useState(false);
   const [addonModal, setAddonModal]       = useState<{planId:string;action:string}|null>(null);
   const [proRate, setProRate]             = useState<any>(null);
   const [addonSelected, setAddonSelected] = useState(false);
@@ -414,6 +418,7 @@ export default function BillingPage() {
 
   // Intercept plan upgrade to show addon+period popup
   const startPlanAction = (planId: string, action: string) => {
+    if (planId === "enterprise") { setEnterpriseModal(true); return; }
     if (planId === "free" || action === "downgrade") {
       handlePlanAction(planId, action, false, "monthly");
       return;
@@ -464,6 +469,30 @@ export default function BillingPage() {
 
     // Paid plan — use Razorpay
     try {
+      // Free upgrade — skip Razorpay
+      if (proRateData?.free_upgrade) {
+        try {
+          const verRes = await fetch(`${API}/api/v1/billing/razorpay/verify-payment`, {
+            method:"POST",
+            headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+            body: JSON.stringify({
+              razorpay_order_id:   "free_upgrade_" + Date.now(),
+              razorpay_payment_id: "free_upgrade",
+              razorpay_signature:  "free_upgrade",
+              plan: planId, addon: includeAddon, period,
+              total_amount: 0,
+              free_upgrade: true,
+              extended_days: proRateData.extended_days,
+            }),
+          });
+          const ver = await verRes.json();
+          if (ver.success) { setMsg("✅ Upgraded to Professional!"); setTimeout(()=>{ router.refresh(); load(); }, 1200); }
+          else { setMsg("❌ Upgrade failed. Contact support."); }
+        } catch(e) { setMsg("❌ Error during upgrade."); }
+        finally { setUpgrading(null); }
+        return;
+      }
+
       const loaded = await loadRazorpay();
       if (!loaded) { setMsg("❌ Payment gateway failed to load"); setUpgrading(null); return; }
 
@@ -1083,22 +1112,33 @@ tbody td:last-child{text-align:right;font-weight:600}
                 {/* Pro-rata credit breakdown */}
                 {proRate?.has_credit && (
                   <div style={{marginBottom:8,paddingBottom:8,borderBottom:"1px solid #BBF7D0"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
-                      <span style={{color:"#6B7280"}}>New plan price</span>
-                      <span style={{color:"#111827"}}>₹{proRate.new_plan_price.toLocaleString()}</span>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
-                      <span style={{color:"#16A34A"}}>
-                        Starter credit ({proRate.remaining_days} days remaining)
-                      </span>
-                      <span style={{color:"#16A34A",fontWeight:700}}>
-                        -₹{proRate.credit_applied.toLocaleString()}
-                      </span>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
-                      <span style={{color:"#6B7280"}}>GST (18%)</span>
-                      <span style={{color:"#111827"}}>₹{proRate.gst.toLocaleString()}</span>
-                    </div>
+                    {proRate.free_upgrade ? (
+                      <div style={{background:"#F0FDF4",border:"1px solid #22C55E30",
+                        borderRadius:8,padding:"10px 12px",marginBottom:8}}>
+                        <div style={{fontSize:12,fontWeight:700,color:"#16A34A",marginBottom:3}}>
+                          🎉 Free Upgrade!
+                        </div>
+                        <div style={{fontSize:11,color:"#374151"}}>
+                          Your starter credit (₹{proRate.credit_applied.toLocaleString()}) covers the full Professional plan.
+                          {proRate.extra_days > 0 && ` Plus ${proRate.extra_days} bonus days added.`}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                          <span style={{color:"#6B7280"}}>New plan price</span>
+                          <span style={{color:"#111827"}}>₹{proRate.new_plan_price.toLocaleString()}</span>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                          <span style={{color:"#16A34A"}}>Starter credit ({proRate.remaining_days} days)</span>
+                          <span style={{color:"#16A34A",fontWeight:700}}>-₹{proRate.credit_applied.toLocaleString()}</span>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                          <span style={{color:"#6B7280"}}>GST (18%)</span>
+                          <span style={{color:"#111827"}}>₹{proRate.gst.toLocaleString()}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1132,18 +1172,104 @@ tbody td:last-child{text-align:right;font-weight:600}
                 <button onClick={()=>{
                   const {planId,action}=addonModal;
                   setAddonModal(null);
-                  handlePlanAction(planId, action, addonSelected, periodSelected);
+                  handlePlanAction(planId, action, addonSelected, periodSelected, proRate);
                 }}
                   style={{flex:2,padding:"11px",border:"none",borderRadius:10,
                     background:"#0066FF",cursor:"pointer",
                     fontSize:13,color:"white",fontWeight:700}}>
-                  Pay ₹{proRate?.has_credit ? proRate.total_to_pay.toLocaleString() : total.toLocaleString()} →
+                  {proRate?.free_upgrade ? "Upgrade Now (Free) →" : `Pay ₹${proRate?.has_credit ? proRate.total_to_pay.toLocaleString() : total.toLocaleString()} →`}
                 </button>
               </div>
             </div>
           </div>
         );
       })()}
+
+      {/* ── Enterprise Contact Modal ──────────────────────────── */}
+      {enterpriseModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{background:"white",borderRadius:16,padding:28,maxWidth:500,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+              <div>
+                <div style={{fontSize:18,fontWeight:800,color:"#111827",marginBottom:4}}>Enterprise Plan</div>
+                <div style={{fontSize:13,color:"#6B7280"}}>Unlimited contracts · Custom AI · Dedicated support</div>
+              </div>
+              <button onClick={()=>{setEnterpriseModal(false);setEnterpriseMsg("");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#9CA3AF"}}>✕</button>
+            </div>
+            <div style={{background:"linear-gradient(135deg,#0A1128,#0066FF)",borderRadius:10,padding:"14px 16px",marginBottom:20}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                {["Unlimited contracts","Custom AI models","Dedicated account manager","SLA guarantee","On-premise option","Custom integrations"].map(f=>(
+                  <div key={f} style={{fontSize:11,color:"rgba(255,255,255,0.85)",display:"flex",alignItems:"center",gap:6}}><span style={{color:"#22C55E"}}>✓</span>{f}</div>
+                ))}
+              </div>
+            </div>
+            {enterpriseMsg && !enterpriseMsg.startsWith("❌") ? (
+              <div style={{textAlign:"center",padding:"32px 0"}}>
+                <div style={{fontSize:32,marginBottom:12}}>✅</div>
+                <div style={{fontSize:15,fontWeight:700,color:"#111827",marginBottom:8}}>Request Sent!</div>
+                <div style={{fontSize:13,color:"#6B7280",marginBottom:16}}>{enterpriseMsg}</div>
+                <div style={{fontSize:12,color:"#6B7280"}}>Direct: <a href="mailto:sales@claustor.com" style={{color:C.primary,fontWeight:600}}>sales@claustor.com</a></div>
+                <button onClick={()=>{setEnterpriseModal(false);setEnterpriseMsg("");}} style={{marginTop:16,padding:"10px 24px",background:C.primary,color:"white",border:"none",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700}}>Close</button>
+              </div>
+            ) : (
+              <>
+                {enterpriseMsg && <div style={{color:"#DC2626",fontSize:12,marginBottom:12}}>{enterpriseMsg}</div>}
+                {[{k:"business_name",l:"Business Name *",t:"text",p:"Acme Corp Pvt. Ltd."},
+                  {k:"contact_name",l:"Your Name *",t:"text",p:"Rajesh Kumar"},
+                  {k:"business_email",l:"Business Email *",t:"email",p:"rajesh@acme.com"},
+                  {k:"mobile",l:"Mobile Number",t:"tel",p:"+91 98765 43210"}].map(f=>(
+                  <div key={f.k} style={{marginBottom:12}}>
+                    <label style={{fontSize:11,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>{f.l}</label>
+                    <input type={f.t} placeholder={f.p} value={(enterpriseForm as any)[f.k]}
+                      onChange={e=>setEnterpriseForm(p=>({...p,[f.k]:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",border:"1px solid #E5E7EB",borderRadius:8,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  </div>
+                ))}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>Industry *</label>
+                    <select value={enterpriseForm.industry} onChange={e=>setEnterpriseForm(p=>({...p,industry:e.target.value}))} style={{width:"100%",padding:"9px 12px",border:"1px solid #E5E7EB",borderRadius:8,fontSize:13,background:"white",boxSizing:"border-box"}}>
+                      <option value="">Select...</option>
+                      {["Legal","Finance & Banking","Healthcare","Technology","Manufacturing","Real Estate","Education","Other"].map(i=><option key={i}>{i}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>Company Size *</label>
+                    <select value={enterpriseForm.company_size} onChange={e=>setEnterpriseForm(p=>({...p,company_size:e.target.value}))} style={{width:"100%",padding:"9px 12px",border:"1px solid #E5E7EB",borderRadius:8,fontSize:13,background:"white",boxSizing:"border-box"}}>
+                      <option value="">Select...</option>
+                      {["1–10","11–50","51–200","201–500","500+"].map(s=><option key={s}>{s} employees</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:11,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>Contracts / Month</label>
+                  <select value={enterpriseForm.contracts_per_month} onChange={e=>setEnterpriseForm(p=>({...p,contracts_per_month:e.target.value}))} style={{width:"100%",padding:"9px 12px",border:"1px solid #E5E7EB",borderRadius:8,fontSize:13,background:"white",boxSizing:"border-box"}}>
+                    <option value="">Select...</option>
+                    {["< 100","100–500","500–1,000","1,000–5,000","5,000+"].map(s=><option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div style={{marginBottom:20}}>
+                  <label style={{fontSize:11,fontWeight:700,color:"#374151",display:"block",marginBottom:4}}>Message / Requirements</label>
+                  <textarea placeholder="Tell us about your use case..." value={enterpriseForm.message} onChange={e=>setEnterpriseForm(p=>({...p,message:e.target.value}))} rows={3} style={{width:"100%",padding:"9px 12px",border:"1px solid #E5E7EB",borderRadius:8,fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>setEnterpriseModal(false)} style={{flex:1,padding:"11px",border:"1px solid #E5E7EB",borderRadius:10,background:"white",cursor:"pointer",fontSize:13,color:"#6B7280",fontWeight:600}}>Cancel</button>
+                  <button disabled={enterpriseSending} onClick={async()=>{
+                    if(!enterpriseForm.business_name||!enterpriseForm.contact_name||!enterpriseForm.business_email||!enterpriseForm.industry||!enterpriseForm.company_size){setEnterpriseMsg("❌ Please fill all required fields.");return;}
+                    setEnterpriseSending(true);
+                    try{const r=await fetch(`${API}/api/v1/billing/enterprise/contact`,{method:"POST",headers:{Authorization:`Bearer ${getToken()}`,"Content-Type":"application/json"},body:JSON.stringify(enterpriseForm)});const d=await r.json();setEnterpriseMsg(d.message||"Sent!");}
+                    catch(e){setEnterpriseMsg("❌ Failed. Email sales@claustor.com");}
+                    finally{setEnterpriseSending(false);}
+                  }} style={{flex:2,padding:"11px",border:"none",borderRadius:10,background:enterpriseSending?"#9CA3AF":C.primary,cursor:enterpriseSending?"not-allowed":"pointer",fontSize:13,color:"white",fontWeight:700}}>
+                    {enterpriseSending?"Sending...":"Send Request →"}
+                  </button>
+                </div>
+                <div style={{textAlign:"center",marginTop:14,fontSize:11,color:"#9CA3AF"}}>Direct: <a href="mailto:sales@claustor.com" style={{color:C.primary,fontWeight:600}}>sales@claustor.com</a></div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );
