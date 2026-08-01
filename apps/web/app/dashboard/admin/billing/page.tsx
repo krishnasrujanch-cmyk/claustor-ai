@@ -336,7 +336,6 @@ function PlanCard({ plan, isCurrent, isUpgrade, isDowngrade, onAction, upgrading
           )}
         </div>
       </div>
-
     </div>
   );
 }
@@ -345,9 +344,10 @@ export default function BillingPage() {
   const [summary, setSummary]           = useState<any>(null);
   const [invoices, setInvoices]         = useState<any[]>([]);
   const [orgInd, setOrgInd]             = useState<any>(null);
-  const [addonEnabled, setAddonEnabled] = useState(false);
-  const [addonPrompt, setAddonPrompt] = useState<{planId:string;action:string}|null>(null);
-  const [addonChoice, setAddonChoice] = useState(false);
+  const [addonEnabled, setAddonEnabled]   = useState(false);
+  const [addonModal, setAddonModal]       = useState<{planId:string;action:string}|null>(null);
+  const [addonSelected, setAddonSelected] = useState(false);
+  const [periodSelected, setPeriodSelected] = useState<"monthly"|"6months"|"12months">("monthly");
   const [loading, setLoading]           = useState(true);
   const [upgrading, setUpgrading]       = useState<string|null>(null);
   const [togglingAddon, setTogglingAddon] = useState(false);
@@ -357,30 +357,25 @@ export default function BillingPage() {
     const token = getToken();
     const h = { Authorization: `Bearer ${token}` };
     try {
-      const [s, inv, ind, aiRes, rzpPayments] = await Promise.all([
+      const [s, inv, ind, rzpPayments] = await Promise.all([
         billingAPI.summary(),
         billingAPI.invoices(),
         fetch(`${API}/api/v1/industries/org`, { headers: h }).then(r=>r.json()),
-        fetch(`${API}/api/v1/observability/summary?days=30`, { headers: h }).then(r=>r.json()).catch(()=>null),
-        fetch(`${API}/api/v1/billing/razorpay/payments`, { headers: h }).then(r=>r.json()).catch(()=>({payments:[]})),
+        fetch(`${API}/api/v1/billing/razorpay/payments`, { headers: h }).then(r=>r.ok?r.json():{payments:[]}).catch(()=>({payments:[]})),
       ]);
       setSummary(s);
-      const rzpInvs = (rzpPayments?.payments||[]).map((p:any,i:number)=>({
-        id: i,
-        payment_id: p.id,
-        order_id:   p.order_id,
-        plan:        p.plan,
-        addon:       p.addon,
-        amount:      p.base_amount || (p.plan==="professional"?16499:3999),
-        addon_amount:p.addon_amount || (p.addon?(p.plan==="professional"?2500:1000):0),
-        gst_amount:  p.gst_amount  || 0,
-        total_amount:p.total_amount || 0,
-        status:      "paid",
-        provider:    "razorpay",
-        created_at:  p.created_at,
+      const rzpInvs = (rzpPayments?.payments||[]).map((p:any,idx:number)=>({
+        id: idx, payment_id: p.id, order_id: p.order_id,
+        plan: p.plan, addon: p.addon, period: p.period,
+        base_amount:  p.base_amount  || 0,
+        addon_amount: p.addon_amount || 0,
+        gst_amount:   p.gst_amount   || 0,
+        total_amount: p.total_amount || 0,
+        amount:       p.total_amount || 0,
+        status: "paid", provider:"razorpay",
+        created_at: p.created_at,
       }));
-      const existingInvs = (inv as any).invoices || [];
-      setInvoices([...rzpInvs, ...existingInvs]);
+      setInvoices([...rzpInvs, ...((inv as any).invoices||[])]);
       setOrgInd(ind);
       setAddonEnabled(ind.addon_enabled || false);
     } catch(e) { console.error(e); }
@@ -407,6 +402,17 @@ export default function BillingPage() {
     finally { setTogglingAddon(false); }
   };
 
+  // Intercept plan upgrade to show addon+period popup
+  const startPlanAction = (planId: string, action: string) => {
+    if (planId === "free" || action === "downgrade") {
+      handlePlanAction(planId, action, false, "monthly");
+      return;
+    }
+    setAddonSelected(false);
+    setPeriodSelected("monthly");
+    setAddonModal({planId, action});
+  };
+
   // Load Razorpay checkout.js
   const loadRazorpay = (): Promise<boolean> =>
     new Promise(res=>{
@@ -417,22 +423,7 @@ export default function BillingPage() {
       document.body.appendChild(s);
     });
 
-  const startPlanAction = (planId: string, action: string) => {
-    if (planId === "free" || action === "downgrade") {
-      handlePlanAction(planId, action, false);
-      return;
-    }
-    // Show addon prompt for paid plan upgrades
-    const plan = PLANS.find(p=>p.id===planId);
-    if (plan && plan.addon > 0) {
-      setAddonChoice(false);
-      setAddonPrompt({planId, action});
-    } else {
-      handlePlanAction(planId, action, false);
-    }
-  };
-
-  const handlePlanAction = async (planId: string, action: string, includeAddon = false) => {
+  const handlePlanAction = async (planId: string, action: string, includeAddon = false, period: "monthly"|"6months"|"12months" = "monthly") => {
     setUpgrading(planId); setMsg("");
     const token = getToken();
 
@@ -461,7 +452,7 @@ export default function BillingPage() {
       const orderRes = await fetch(`${API}/api/v1/billing/razorpay/create-order`, {
         method:"POST",
         headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-        body: JSON.stringify({plan: planId, addon: includeAddon}),
+        body: JSON.stringify({plan: planId, addon: includeAddon, period}),
       });
       if (!orderRes.ok) { setMsg("❌ Failed to create payment order"); setUpgrading(null); return; }
       const order = await orderRes.json();
@@ -471,9 +462,7 @@ export default function BillingPage() {
         amount:      order.amount,
         currency:    order.currency,
         name:        "Claustor AI",
-        description: order.breakdown
-          ? `${planId.charAt(0).toUpperCase()+planId.slice(1)} Plan — Base: ₹${order.breakdown.base.toLocaleString()} + GST (18%): ₹${order.breakdown.gst.toLocaleString()} = ₹${order.breakdown.total.toLocaleString()}`
-          : `${planId.charAt(0).toUpperCase()+planId.slice(1)} Plan`,
+        description: `${planId.charAt(0).toUpperCase()+planId.slice(1)} Plan`,
         order_id:    order.order_id,
         prefill:     {email: summary?.email||""},
         theme:       {color:"#0066FF"},
@@ -523,16 +512,38 @@ export default function BillingPage() {
     finally { setUpgrading(null); }
   };
 
-  const downloadInvoicePDF = async (idx: number) => {
-    const token = getToken();
-    const r = await fetch(`${API}/api/v1/billing/invoice/${idx}/pdf`,
-      {headers:{Authorization:`Bearer ${token}`}});
-    if (r.ok) {
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href=url; a.download=`claustor-invoice-${idx+1}.pdf`; a.click();
-    } else { setMsg("❌ Invoice PDF generation failed"); }
+  const downloadInvoicePDF = (idx: number) => {
+    const inv = invoices[idx];
+    if (!inv) return;
+    const base      = inv.base_amount  || inv.amount || 0;
+    const addon     = inv.addon_amount || 0;
+    const gst       = inv.gst_amount   || Math.round((base+addon)*0.18);
+    const total     = inv.total_amount || inv.amount || base+addon+gst;
+    const planLabel = inv.plan ? inv.plan.charAt(0).toUpperCase()+inv.plan.slice(1) : "Plan";
+    const period    = inv.period==="12months"?"12 Months":inv.period==="6months"?"6 Months":"Monthly";
+    const date      = new Date(inv.created_at||Date.now()).toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"});
+    const invoiceNo = `CLST-${new Date(inv.created_at||Date.now()).getFullYear()}-${String(idx+1).padStart(4,"0")}`;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice ${invoiceNo}</title>
+<style>body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#111827;font-size:13px}.logo{font-size:22px;font-weight:900;color:#0066FF}table{width:100%;border-collapse:collapse;margin:24px 0}th{background:#F8FAFC;padding:10px 14px;text-align:left;font-size:11px;color:#6B7280;text-transform:uppercase}td{padding:12px 14px;border-bottom:1px solid #E5E7EB}.total td{font-weight:700;font-size:14px;color:#0066FF;border-top:2px solid #0066FF;border-bottom:none}</style>
+</head><body>
+<div style="display:flex;justify-content:space-between;margin-bottom:32px">
+  <div><div class="logo">Claustor AI</div><div style="color:#6B7280">claustor.ai · hello@claustor.ai</div></div>
+  <div style="text-align:right"><div style="font-size:20px;font-weight:700">TAX INVOICE</div><div style="color:#6B7280">${invoiceNo} · ${date}</div><span style="background:#F0FDF4;color:#16A34A;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700">✓ PAID</span></div>
+</div>
+<table>
+  <tr><th>Description</th><th style="text-align:right">Amount (INR)</th></tr>
+  <tr><td>${planLabel} Plan — ${period}</td><td style="text-align:right">₹${base.toLocaleString("en-IN")}</td></tr>
+  ${inv.addon?`<tr><td>Industry Pack Add-on — ${period}</td><td style="text-align:right">₹${addon.toLocaleString("en-IN")}</td></tr>`:""}
+  <tr><td style="color:#6B7280">CGST @ 9%</td><td style="text-align:right;color:#6B7280">₹${Math.round(gst/2).toLocaleString("en-IN")}</td></tr>
+  <tr><td style="color:#6B7280">SGST @ 9%</td><td style="text-align:right;color:#6B7280">₹${Math.round(gst/2).toLocaleString("en-IN")}</td></tr>
+  <tr class="total"><td>Total</td><td style="text-align:right">₹${total.toLocaleString("en-IN")}</td></tr>
+</table>
+<div style="margin-top:40px;color:#9CA3AF;font-size:11px;text-align:center">Claustor AI · DKU Technologies · GSTIN: [YOUR_GSTIN] · Computer-generated invoice</div>
+</body></html>`;
+    const blob = new Blob([html],{type:"text/html"});
+    const url  = URL.createObjectURL(blob);
+    const w    = window.open(url,"_blank");
+    if(w) setTimeout(()=>w.print(),500);
   };
 
   const currentPlan     = summary?.plan || "free";
@@ -828,116 +839,179 @@ export default function BillingPage() {
         ))}
       </div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      {/* Addon Prompt Modal */}
-      {addonPrompt && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",
-          display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{background:"white",borderRadius:16,padding:28,
-            maxWidth:420,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-            <h3 style={{fontSize:17,fontWeight:800,color:"#111827",marginBottom:6}}>
-              Add Industry Pack?
-            </h3>
-            <p style={{fontSize:13,color:"#6B7280",marginBottom:20}}>
-              Enhance your plan with industry-specific clause scoring, playbooks, and risk benchmarks.
-            </p>
+      {/* ── Addon + Period Modal ──────────────────────────────── */}
+      {addonModal && (()=>{
+        const plan = PLANS.find(p=>p.id===addonModal.planId);
+        if (!plan) return null;
+        const GST = 0.18;
+        const baseMonthly = plan.base;
+        const addonMonthly = plan.addon;
+        const monthly = Math.round((baseMonthly + (addonSelected?addonMonthly:0)) * (1+GST));
+        const periods: {key:"monthly"|"6months"|"12months"; label:string; months:number; free:number; badge:string}[] = [
+          {key:"monthly",  label:"Monthly",   months:1,  free:0, badge:""},
+          {key:"6months",  label:"6 Months",  months:5,  free:1, badge:"1 Month FREE"},
+          {key:"12months", label:"12 Months", months:10, free:2, badge:"BEST VALUE"},
+        ];
+        const sel = periods.find(p=>p.key===periodSelected)!;
+        const total = monthly * sel.months;
+        const saving = monthly * sel.free;
 
-            {/* Base plan */}
-            <div style={{padding:"12px 16px",borderRadius:10,marginBottom:10,
-              background:"#F8FAFC",border:"1px solid #E5E7EB"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:700,color:"#111827"}}>
-                    {PLANS.find(p=>p.id===addonPrompt.planId)?.label} Plan
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",
+            display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,
+            padding:"16px"}}>
+            <div style={{background:"white",borderRadius:16,padding:28,
+              maxWidth:460,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
+
+              {/* Header */}
+              <div style={{marginBottom:20}}>
+                <h3 style={{fontSize:18,fontWeight:800,color:"#111827",marginBottom:4}}>
+                  Upgrade to {plan.label}
+                </h3>
+                <p style={{fontSize:13,color:"#6B7280"}}>
+                  Choose your billing period and optionally add the Industry Pack.
+                </p>
+              </div>
+
+              {/* Addon toggle */}
+              {plan.addon > 0 && (
+                <div onClick={()=>setAddonSelected(!addonSelected)}
+                  style={{padding:"12px 16px",borderRadius:10,marginBottom:16,
+                    background:addonSelected?"#EFF6FF":"#F8FAFC",
+                    border:`2px solid ${addonSelected?"#0066FF":"#E5E7EB"}`,
+                    cursor:"pointer",transition:"all 0.15s"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:20,height:20,borderRadius:5,flexShrink:0,
+                      background:addonSelected?"#0066FF":"white",
+                      border:`2px solid ${addonSelected?"#0066FF":"#D1D5DB"}`,
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {addonSelected&&<span style={{color:"white",fontSize:11,fontWeight:900}}>✓</span>}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#111827"}}>
+                        Add Industry Pack
+                      </div>
+                      <div style={{fontSize:11,color:"#6B7280"}}>
+                        8 industries · custom scoring · priority queue
+                      </div>
+                    </div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#F59E0B",flexShrink:0}}>
+                      +₹{plan.addon.toLocaleString()}/mo
+                    </div>
                   </div>
-                  <div style={{fontSize:11,color:"#6B7280"}}>Base plan features</div>
                 </div>
-                <div style={{fontSize:15,fontWeight:700,color:"#0066FF"}}>
-                  ₹{PLANS.find(p=>p.id===addonPrompt.planId)?.base.toLocaleString()}/mo
+              )}
+
+              {/* Period selector */}
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#6B7280",
+                  textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>
+                  Billing Period
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {periods.map(p=>{
+                    const amt = monthly * p.months;
+                    const save = monthly * p.free;
+                    const isSelected = periodSelected===p.key;
+                    return (
+                      <div key={p.key} onClick={()=>setPeriodSelected(p.key)}
+                        style={{padding:"12px 16px",borderRadius:10,
+                          background:isSelected?"#EFF6FF":"#F8FAFC",
+                          border:`2px solid ${isSelected?"#0066FF":"#E5E7EB"}`,
+                          cursor:"pointer",transition:"all 0.15s",
+                          display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div style={{width:18,height:18,borderRadius:"50%",flexShrink:0,
+                            background:isSelected?"#0066FF":"white",
+                            border:`2px solid ${isSelected?"#0066FF":"#D1D5DB"}`,
+                            display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {isSelected&&<div style={{width:7,height:7,borderRadius:"50%",background:"white"}}/>}
+                          </div>
+                          <div>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{fontSize:13,fontWeight:700,color:"#111827"}}>
+                                {p.label}
+                              </span>
+                              {p.badge && (
+                                <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",
+                                  borderRadius:20,
+                                  background:p.key==="12months"?"#0066FF":"#F59E0B",
+                                  color:"white"}}>
+                                  {p.badge}
+                                </span>
+                              )}
+                            </div>
+                            {save>0 && (
+                              <div style={{fontSize:11,color:"#22C55E",fontWeight:600}}>
+                                Save ₹{save.toLocaleString()} ({p.free} month{p.free>1?"s":""} free)
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:15,fontWeight:800,color:isSelected?"#0066FF":"#111827"}}>
+                            ₹{amt.toLocaleString()}
+                          </div>
+                          {p.key!=="monthly" && (
+                            <div style={{fontSize:10,color:"#6B7280"}}>
+                              ₹{Math.round(amt/p.months).toLocaleString()}/mo
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
 
-            {/* Addon option */}
-            <div onClick={()=>setAddonChoice(!addonChoice)}
-              style={{padding:"12px 16px",borderRadius:10,marginBottom:16,
-                background:addonChoice?"#EFF6FF":"#F8FAFC",
-                border:`2px solid ${addonChoice?"#0066FF":"#E5E7EB"}`,
-                cursor:"pointer",transition:"all 0.15s"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{width:20,height:20,borderRadius:5,
-                    background:addonChoice?"#0066FF":"white",
-                    border:`2px solid ${addonChoice?"#0066FF":"#D1D5DB"}`,
-                    display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    {addonChoice&&<span style={{color:"white",fontSize:12,fontWeight:900}}>✓</span>}
-                  </div>
+              {/* Total summary */}
+              <div style={{padding:"12px 16px",borderRadius:10,marginBottom:20,
+                background:"#F0FDF4",border:"1px solid #BBF7D0"}}>
+                <div style={{display:"flex",justifyContent:"space-between",
+                  alignItems:"center"}}>
                   <div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#111827"}}>
-                      Industry Pack Add-on
+                    <div style={{fontSize:12,color:"#6B7280"}}>
+                      {plan.label} {addonSelected?"+ Industry Pack":""} · {sel.label}
                     </div>
-                    <div style={{fontSize:11,color:"#6B7280"}}>
-                      8 industries · custom scoring · priority queue
+                    {saving>0&&(
+                      <div style={{fontSize:11,color:"#22C55E",fontWeight:600}}>
+                        You save ₹{saving.toLocaleString()} vs monthly
+                      </div>
+                    )}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:20,fontWeight:900,color:"#111827"}}>
+                      ₹{total.toLocaleString()}
                     </div>
+                    <div style={{fontSize:10,color:"#6B7280"}}>incl. 18% GST</div>
                   </div>
                 </div>
-                <div style={{fontSize:14,fontWeight:700,color:"#F59E0B",flexShrink:0}}>
-                  +₹{PLANS.find(p=>p.id===addonPrompt.planId)?.addon.toLocaleString()}/mo
-                </div>
               </div>
-            </div>
 
-            {/* Total */}
-            <div style={{padding:"10px 16px",borderRadius:8,marginBottom:20,
-              background:"#F0FDF4",border:"1px solid #22C55E30"}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
-                <span style={{color:"#6B7280"}}>Subtotal</span>
-                <span style={{fontWeight:700,color:"#111827"}}>
-                  ₹{((PLANS.find(p=>p.id===addonPrompt.planId)?.base||0) +
-                     (addonChoice?(PLANS.find(p=>p.id===addonPrompt.planId)?.addon||0):0)
-                    ).toLocaleString()}/mo
-                </span>
+              {/* Buttons */}
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setAddonModal(null)}
+                  style={{flex:1,padding:"11px",border:"1px solid #E5E7EB",
+                    borderRadius:10,background:"white",cursor:"pointer",
+                    fontSize:13,color:"#6B7280",fontWeight:600}}>
+                  Cancel
+                </button>
+                <button onClick={()=>{
+                  const {planId,action}=addonModal;
+                  setAddonModal(null);
+                  handlePlanAction(planId, action, addonSelected, periodSelected);
+                }}
+                  style={{flex:2,padding:"11px",border:"none",borderRadius:10,
+                    background:"#0066FF",cursor:"pointer",
+                    fontSize:13,color:"white",fontWeight:700}}>
+                  Pay ₹{total.toLocaleString()} →
+                </button>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginTop:4}}>
-                <span style={{color:"#6B7280"}}>GST (18%)</span>
-                <span style={{fontWeight:700,color:"#111827"}}>
-                  ₹{Math.round(((PLANS.find(p=>p.id===addonPrompt.planId)?.base||0) +
-                     (addonChoice?(PLANS.find(p=>p.id===addonPrompt.planId)?.addon||0):0)
-                    ) * 0.18).toLocaleString()}/mo
-                </span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",
-                fontSize:15,fontWeight:800,marginTop:8,paddingTop:8,
-                borderTop:"1px solid #E5E7EB"}}>
-                <span style={{color:"#111827"}}>Total</span>
-                <span style={{color:"#22C55E"}}>
-                  ₹{Math.round(((PLANS.find(p=>p.id===addonPrompt.planId)?.base||0) +
-                     (addonChoice?(PLANS.find(p=>p.id===addonPrompt.planId)?.addon||0):0)
-                    ) * 1.18).toLocaleString()}/mo
-                </span>
-              </div>
-            </div>
-
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setAddonPrompt(null)}
-                style={{flex:1,padding:"11px",border:"1px solid #E5E7EB",
-                  borderRadius:10,background:"white",cursor:"pointer",
-                  fontSize:13,color:"#6B7280",fontWeight:600}}>
-                Cancel
-              </button>
-              <button onClick={()=>{
-                const {planId,action}=addonPrompt;
-                setAddonPrompt(null);
-                handlePlanAction(planId, action, addonChoice);
-              }}
-                style={{flex:2,padding:"11px",border:"none",
-                  borderRadius:10,background:"#0066FF",cursor:"pointer",
-                  fontSize:13,color:"white",fontWeight:700}}>
-                Proceed to Payment →
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
     </div>
   );
 }

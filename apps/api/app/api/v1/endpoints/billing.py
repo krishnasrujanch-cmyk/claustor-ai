@@ -389,8 +389,9 @@ Thank you for using Claustor AI.
 # ── Razorpay Standard Checkout ────────────────────────────────────
 
 class RazorpayOrderRequest(BaseModel):
-    plan: str
-    addon: bool = False
+    plan:   str
+    addon:  bool = False
+    period: str  = "monthly"  # monthly | 6months | 12months
 
 
 @router.post("/razorpay/create-order")
@@ -404,26 +405,28 @@ async def razorpay_create_order(
     import razorpay
     import uuid as _uuid
 
-    # Base plan amounts in paise (INR × 100)
     PLAN_AMOUNTS = {
-        "starter":      399900,   # ₹3,999
-        "professional": 1649900,  # ₹16,499
+        "starter":      399900,   # ₹3,999 in paise
+        "professional": 1649900,  # ₹16,499 in paise
     }
     ADDON_AMOUNTS = {
         "starter":      100000,   # ₹1,000
         "professional": 250000,   # ₹2,500
     }
-    GST_RATE = 0.18  # 18% GST
 
     if req.plan not in PLAN_AMOUNTS:
         raise HTTPException(status_code=400, detail=f"Invalid plan: {req.plan}")
 
-    base_amount  = PLAN_AMOUNTS[req.plan]
-    addon_amount = ADDON_AMOUNTS.get(req.plan, 0) if req.addon else 0
+
+    PERIOD_MONTHS = {"monthly": 1, "6months": 5, "12months": 10}
+    period_months = PERIOD_MONTHS.get(req.period, 1)
+    GST_RATE = 0.18
+
+    base_amount  = PLAN_AMOUNTS[req.plan] * period_months
+    addon_amount = ADDON_AMOUNTS.get(req.plan, 0) * period_months if req.addon else 0
     subtotal     = base_amount + addon_amount
     gst_amount   = int(subtotal * GST_RATE)
     amount       = subtotal + gst_amount
-
     if amount < 100:
         raise HTTPException(status_code=400, detail="Amount must be at least ₹1")
 
@@ -438,25 +441,16 @@ async def razorpay_create_order(
             "currency": "INR",
             "receipt":  f"claustor_{str(user.org_id)[:8]}_{_uuid.uuid4().hex[:8]}",
             "notes": {
-                "org_id":       str(user.org_id),
-                "plan":         req.plan,
-                "addon":        str(req.addon),
-                "base_amount":  str(base_amount),
-                "addon_amount": str(addon_amount),
-                "gst_amount":   str(gst_amount),
+                "org_id": str(user.org_id),
+                "plan":   req.plan,
+                "addon":  str(req.addon),
             },
         })
         return {
-            "order_id":    order["id"],
-            "amount":      order["amount"],
-            "currency":    order["currency"],
-            "key_id":      settings.RAZORPAY_KEY_ID,
-            "breakdown": {
-                "base":    base_amount / 100,
-                "addon":   addon_amount / 100,
-                "gst":     gst_amount / 100,
-                "total":   amount / 100,
-            },
+            "order_id": order["id"],
+            "amount":   order["amount"],
+            "currency": order["currency"],
+            "key_id":   settings.RAZORPAY_KEY_ID,
         }
     except Exception as e:
         logger.error("razorpay_create_order_failed", error=str(e))
@@ -516,45 +510,10 @@ async def razorpay_verify_payment(
         org_id=str(user.org_id), plan=req.plan,
         payment_id=req.razorpay_payment_id)
 
-    # Store payment record in audit log
-    try:
-        from app.domain.models.models import AuditLog
-        import uuid as _uuid2
-        from datetime import datetime, timezone
-        from app.services.billing.billing_service import PLANS
-        plan_info = PLANS.get(req.plan, {})
-        base_amt  = plan_info.get("price_monthly", 0) if hasattr(plan_info, "get") else 0
-        db.add(AuditLog(
-            id=_uuid2.uuid4(),
-            org_id=user.org_id,
-            user_id=user.id,
-            action="payment_completed",
-            resource_type="billing",
-            resource_id=str(_uuid2.uuid4()),
-            status="success",
-            user_role=user.role,
-            extra_data={
-                "payment_id":  req.razorpay_payment_id,
-                "order_id":    req.razorpay_order_id,
-                "plan":        req.plan,
-                "addon":       req.addon,
-                "provider":    "razorpay",
-                "timestamp":   datetime.now(timezone.utc).isoformat(),
-                "base_amount": 16499 if req.plan=="professional" else 3999,
-                "addon_amount": (2500 if req.plan=="professional" else 1000) if req.addon else 0,
-                "gst_amount":  round(((16499 if req.plan=="professional" else 3999) + ((2500 if req.plan=="professional" else 1000) if req.addon else 0)) * 0.18),
-                "total_amount": round(((16499 if req.plan=="professional" else 3999) + ((2500 if req.plan=="professional" else 1000) if req.addon else 0)) * 1.18),
-            },
-        ))
-        await db.commit()
-    except Exception as _ae:
-        logger.warning("audit_log_failed", error=str(_ae))
-
     return {
         "success": True,
         "plan":    req.plan,
         "message": f"Payment verified. Successfully upgraded to {req.plan} plan.",
-        "payment_id": req.razorpay_payment_id,
     }
 
 @router.get("/razorpay/payments")
@@ -581,6 +540,7 @@ async def get_razorpay_payments(
             "order_id":     d.get("order_id",""),
             "plan":         d.get("plan",""),
             "addon":        d.get("addon", False),
+            "period":       d.get("period","monthly"),
             "base_amount":  d.get("base_amount", 0),
             "addon_amount": d.get("addon_amount", 0),
             "gst_amount":   d.get("gst_amount", 0),
@@ -589,4 +549,4 @@ async def get_razorpay_payments(
             "created_at":   row[1].isoformat() if row[1] else "",
             "status":       "paid",
         })
-    return {"payments": payments}
+    return {"payments": payments, "total": len(payments)}

@@ -15,10 +15,8 @@ logger = structlog.get_logger(__name__)
 
 # Razorpay Plan IDs — set after creating plans in Razorpay dashboard
 RAZORPAY_PLANS = {
-    ("starter",      "monthly"): "plan_starter_monthly",
-    ("starter",      "annual"):  "plan_starter_annual",
-    ("professional", "monthly"): "plan_pro_monthly",
-    ("professional", "annual"):  "plan_pro_annual",
+    ("starter",      "monthly"): "plan_TKBLQSbY1rkBVX",
+    ("professional", "monthly"): "plan_TKBN3klkH280l2",
 }
 
 # INR amounts in paise (1 INR = 100 paise)
@@ -142,14 +140,17 @@ class RazorpayBillingProvider(BaseBillingProvider):
             return None
 
     async def get_invoices(self, customer_id, limit=10) -> list[InvoiceInfo]:
-        # Razorpay uses "payments" not "invoices"
+        """Get payments for this customer only."""
         import asyncio
         from datetime import datetime, timezone
         loop = asyncio.get_event_loop()
         try:
-            payments = await loop.run_in_executor(None, lambda: self.client.payment.all({
-                "count": limit
-            }))
+            # Fetch payments filtered by customer_id
+            params = {"count": limit}
+            if customer_id:
+                params["customer_id"] = customer_id
+            payments = await loop.run_in_executor(None,
+                lambda: self.client.payment.all(params))
             return [
                 InvoiceInfo(
                     provider_invoice_id=p["id"],
@@ -160,6 +161,7 @@ class RazorpayBillingProvider(BaseBillingProvider):
                     period_end=datetime.fromtimestamp(p["created_at"], tz=timezone.utc),
                 )
                 for p in payments.get("items", [])
+                if p.get("status") in ("captured", "authorized")
             ]
         except Exception:
             return []
