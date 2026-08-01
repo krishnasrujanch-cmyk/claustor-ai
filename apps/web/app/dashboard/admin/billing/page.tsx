@@ -19,6 +19,7 @@ const C = {
 const GST = 0.18;
 
 function formatStorage(mb: number): string {
+  if (mb === -1) return "∞";
   return mb >= 1024 ? `${(mb/1024).toFixed(0)} GB` : `${mb} MB`;
 }
 function formatUsed(used: number, limit: number, key: string): string {
@@ -191,7 +192,7 @@ const PLANS = [
   {id:"free",         label:"Free",         base:0,     addon:0,    tagline:"Get started"},
   {id:"starter",      label:"Starter",      base:3999,  addon:1000, tagline:"For small teams",        addonLabel:"Industry Pack"},
   {id:"professional", label:"Professional", base:16499, addon:2500, tagline:"For growing businesses", addonLabel:"Pro Industry Add-on", popular:true},
-  {id:"enterprise",   label:"Enterprise",   base:0,     addon:0,    tagline:"For large organisations"},
+  {id:"enterprise",   label:"Enterprise",   base:-1,    addon:0,    tagline:"For large organisations"},
 ];
 const PLAN_ORDER = ["free","starter","professional","enterprise"];
 
@@ -227,7 +228,7 @@ function PlanCard({ plan, isCurrent, isUpgrade, isDowngrade, onAction, upgrading
           <div style={{fontSize:11,color:C.muted,marginBottom:8}}>{plan.tagline}</div>
           <div style={{fontSize:20,fontWeight:900,
             color:isCurrent?C.primary:C.heading,letterSpacing:"-0.02em"}}>
-            {plan.base > 0
+            {plan.base > 0 && plan.base !== -1
               ? <>₹{plan.base.toLocaleString()}
                   <span style={{fontSize:10,fontWeight:400,color:C.muted}}>/mo + GST</span>
                 </>
@@ -665,7 +666,7 @@ tbody td:last-child{text-align:right;font-weight:600}
 
   const currentPlan     = summary?.plan || "free";
   const currentPlanObj  = PLANS.find(p=>p.id===currentPlan);
-  const monthlyBase     = currentPlanObj?.base || 0;
+  const monthlyBase     = (currentPlanObj?.base && currentPlanObj.base > 0) ? currentPlanObj.base : 0;
   const monthlyAddon    = addonEnabled ? (currentPlanObj?.addon || 0) : 0;
   const monthlySubtotal = monthlyBase + monthlyAddon;
   const monthlyGST      = Math.round(monthlySubtotal * GST);
@@ -724,7 +725,15 @@ tbody td:last-child{text-align:right;font-weight:600}
                 </div>
               )}
             </div>
-            {monthlySubtotal > 0 ? (
+            {currentPlan === "enterprise" ? (
+              <div style={{padding:"16px 24px",background:C.primaryLight,borderRadius:10,
+                border:`1px solid ${C.primary}`,textAlign:"center"}}>
+                <div style={{fontSize:22,fontWeight:900,color:C.primary}}>Custom Pricing</div>
+                <div style={{fontSize:12,color:C.primary,marginTop:4,opacity:0.7}}>
+                  Contact sales@claustor.com
+                </div>
+              </div>
+            ) : monthlySubtotal > 0 ? (
               <div style={{textAlign:"right",padding:"16px 20px",
                 background:C.bg,borderRadius:10,border:`1px solid ${C.border}`}}>
                 <div style={{fontSize:11,color:C.muted,marginBottom:8,fontWeight:600,
@@ -1198,7 +1207,7 @@ tbody td:last-child{text-align:right;font-weight:600}
             </div>
             <div style={{background:"linear-gradient(135deg,#0A1128,#0066FF)",borderRadius:10,padding:"14px 16px",marginBottom:20}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                {["Unlimited contracts","Custom AI models","Dedicated account manager","SLA guarantee","On-premise option","Custom integrations"].map(f=>(
+                {["Unlimited contracts","Custom risk scoring","Dedicated account manager","SLA guarantee","On-premise option","Custom integrations"].map(f=>(
                   <div key={f} style={{fontSize:11,color:"rgba(255,255,255,0.85)",display:"flex",alignItems:"center",gap:6}}><span style={{color:"#22C55E"}}>✓</span>{f}</div>
                 ))}
               </div>
