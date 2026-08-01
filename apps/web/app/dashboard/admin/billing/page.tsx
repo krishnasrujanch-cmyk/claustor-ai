@@ -605,7 +605,11 @@ export default function BillingPage() {
               <div style={{textAlign:"right",padding:"16px 20px",
                 background:C.bg,borderRadius:10,border:`1px solid ${C.border}`}}>
                 <div style={{fontSize:11,color:C.muted,marginBottom:8,fontWeight:600,
-                  textTransform:"uppercase",letterSpacing:"0.06em"}}>Monthly Total</div>
+                  textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                  {summary?.billing_period === "6months" ? "6-Month Rate" :
+                   summary?.billing_period === "12months" ? "12-Month Rate" :
+                   "Monthly Rate"}
+                </div>
                 <div style={{display:"flex",flexDirection:"column",gap:3,
                   fontSize:12,color:C.muted,marginBottom:8}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:24}}>
@@ -625,7 +629,19 @@ export default function BillingPage() {
                     ₹{monthlyTotal.toLocaleString()}
                     <span style={{fontSize:12,color:C.muted,fontWeight:400}}>/mo</span>
                   </div>
-                  <div style={{fontSize:10,color:C.muted}}>incl. GST</div>
+                  <div style={{fontSize:10,color:C.muted}}>incl. GST · per month</div>
+                  {summary?.billing_period && summary.billing_period !== "monthly" && (() => {
+                    const months = summary.billing_period === "6months" ? 5 : 10;
+                    const freeMo = summary.billing_period === "6months" ? 1 : 2;
+                    const paid   = monthlyTotal * months;
+                    return (
+                      <div style={{marginTop:8,padding:"6px 10px",borderRadius:6,
+                        background:"#EFF6FF",fontSize:11,color:C.primary,fontWeight:600}}>
+                        Paid ₹{paid.toLocaleString()} for {months+freeMo} months
+                        ({freeMo} month{freeMo>1?"s":""} free)
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ) : (

@@ -281,9 +281,6 @@ async def billing_summary(
         "extra_users_purchased": org.extra_users_purchased or 0,
         "upgrade_available": org.plan != "enterprise",
         **(await _fetch_billing_extra(db, user.org_id)),
-        "payment_status":    getattr(org, "payment_status", "active"),
-        "billing_period":    getattr(org, "billing_period",  "monthly"),
-        "addon_enabled":     getattr(org, "addon_enabled",   False),
     }
 
 
@@ -524,22 +521,29 @@ async def razorpay_verify_payment(
     # Approximate months as 30 days each
     next_billing = now + timedelta(days=total_months * 30)
 
-    # Activate plan with expiry tracking
-    await db.execute(
-        update(Organisation)
-        .where(Organisation.id == user.org_id)
-        .values(
-            plan=req.plan,
-            addon_enabled=req.addon,
-            payment_status="active",
-            next_billing_date=next_billing,
-            last_payment_date=now,
-            last_payment_amount=int(req.total_amount) if hasattr(req,"total_amount") else 0,
-            billing_period=req.period,
-            grace_period_end=None,
-            reminder_sent_days=[],
-        )
-    )
+    # Activate plan with expiry tracking (raw SQL to avoid ORM column cache)
+    from sqlalchemy import text as _txt
+    await db.execute(_txt("""
+        UPDATE organisations SET
+            plan                = :plan,
+            addon_enabled       = :addon,
+            payment_status      = 'active',
+            next_billing_date   = :next_billing,
+            last_payment_date   = :now,
+            last_payment_amount = :amount,
+            billing_period      = :period,
+            grace_period_end    = NULL,
+            reminder_sent_days  = ARRAY[]::integer[]
+        WHERE id = :org_id
+    """), {
+        "plan":         req.plan,
+        "addon":        req.addon,
+        "next_billing": next_billing,
+        "now":          now,
+        "amount":       int(req.total_amount) if hasattr(req,"total_amount") else 0,
+        "period":       req.period,
+        "org_id":       str(user.org_id),
+    })
     await db.commit()
 
     logger.info("razorpay_payment_verified",
