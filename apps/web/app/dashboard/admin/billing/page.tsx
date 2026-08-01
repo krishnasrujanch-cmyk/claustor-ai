@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { billing as billingAPI, getToken } from "@/lib/api";
 import {
@@ -351,6 +352,7 @@ export default function BillingPage() {
   const [summary, setSummary]           = useState<any>(null);
   const [invoices, setInvoices]         = useState<any[]>([]);
   const [orgInd, setOrgInd]             = useState<any>(null);
+  const router = useRouter();
   const [addonEnabled, setAddonEnabled]   = useState(false);
   const [addonModal, setAddonModal]       = useState<{planId:string;action:string}|null>(null);
   const [proRate, setProRate]             = useState<any>(null);
@@ -423,7 +425,7 @@ export default function BillingPage() {
     // Fetch pro-rata credit if upgrading from starter
     if (planId === "professional") {
       const token = getToken();
-      fetch(`${API}/api/v1/billing/razorpay/prorate?target_plan=professional&period=monthly&addon=false`, {
+      fetch(`${API}/api/v1/billing/razorpay/prorate?target_plan=professional&period=monthly&addon=${addonSelected}`, {
         headers: {Authorization: `Bearer ${token}`}
       }).then(r=>r.ok?r.json():null).then(d=>{ if(d) setProRate(d); }).catch(()=>{});
     }
@@ -439,7 +441,7 @@ export default function BillingPage() {
       document.body.appendChild(s);
     });
 
-  const handlePlanAction = async (planId: string, action: string, includeAddon = false, period: "monthly"|"6months"|"12months" = "monthly") => {
+  const handlePlanAction = async (planId: string, action: string, includeAddon = false, period: "monthly"|"6months"|"12months" = "monthly", proRateData: any = null) => {
     setUpgrading(planId); setMsg("");
     const token = getToken();
 
@@ -468,7 +470,7 @@ export default function BillingPage() {
       const orderRes = await fetch(`${API}/api/v1/billing/razorpay/create-order`, {
         method:"POST",
         headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
-        body: JSON.stringify({plan: planId, addon: includeAddon, period}),
+        body: JSON.stringify({plan: planId, addon: includeAddon, period, apply_credit: true}),
       });
       if (!orderRes.ok) { setMsg("❌ Failed to create payment order"); setUpgrading(null); return; }
       const order = await orderRes.json();
@@ -491,12 +493,14 @@ export default function BillingPage() {
               razorpay_payment_id: resp.razorpay_payment_id,
               razorpay_signature:  resp.razorpay_signature,
               plan: planId, addon: includeAddon,
+              period: period,
+              total_amount: order.breakdown?.total || 0,
             }),
           });
           const ver = await verRes.json();
           if (ver.success) {
             setMsg("✅ Payment successful! Plan upgraded.");
-            setTimeout(()=>window.location.reload(), 1500);
+            setTimeout(()=>{ router.refresh(); load(); }, 1200);
           } else {
             setMsg("❌ Payment verification failed. Contact support.");
           }
@@ -824,10 +828,10 @@ export default function BillingPage() {
               {new Date(inv.period_start||inv.date||Date.now())
                 .toLocaleDateString("en-IN",{month:"short",year:"numeric"})}
             </div>
-            <div>₹{(inv.base_amount||inv.amount||0).toLocaleString()}</div>
+            <div>₹{(()=>{const b=inv.base_amount||0; return b>100000?Math.round(b/100):b;})(). toLocaleString()}</div>
             <div>{inv.addon_amount>0?`₹${inv.addon_amount.toLocaleString()}`:<span style={{color:C.muted}}>—</span>}</div>
             <div style={{fontWeight:700,color:C.heading}}>
-              ₹{(inv.total_amount||inv.amount||0).toLocaleString()}
+              ₹{(()=>{const t=inv.total_amount||inv.amount||0; return t>100000?Math.round(t/100):t;})(). toLocaleString()}
             </div>
             <div>
               <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,
@@ -865,7 +869,7 @@ export default function BillingPage() {
         // Refresh prorate when period or addon changes
         const [_pr, _setPr] = [proRate, setProRate];
         const refreshProrate = (newPeriod: string, newAddon: boolean) => {
-          if (plan.id !== "professional") return;
+          if (!addonModal || addonModal.planId !== "professional") return;
           const token = getToken();
           fetch(`${API}/api/v1/billing/razorpay/prorate?target_plan=professional&period=${newPeriod}&addon=${newAddon}`,{
             headers:{Authorization:`Bearer ${token}`}
@@ -1043,7 +1047,7 @@ export default function BillingPage() {
                   style={{flex:2,padding:"11px",border:"none",borderRadius:10,
                     background:"#0066FF",cursor:"pointer",
                     fontSize:13,color:"white",fontWeight:700}}>
-                  Pay ₹{total.toLocaleString()} →
+                  Pay ₹{proRate?.has_credit ? proRate.total_to_pay.toLocaleString() : total.toLocaleString()} →
                 </button>
               </div>
             </div>

@@ -111,7 +111,7 @@ app.conf.beat_schedule = {
 }
 
 
-@celery_app.task(name="run_canary_evaluation", bind=True, max_retries=1)
+@app.task(name="run_canary_evaluation", bind=True, max_retries=1)
 def run_canary_evaluation(self):
     """Weekly canary evaluation to detect model degradation."""
     import asyncio

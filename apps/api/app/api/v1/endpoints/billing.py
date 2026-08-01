@@ -427,23 +427,40 @@ async def razorpay_create_order(
     import razorpay
     import uuid as _uuid
 
-    PLAN_AMOUNTS = {
-        "starter":      399900,   # ₹3,999 in paise
-        "professional": 1649900,  # ₹16,499 in paise
-    }
-    ADDON_AMOUNTS = {
-        "starter":      100000,   # ₹1,000
-        "professional": 250000,   # ₹2,500
-    }
-
-    if req.plan not in PLAN_AMOUNTS:
+    from app.core.pricing import calculate_amount, calculate_prorate_credit, PLAN_PRICING
+    from sqlalchemy import text as _txt_co
+    if req.plan not in PLAN_PRICING:
         raise HTTPException(status_code=400, detail=f"Invalid plan: {req.plan}")
 
-    amount = PLAN_AMOUNTS[req.plan]
-    if req.addon:
-        amount += ADDON_AMOUNTS.get(req.plan, 0)
+    pricing      = calculate_amount(req.plan, req.addon, req.period)
+    base_amount  = pricing["base_amount"]
+    addon_amount = pricing["addon_amount"]
+    period_months = pricing["period_months"]
+
+    # Apply pro-rata credit for starter → professional upgrade
+    credit_applied = 0
+    if req.apply_credit and req.plan == "professional":
+        r_org = await db.execute(_txt_co("""
+            SELECT plan, next_billing_date, last_payment_amount, billing_period
+            FROM organisations WHERE id = :id
+        """), {"id": str(user.org_id)})
+        org_row = r_org.fetchone()
+        if org_row and org_row[0] == "starter":
+            credit_info = calculate_prorate_credit(
+                current_plan        = org_row[0],
+                last_payment_amount = org_row[2] or 0,
+                billing_period      = org_row[3] or "monthly",
+                next_billing_date   = org_row[1],
+            )
+            credit_applied = min(credit_info["credit"], base_amount + addon_amount)
+
+    subtotal   = max(0, base_amount + addon_amount - credit_applied)
+    gst_amount = round(subtotal * 0.18)
+    total_inr  = subtotal + gst_amount
+    amount     = total_inr * 100  # paise
 
     if amount < 100:
+        amount = 100
         raise HTTPException(status_code=400, detail="Amount must be at least ₹1")
 
     if not settings.RAZORPAY_KEY_ID:
@@ -457,16 +474,25 @@ async def razorpay_create_order(
             "currency": "INR",
             "receipt":  f"claustor_{str(user.org_id)[:8]}_{_uuid.uuid4().hex[:8]}",
             "notes": {
-                "org_id": str(user.org_id),
-                "plan":   req.plan,
-                "addon":  str(req.addon),
+                "org_id":        str(user.org_id),
+                "plan":          req.plan,
+                "addon":         str(req.addon),
+                "period":        req.period,
+                "credit_applied":str(credit_applied),
             },
         })
         return {
-            "order_id": order["id"],
-            "amount":   order["amount"],
-            "currency": order["currency"],
-            "key_id":   settings.RAZORPAY_KEY_ID,
+            "order_id":  order["id"],
+            "amount":    order["amount"],
+            "currency":  order["currency"],
+            "key_id":    settings.RAZORPAY_KEY_ID,
+            "breakdown": {
+                "base":           base_amount,
+                "addon":          addon_amount,
+                "credit_applied": credit_applied,
+                "gst":            gst_amount,
+                "total":          total_inr,
+            },
         }
     except Exception as e:
         logger.error("razorpay_create_order_failed", error=str(e))
@@ -532,19 +558,51 @@ async def razorpay_verify_payment(
             last_payment_date   = :now,
             last_payment_amount = :amount,
             billing_period      = :period,
-            grace_period_end    = NULL,
-            reminder_sent_days  = ARRAY[]::integer[]
+            grace_period_end    = NULL
         WHERE id = :org_id
     """), {
         "plan":         req.plan,
         "addon":        req.addon,
         "next_billing": next_billing,
         "now":          now,
-        "amount":       int(req.total_amount) if hasattr(req,"total_amount") else 0,
+        "amount":       int(req.total_amount) if hasattr(req,"total_amount") and req.total_amount else 0,
         "period":       req.period,
         "org_id":       str(user.org_id),
     })
     await db.commit()
+
+    # Save payment to audit log
+    try:
+        import uuid as _uuid3, json as _json3
+        from app.domain.models.models import AuditLog
+        from app.core.pricing import calculate_amount
+        pricing = calculate_amount(req.plan, req.addon, req.period)
+        db.add(AuditLog(
+            id=_uuid3.uuid4(),
+            org_id=user.org_id,
+            user_id=user.id,
+            user_role=user.role,
+            action="payment_completed",
+            resource_type="billing",
+            resource_id=_uuid3.uuid4(),
+            status="success",
+            extra_data={
+                "payment_id":    req.razorpay_payment_id,
+                "order_id":      req.razorpay_order_id,
+                "plan":          req.plan,
+                "addon":         req.addon,
+                "period":        req.period,
+                "base_amount":   pricing["base_amount"],
+                "addon_amount":  pricing["addon_amount"],
+                "gst_amount":    pricing["gst_amount"],
+                "total_amount":  int(req.total_amount) if hasattr(req,"total_amount") else pricing["total"],
+                "provider":      "razorpay",
+                "timestamp":     now.isoformat(),
+            },
+        ))
+        await db.commit()
+    except Exception as _ae:
+        logger.warning("audit_log_failed", error=str(_ae))
 
     logger.info("razorpay_payment_verified",
         org_id=str(user.org_id), plan=req.plan,

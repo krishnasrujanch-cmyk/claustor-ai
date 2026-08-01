@@ -85,7 +85,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 
 // Plan → features unlocked
 const PLAN_FEATURES: Record<string, string[]> = {
-  free:         ["contracts:view","chat:use","analytics:view"],
+  free:         ["contracts:view","contracts:upload","chat:use","analytics:view","billing:view"],
   starter:      ["contracts:view","contracts:upload","contracts:delete","chat:use","reviews:view","reviews:assign","analytics:view","analytics:export","obligations:view","obligations:complete","bulk:import","playbook:view","billing:view","settings:manage","users:view"],
   professional: ["*"],
   enterprise:   ["*"],
@@ -387,6 +387,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
 
           {/* Admin section */}
+          {/* Locked main nav items */}
+          {!collapsed && NAV_ITEMS.filter(item=>
+            item.permission && !hasPermission(user.role, item.permission, user.plan)
+          ).map(item=>{
+            const { Icon } = item;
+            const lockInfo = LOCKED_FEATURES[item.permission!];
+            return (
+              <button key={item.href}
+                onClick={()=>lockInfo&&setUpgradeModal({feature:item.permission!,plan:lockInfo.plan})}
+                style={{display:"flex",alignItems:"center",gap:12,
+                  padding:"9px 10px",borderRadius:8,border:"none",
+                  fontSize:14,marginBottom:2,fontWeight:400,
+                  color:"rgba(255,255,255,0.2)",background:"transparent",
+                  cursor:"pointer",width:"100%",textAlign:"left"}}>
+                <Icon size={16} style={{flexShrink:0,color:"rgba(255,255,255,0.15)"}}/>
+                <span style={{flex:1}}>{item.label}</span>
+                <span style={{fontSize:9}}>🔒</span>
+              </button>
+            );
+          })}
           {visibleAdmin.length > 0 && (
             <>
               {!collapsed && (
@@ -426,6 +446,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </Link>
                 );
               })}
+
           {/* Locked admin items */}
           {!collapsed && ADMIN_NAV.filter(item=>
             item.permission && !hasPermission(user.role, item.permission, user.plan)

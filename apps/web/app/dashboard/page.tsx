@@ -543,6 +543,53 @@ export default function DashboardPage() {
         return null;
       })()}
 
+
+      {/* Upgrade Banner — free/starter only */}
+      {(()=>{
+        const plan = summary?.plan || user?.plan || "free";
+        if (plan === "free") return (
+          <div style={{background:"linear-gradient(135deg,#0A1128,#0066FF)",
+            borderRadius:12,padding:"14px 20px",marginBottom:20,
+            display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"white",marginBottom:3}}>
+                🚀 Upgrade to Starter — unlock AI Copilot, reviews & more
+              </div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>
+                Starting at ₹3,999/mo · 5 contracts free to try
+              </div>
+            </div>
+            <Link href="/dashboard/admin/billing"
+              style={{padding:"8px 18px",background:"white",borderRadius:8,
+                fontSize:12,fontWeight:700,textDecoration:"none",
+                color:"#0066FF",flexShrink:0,whiteSpace:"nowrap"}}>
+              Upgrade Now →
+            </Link>
+          </div>
+        );
+        if (plan === "starter") return (
+          <div style={{background:"linear-gradient(135deg,#0A1128,#7C3AED)",
+            borderRadius:12,padding:"14px 20px",marginBottom:20,
+            display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"white",marginBottom:3}}>
+                ⚡ Upgrade to Professional — unlimited contracts & advanced AI
+              </div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>
+                ₹16,499/mo · Industry scoring, bulk import & priority support
+              </div>
+            </div>
+            <Link href="/dashboard/admin/billing"
+              style={{padding:"8px 18px",background:"white",borderRadius:8,
+                fontSize:12,fontWeight:700,textDecoration:"none",
+                color:"#7C3AED",flexShrink:0,whiteSpace:"nowrap"}}>
+              Upgrade Now →
+            </Link>
+          </div>
+        );
+        return null;
+      })()}
+
       {/* AI Insights Banner */}
       {insights.length>0&&(
         <div style={{background:C.navy,borderRadius:12,padding:"16px 20px",marginBottom:20}}>
