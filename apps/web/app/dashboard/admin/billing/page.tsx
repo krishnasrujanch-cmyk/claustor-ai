@@ -532,16 +532,106 @@ export default function BillingPage() {
     finally { setUpgrading(null); }
   };
 
-  const downloadInvoicePDF = async (idx: number) => {
-    const token = getToken();
-    const r = await fetch(`${API}/api/v1/billing/invoice/${idx}/pdf`,
-      {headers:{Authorization:`Bearer ${token}`}});
-    if (r.ok) {
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href=url; a.download=`claustor-invoice-${idx+1}.pdf`; a.click();
-    } else { setMsg("❌ Invoice PDF generation failed"); }
+  const downloadInvoicePDF = (idx: number) => {
+    const inv = invoices[idx];
+    if (!inv) return;
+    const COMPANY = {name:"DKU Technologies Pvt. Ltd.",brand:"Claustor AI",email:"info@claustor.com",website:"claustor.ai",gstin:"36AATFD9569L1ZC",address:"Hyderabad, Telangana, India"};
+    const base   = (()=>{const b=inv.base_amount||0;return b>100000?Math.round(b/100):b;})();
+    const addon  = (()=>{const a=inv.addon_amount||0;return a>100000?Math.round(a/100):a;})();
+    const credit = inv.credit_applied||0;
+    const gst    = inv.gst_amount||Math.round((base+addon-credit)*0.18);
+    const total  = (()=>{const t=inv.total_amount||inv.amount||0;return t>100000?Math.round(t/100):t;})();
+    const planLabel=inv.plan?inv.plan.charAt(0).toUpperCase()+inv.plan.slice(1):"Plan";
+    const period=inv.period==="12months"?"12 Months (10 charged, 2 free)":inv.period==="6months"?"6 Months (5 charged, 1 free)":"Monthly";
+    const date=new Date(inv.created_at||Date.now());
+    const dateStr=date.toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"});
+    const invoiceNo=`CLST-${date.getFullYear()}-${String(idx+1).padStart(4,"0")}`;
+    const cgst=Math.round(gst/2); const sgst=Math.round(gst/2);
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice ${invoiceNo}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;padding:0}.page{max-width:680px;margin:0 auto;padding:48px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;padding-bottom:28px;border-bottom:2px solid #0066FF}
+.logo-name{font-size:22px;font-weight:900;color:#0A1128;letter-spacing:-0.5px}.logo-icon{display:inline-flex;width:40px;height:40px;border-radius:10px;align-items:center;justify-content:center;margin-right:10px;vertical-align:middle;background:#F0F7FF}
+.company-detail{font-size:11px;color:#6B7280;line-height:1.7;margin-top:6px}
+.invoice-title{font-size:26px;font-weight:900;color:#0A1128;letter-spacing:-1px}.invoice-sub{font-size:12px;color:#6B7280;margin-top:4px}.badge{display:inline-block;background:#F0FDF4;color:#16A34A;font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;border:1px solid #BBF7D0;margin-top:8px}
+.plan-box{background:linear-gradient(135deg,#EFF6FF,#F0F9FF);border:1px solid #BFDBFE;border-radius:12px;padding:20px 24px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center}
+.plan-name{font-size:17px;font-weight:800;color:#0A1128}.plan-period{font-size:12px;color:#6B7280;margin-top:2px}.plan-tag{font-size:10px;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px}
+.plan-total{font-size:26px;font-weight:900;color:#0066FF;text-align:right}.plan-total-label{font-size:11px;color:#6B7280;text-align:right;margin-top:2px}
+.section-label{font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;margin-bottom:20px}
+thead th{background:#F8FAFC;padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.05em}
+thead th:last-child{text-align:right}
+tbody td{padding:11px 14px;border-bottom:1px solid #F1F5F9;font-size:13px;color:#374151}
+tbody td:last-child{text-align:right;font-weight:600}
+.credit-row td{color:#16A34A}.muted-row td{color:#9CA3AF;font-size:12px}
+.total-row{background:#0A1128}.total-row td{padding:14px 16px;font-size:15px;font-weight:800;color:white;border:none}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:28px}
+.info-box{border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px}
+.info-title{font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px}
+.info-val{font-size:13px;color:#111827;line-height:1.6}
+.footer{padding-top:20px;border-top:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:flex-end}
+.footer-left{font-size:11px;color:#9CA3AF;line-height:1.6}.footer-right{font-size:10px;color:#D1D5DB;text-align:right}
+@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head>
+<body><div class="page">
+<div class="header">
+  <div>
+    <div><span class="logo-icon"><svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+          <defs><linearGradient id="lg" x1="3" y1="4" x2="28" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#0066FF"/><stop offset="100%" stop-color="#00A3FF"/></linearGradient></defs>
+          <path d="M28 8C24.5 5.5 20 4 15 4C8.4 4 3 9.4 3 18s5.4 14 12 14c5 0 9.5-1.5 13-4" stroke="url(#lg)" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+          <circle cx="28" cy="8" r="2.5" fill="#00A3FF"/>
+          <circle cx="28" cy="28" r="2.5" fill="#00A3FF"/>
+          <line x1="28" y1="8" x2="33" y2="8" stroke="#00A3FF" stroke-width="1.5"/>
+          <circle cx="33" cy="8" r="1.5" fill="#00A3FF"/>
+          <line x1="28" y1="28" x2="33" y2="28" stroke="#00A3FF" stroke-width="1.5"/>
+          <circle cx="33" cy="28" r="1.5" fill="#00A3FF"/>
+          <rect x="11" y="11" width="11" height="14" rx="1.5" fill="rgba(0,102,255,0.08)" stroke="rgba(0,102,255,0.25)" stroke-width="0.75"/>
+          <line x1="13" y1="15" x2="20" y2="15" stroke="rgba(0,102,255,0.4)" stroke-width="0.75"/>
+          <line x1="13" y1="18" x2="20" y2="18" stroke="rgba(0,102,255,0.4)" stroke-width="0.75"/>
+          <line x1="13" y1="21" x2="18" y2="21" stroke="#00A3FF" stroke-width="1"/>
+        </svg></span><span class="logo-name">${COMPANY.brand}</span></div>
+    <div class="company-detail">${COMPANY.name}<br>GSTIN: ${COMPANY.gstin}<br>${COMPANY.address}<br>${COMPANY.email} · ${COMPANY.website}</div>
+  </div>
+  <div style="text-align:right">
+    <div class="invoice-title">TAX INVOICE</div>
+    <div class="invoice-sub">${invoiceNo} &nbsp;·&nbsp; ${dateStr}</div>
+    <span class="badge">✓ PAID</span>
+  </div>
+</div>
+<div class="plan-box">
+  <div>
+    <div class="plan-tag">Current Plan</div>
+    <div class="plan-name">${planLabel} Plan${inv.addon?" + Industry Pack":""}</div>
+    <div class="plan-period">${period}</div>
+  </div>
+  <div>
+    <div class="plan-total">₹${total.toLocaleString("en-IN")}</div>
+    <div class="plan-total-label">Total paid · incl. GST</div>
+  </div>
+</div>
+<div class="section-label">Charge Breakdown</div>
+<table>
+  <thead><tr><th>Description</th><th>Period</th><th>Amount</th></tr></thead>
+  <tbody>
+    <tr><td><strong>${planLabel} Plan</strong></td><td>${period}</td><td>₹${base.toLocaleString("en-IN")}</td></tr>
+    ${addon>0?`<tr><td><strong>Industry Pack Add-on</strong></td><td>${period}</td><td>₹${addon.toLocaleString("en-IN")}</td></tr>`:""}
+    ${credit>0?`<tr class="credit-row"><td><strong>Pro-rata Credit</strong> <span style="font-size:11px;font-weight:400">(Previous plan unused days)</span></td><td>—</td><td>−₹${credit.toLocaleString("en-IN")}</td></tr>`:""}
+    <tr class="muted-row"><td>CGST @ 9%</td><td></td><td>₹${cgst.toLocaleString("en-IN")}</td></tr>
+    <tr class="muted-row"><td>SGST @ 9%</td><td></td><td>₹${sgst.toLocaleString("en-IN")}</td></tr>
+  </tbody>
+</table>
+<table><tbody><tr class="total-row"><td>Total Amount Paid</td><td></td><td>₹${total.toLocaleString("en-IN")}</td></tr></tbody></table>
+<div class="grid2">
+  <div class="info-box"><div class="info-title">Billed To</div><div class="info-val">${summary?.org_name||"Organisation"}<br>${summary?.email||""}</div></div>
+  <div class="info-box"><div class="info-title">Payment Info</div><div class="info-val">Provider: Razorpay<br>Method: Card / UPI / Netbanking<br>Status: <strong style="color:#16A34A">Paid</strong></div></div>
+</div>
+<div class="footer">
+  <div class="footer-left"><strong>${COMPANY.brand}</strong> by ${COMPANY.name}<br>GSTIN: ${COMPANY.gstin} · ${COMPANY.email}</div>
+  <div class="footer-right">Computer-generated invoice<br>No signature required</div>
+</div>
+</div></body></html>`;
+    const blob=new Blob([html],{type:"text/html"});
+    const url=URL.createObjectURL(blob);
+    const w=window.open(url,"_blank");
+    if(w) setTimeout(()=>w.print(),600);
   };
 
   const currentPlan     = summary?.plan || "free";
