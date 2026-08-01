@@ -12,7 +12,8 @@ from sqlalchemy import (
     Integer, LargeBinary, String, Text, UniqueConstraint,
     func, text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID, ARRAY
+from sqlalchemy.dialects.postgresql import JSONB, UUID, ARRAY, TIMESTAMP as TIMESTAMPTZ
+PGUUID = UUID  # alias
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.database.session import Base
@@ -44,6 +45,14 @@ class Organisation(Base):
     # Billing
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255))
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(255))
+    addon_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    payment_status: Mapped[str] = mapped_column(String(20), default="active")
+    next_billing_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    grace_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_payment_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_payment_amount: Mapped[int] = mapped_column(Integer, default=0)
+    billing_period: Mapped[str] = mapped_column(String(20), default="monthly")
+    reminder_sent_days: Mapped[list] = mapped_column(JSONB, default=list)
 
     # Plan limits (from plan + extras purchased)
     max_users: Mapped[int] = mapped_column(Integer, default=1)
@@ -66,8 +75,6 @@ class Organisation(Base):
 
     # SSO (Enterprise)
     sso_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    addon_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    industry: Mapped[str | None] = mapped_column(String(50), default="general")
     sso_provider: Mapped[str | None] = mapped_column(String(50))
     sso_config: Mapped[dict] = mapped_column(JSONB, default=dict)
 
@@ -208,8 +215,8 @@ class Contract(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     flagged_for_review: Mapped[bool] = mapped_column(Boolean, default=False)
     # Version control
-    parent_contract_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    contract_family_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    parent_contract_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    contract_family_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     version_number: Mapped[int] = mapped_column(Integer, default=1)
     is_latest: Mapped[bool] = mapped_column(Boolean, default=True)
     version_note: Mapped[str | None] = mapped_column(String(500))
@@ -263,23 +270,19 @@ class Clause(Base):
 
     # Feedback
     flagged_for_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Version control
+    parent_contract_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    contract_family_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    version_number: Mapped[int] = mapped_column(Integer, default=1)
+    is_latest: Mapped[bool] = mapped_column(Boolean, default=True)
+    version_note: Mapped[str | None] = mapped_column(String(500))
+    missing_clauses: Mapped[list | None] = mapped_column(JSONB, default=list)
+    detected_language: Mapped[str | None] = mapped_column(String(10), default="en")
     review_status: Mapped[str | None] = mapped_column(String(50))
     review_notes: Mapped[str | None] = mapped_column(Text)
     review_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reviewer_feedback: Mapped[str | None] = mapped_column(String(20))  # positive | negative
     reviewer_score: Mapped[float | None] = mapped_column(Float)
-    playbook_match: Mapped[float | None] = mapped_column(Float, nullable=True)
-    deviation_from_std: Mapped[str | None] = mapped_column(Text, nullable=True)
-    adjusted_risk: Mapped[float | None] = mapped_column(Float, nullable=True)
-    industry_weight: Mapped[float | None] = mapped_column(Float, default=1.0)
-    related_clauses: Mapped[list | None] = mapped_column(JSONB, default=list)
-    cross_references: Mapped[list | None] = mapped_column(JSONB, default=list)
-    playbook_match: Mapped[float | None] = mapped_column(Float, nullable=True)
-    deviation_from_std: Mapped[str | None] = mapped_column(Text, nullable=True)
-    adjusted_risk: Mapped[float | None] = mapped_column(Float, nullable=True)
-    industry_weight: Mapped[float | None] = mapped_column(Float, default=1.0)
-    related_clauses: Mapped[list | None] = mapped_column(JSONB, default=list)
-    cross_references: Mapped[list | None] = mapped_column(JSONB, default=list)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -421,7 +424,6 @@ class AuditLog(Base):
     extra_data: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-
 class AIObservability(Base):
     """Tracks every LLM call — cost, latency, quality, guardrails."""
     __tablename__ = "ai_observability"
@@ -430,27 +432,43 @@ class AIObservability(Base):
     org_id              = Column(UUID(as_uuid=True), ForeignKey("organisations.id"), nullable=True)
     user_id             = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     contract_id         = Column(UUID(as_uuid=True), nullable=True)
-    agent_role          = Column(String(50),  nullable=False)
+
+    # Agent identity
+    agent_role          = Column(String(50), nullable=False)
     model               = Column(String(100), nullable=False)
-    provider            = Column(String(50),  nullable=False)
+    provider            = Column(String(50), nullable=False)
+
+    # Cost
     prompt_tokens       = Column(Integer, default=0)
     completion_tokens   = Column(Integer, default=0)
     total_tokens        = Column(Integer, default=0)
-    cost_usd            = Column(Float,   default=0.0)
+    cost_usd            = Column(Float, default=0.0)
+
+    # Performance
     latency_ms          = Column(Integer, default=0)
     retrieval_time_ms   = Column(Integer, default=0)
     first_token_ms      = Column(Integer, default=0)
+
+    # Quality
     hallucination       = Column(Boolean, default=False)
-    groundedness        = Column(Float,   nullable=True)
-    confidence          = Column(Float,   nullable=True)
+    groundedness        = Column(Float, nullable=True)
+    confidence          = Column(Float, nullable=True)
     citations_verified  = Column(Integer, default=0)
     citations_total     = Column(Integer, default=0)
+
+    # RAG
     chunks_retrieved    = Column(Integer, default=0)
     chunks_used         = Column(Integer, default=0)
     cache_hit           = Column(Boolean, default=False)
+
+    # Guardrails
     safety_passed       = Column(Boolean, default=True)
     injection_detected  = Column(Boolean, default=False)
     judge_triggered     = Column(Boolean, default=False)
-    user_feedback       = Column(String(20), nullable=True)
+
+    # User feedback
+    user_feedback       = Column(String(20), nullable=True)  # thumbs_up/thumbs_down/null
     query_preview       = Column(String(200), nullable=True)
-    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+
+    created_at          = Column(TIMESTAMPTZ, server_default=func.now())
+

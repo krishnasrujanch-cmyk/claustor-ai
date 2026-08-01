@@ -217,6 +217,27 @@ async def billing_portal(
     return {"portal_url": portal_url}
 
 
+
+async def _fetch_billing_extra(session, organisation_id) -> dict:
+    """Get fresh billing expiry fields via raw SQL."""
+    from sqlalchemy import text
+    r = await session.execute(text("""
+        SELECT payment_status, next_billing_date, grace_period_end,
+               billing_period, addon_enabled
+        FROM organisations WHERE id = :id
+    """), {"id": str(organisation_id)})
+    row = r.fetchone()
+    if not row:
+        return {}
+    return {
+        "payment_status":    row[0] or "active",
+        "next_billing_date": row[1].isoformat() if row[1] else None,
+        "grace_period_end":  row[2].isoformat() if row[2] else None,
+        "billing_period":    row[3] or "monthly",
+        "addon_enabled":     row[4] or False,
+    }
+
+
 @router.get("/summary")
 async def billing_summary(
     user=Depends(get_current_user),
@@ -260,6 +281,8 @@ async def billing_summary(
         "features": plan_info.get("features", []),
         "extra_users_purchased": org.extra_users_purchased or 0,
         "upgrade_available": org.plan != "enterprise",
+        # Use raw SQL to get fresh values (ORM may cache stale data)
+        **(await _fetch_billing_extra(db, user.org_id)),
     }
 
 
@@ -405,29 +428,20 @@ async def razorpay_create_order(
     import razorpay
     import uuid as _uuid
 
-    PLAN_AMOUNTS = {
-        "starter":      399900,   # ₹3,999 in paise
-        "professional": 1649900,  # ₹16,499 in paise
-    }
-    ADDON_AMOUNTS = {
-        "starter":      100000,   # ₹1,000
-        "professional": 250000,   # ₹2,500
-    }
-
-    if req.plan not in PLAN_AMOUNTS:
+    from app.core.pricing import calculate_amount, PLAN_PRICING
+    if req.plan not in PLAN_PRICING:
         raise HTTPException(status_code=400, detail=f"Invalid plan: {req.plan}")
 
+    pricing      = calculate_amount(req.plan, req.addon, req.period)
+    amount       = pricing["total_paise"]
+    base_amount  = pricing["base_amount"]
+    addon_amount = pricing["addon_amount"]
+    gst_amount   = pricing["gst_amount"]
+    period_months = pricing["period_months"]
 
-    PERIOD_MONTHS = {"monthly": 1, "6months": 5, "12months": 10}
-    period_months = PERIOD_MONTHS.get(req.period, 1)
-    GST_RATE = 0.18
-
-    base_amount  = PLAN_AMOUNTS[req.plan] * period_months
-    addon_amount = ADDON_AMOUNTS.get(req.plan, 0) * period_months if req.addon else 0
-    subtotal     = base_amount + addon_amount
-    gst_amount   = int(subtotal * GST_RATE)
-    amount       = subtotal + gst_amount
     if amount < 100:
+        raise HTTPException(status_code=400, detail="Amount must be at least ₹1")
+
         raise HTTPException(status_code=400, detail="Amount must be at least ₹1")
 
     if not settings.RAZORPAY_KEY_ID:
@@ -463,6 +477,8 @@ class RazorpayVerifyRequest(BaseModel):
     razorpay_signature:  str
     plan:                str
     addon:               bool = False
+    period:              str  = "monthly"
+    total_amount:        int  = 0
 
 
 @router.post("/razorpay/verify-payment")
@@ -494,16 +510,37 @@ async def razorpay_verify_payment(
             org_id=str(user.org_id), order_id=req.razorpay_order_id)
         raise HTTPException(status_code=400, detail="Payment verification failed")
 
-    # Activate plan
-    update_vals: dict = {"plan": req.plan}
-    if req.addon:
-        update_vals["addon_enabled"] = True
+    # Calculate next billing date based on period
+    from datetime import datetime, timezone, timedelta
+    from app.core.pricing import BILLING_PERIODS
+    from sqlalchemy import text as _text
+    period_info  = BILLING_PERIODS.get(req.period, BILLING_PERIODS["monthly"])
+    total_months = period_info["charge_months"] + period_info["free_months"]
+    now          = datetime.now(timezone.utc)
+    next_billing = now + timedelta(days=total_months * 30)
 
-    await db.execute(
-        update(Organisation)
-        .where(Organisation.id == user.org_id)
-        .values(**update_vals)
-    )
+    # Use raw SQL to avoid ORM column mapping issues
+    await db.execute(_text("""
+        UPDATE organisations SET
+            plan               = :plan,
+            addon_enabled      = :addon,
+            payment_status     = 'active',
+            next_billing_date  = :next_billing,
+            last_payment_date  = :now,
+            last_payment_amount= :amount,
+            billing_period     = :period,
+            grace_period_end   = NULL,
+            reminder_sent_days = ARRAY[]::integer[]
+        WHERE id = :org_id
+    """), {
+        "plan":         req.plan,
+        "addon":        req.addon,
+        "next_billing": next_billing,
+        "now":          now,
+        "amount":       int(req.total_amount) if hasattr(req,"total_amount") else 0,
+        "period":       req.period,
+        "org_id":       str(user.org_id),
+    })
     await db.commit()
 
     logger.info("razorpay_payment_verified",

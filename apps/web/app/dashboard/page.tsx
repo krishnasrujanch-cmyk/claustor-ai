@@ -360,23 +360,24 @@ export default function DashboardPage() {
   const [insights, setInsights]         = useState<{text:string;link:string;label:string}[]>([]);
   const [loading, setLoading]           = useState(true);
   const [user, setUser]                 = useState<any>(null);
+  const [summary, setSummary]           = useState<any>(null);
   const [activeRisk, setActiveRisk]     = useState<string|null>(null);
-  const [currentPlan, setCurrentPlan]   = useState<string>("free");
 
   useEffect(()=>{
     const token=getToken();
     const h={Authorization:`Bearer ${token}`};
     const load=async()=>{
       try {
-        const [meRes,contractsData,usageData,obligationsData,reviewsData]=await Promise.all([
+        const [meRes,summaryData,contractsData,usageData,obligationsData,reviewsData]=await Promise.all([
           fetch(`${API}/api/v1/auth/me`,{headers:h}).then(r=>r.json()),
+          fetch(`${API}/api/v1/billing/summary`,{headers:h}).then(r=>r.ok?r.json():null).catch(()=>null),
           contractsAPI.list({page:1,page_size:100}),
           billingAPI.usage(),
           fetch(`${API}/api/v1/obligations/?page_size=50`,{headers:h}).then(r=>r.json()),
           fetch(`${API}/api/v1/reviews/`,{headers:h}).then(r=>r.json()),
         ]);
         setUser(meRes);
-        setCurrentPlan(meRes.plan||"free");
+        setSummary(summaryData);
         const allC=contractsData.contracts||[];
         setAllContracts(allC);
         setRecent(allC.slice(0,5));
@@ -460,34 +461,87 @@ export default function DashboardPage() {
       </div>
 
 
-      {/* Upgrade Banner — free/starter only */}
-      {(currentPlan==="free"||currentPlan==="starter") && (
-        <div style={{
-          background:currentPlan==="free"
-            ? "linear-gradient(135deg,#0A1128,#0066FF)"
-            : "linear-gradient(135deg,#0A1128,#7C3AED)",
-          borderRadius:12,padding:"14px 20px",marginBottom:20,
-          display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-          <div>
-            <div style={{fontSize:13,fontWeight:700,color:"white",marginBottom:3}}>
-              {currentPlan==="free"
-                ? "🚀 Upgrade to Starter — unlock AI Copilot, reviews & more"
-                : "⚡ Upgrade to Professional — unlimited contracts, advanced AI & playbooks"}
+      {/* Expiry / Grace Period Banner */}
+      {(()=>{
+        if (!summary) return null;
+        const status   = (summary as any).payment_status;
+        const nextDate = (summary as any).next_billing_date;
+        const graceEnd = (summary as any).grace_period_end;
+
+        if (status === "grace_period" && graceEnd) {
+          const daysLeft = Math.ceil((new Date(graceEnd).getTime()-Date.now())/86400000);
+          return (
+            <div style={{background:"#FEF2F2",border:"1px solid #FECACA",
+              borderRadius:12,padding:"14px 20px",marginBottom:16,
+              display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"#DC2626",marginBottom:3}}>
+                  ⚠️ Payment overdue — {daysLeft} day{daysLeft!==1?"s":""} left before downgrade
+                </div>
+                <div style={{fontSize:11,color:"#EF4444"}}>
+                  Your account will be downgraded to Free on {new Date(graceEnd).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}. Renew now to keep full access.
+                </div>
+              </div>
+              <Link href="/dashboard/admin/billing"
+                style={{padding:"8px 16px",background:"#DC2626",color:"white",
+                  borderRadius:8,fontSize:12,fontWeight:700,
+                  textDecoration:"none",whiteSpace:"nowrap",flexShrink:0}}>
+                Renew Now →
+              </Link>
             </div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>
-              {currentPlan==="free"
-                ? "Starting at ₹3,999/mo · No credit card required to try"
-                : "₹16,499/mo · Includes industry scoring, bulk import & priority support"}
+          );
+        }
+
+        if (status === "expired") {
+          return (
+            <div style={{background:"#1F2937",borderRadius:12,padding:"14px 20px",
+              marginBottom:16,display:"flex",alignItems:"center",
+              justifyContent:"space-between",gap:12}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"white",marginBottom:3}}>
+                  Your plan has expired — you are now on the Free plan
+                </div>
+                <div style={{fontSize:11,color:"#9CA3AF"}}>
+                  Your data is preserved. Upgrade anytime to restore full access.
+                </div>
+              </div>
+              <Link href="/dashboard/admin/billing"
+                style={{padding:"8px 16px",background:"#0066FF",color:"white",
+                  borderRadius:8,fontSize:12,fontWeight:700,
+                  textDecoration:"none",whiteSpace:"nowrap",flexShrink:0}}>
+                Upgrade →
+              </Link>
             </div>
-          </div>
-          <Link href="/dashboard/admin/billing"
-            style={{padding:"8px 18px",background:"white",borderRadius:8,
-              fontSize:12,fontWeight:700,textDecoration:"none",whiteSpace:"nowrap",
-              color:currentPlan==="free"?"#0066FF":"#7C3AED",flexShrink:0}}>
-            Upgrade Now →
-          </Link>
-        </div>
-      )}
+          );
+        }
+
+        if (nextDate && (summary?.plan || user?.plan || "free") !== "free") {
+          const daysLeft = Math.ceil((new Date(nextDate).getTime()-Date.now())/86400000);
+          if (daysLeft <= 15) {
+            return (
+              <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",
+                borderRadius:12,padding:"14px 20px",marginBottom:16,
+                display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#92400E",marginBottom:3}}>
+                    📅 Your {summary?.plan || user?.plan || ""} plan expires in {daysLeft} day{daysLeft!==1?"s":""}
+                  </div>
+                  <div style={{fontSize:11,color:"#B45309"}}>
+                    Renews on {new Date(nextDate).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}. Renew early to avoid interruption.
+                  </div>
+                </div>
+                <a href="/dashboard/admin/billing"
+                  style={{padding:"8px 16px",background:"#F59E0B",color:"white",
+                    borderRadius:8,fontSize:12,fontWeight:700,
+                    textDecoration:"none",whiteSpace:"nowrap",flexShrink:0}}>
+                  Renew →
+                </a>
+              </div>
+            );
+          }
+        }
+        return null;
+      })()}
 
       {/* AI Insights Banner */}
       {insights.length>0&&(

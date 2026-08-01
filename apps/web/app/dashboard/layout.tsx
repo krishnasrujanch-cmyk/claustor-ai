@@ -216,7 +216,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     const init = async () => {
-      if (!token) { router.push("/login"); return; }
+      // Check store token first, then localStorage fallback
+      const storedAuth = typeof window !== "undefined"
+        ? (() => { try { return JSON.parse(localStorage.getItem("claustor-auth")||"{}"); } catch { return {}; } })()
+        : {};
+      const effectiveToken = token || storedAuth?.state?.token;
+      if (!effectiveToken) { router.push("/login"); return; }
       // Always reload user to get latest plan from DB
       await loadUser();
       setChecked(true);

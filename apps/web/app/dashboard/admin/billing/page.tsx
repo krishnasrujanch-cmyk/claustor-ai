@@ -358,9 +358,9 @@ export default function BillingPage() {
     const h = { Authorization: `Bearer ${token}` };
     try {
       const [s, inv, ind, rzpPayments] = await Promise.all([
-        billingAPI.summary(),
-        billingAPI.invoices(),
-        fetch(`${API}/api/v1/industries/org`, { headers: h }).then(r=>r.json()),
+        billingAPI.summary().catch(()=>null),
+        billingAPI.invoices().catch(()=>({invoices:[]})),
+        fetch(`${API}/api/v1/industries/org`, { headers: h }).then(r=>r.ok?r.json():{}).catch(()=>({})),
         fetch(`${API}/api/v1/billing/razorpay/payments`, { headers: h }).then(r=>r.ok?r.json():{payments:[]}).catch(()=>({payments:[]})),
       ]);
       setSummary(s);
@@ -375,6 +375,9 @@ export default function BillingPage() {
         status: "paid", provider:"razorpay",
         created_at: p.created_at,
       }));
+      console.log("rzpPayments:", rzpPayments);
+      console.log("rzpInvs:", rzpInvs);
+      console.log("inv:", inv);
       setInvoices([...rzpInvs, ...((inv as any).invoices||[])]);
       setOrgInd(ind);
       setAddonEnabled(ind.addon_enabled || false);
@@ -784,6 +787,7 @@ export default function BillingPage() {
       </div>
 
       {/* Invoice History */}
+      {/* DEBUG: */}<div style={{color:"red",fontSize:11}}>invoices count: {invoices.length}</div>
       <div style={{background:C.surface,border:`1px solid ${C.border}`,
         borderRadius:14,overflow:"hidden"}}>
         <div style={{padding:"16px 24px",borderBottom:`1px solid ${C.border}`,
@@ -998,8 +1002,10 @@ export default function BillingPage() {
                 </button>
                 <button onClick={()=>{
                   const {planId,action}=addonModal;
+                  const chosenPeriod = periodSelected;
+                  console.log("Period selected:", chosenPeriod, "Addon:", addonSelected);
                   setAddonModal(null);
-                  handlePlanAction(planId, action, addonSelected, periodSelected);
+                  handlePlanAction(planId, action, addonSelected, chosenPeriod);
                 }}
                   style={{flex:2,padding:"11px",border:"none",borderRadius:10,
                     background:"#0066FF",cursor:"pointer",
