@@ -217,9 +217,8 @@ async def billing_portal(
     return {"portal_url": portal_url}
 
 
-
 async def _fetch_billing_extra(session, organisation_id) -> dict:
-    """Get fresh billing expiry fields via raw SQL."""
+    """Get fresh billing expiry fields via raw SQL — avoids ORM cache."""
     from sqlalchemy import text
     r = await session.execute(text("""
         SELECT payment_status, next_billing_date, grace_period_end,
@@ -281,8 +280,10 @@ async def billing_summary(
         "features": plan_info.get("features", []),
         "extra_users_purchased": org.extra_users_purchased or 0,
         "upgrade_available": org.plan != "enterprise",
-        # Use raw SQL to get fresh values (ORM may cache stale data)
         **(await _fetch_billing_extra(db, user.org_id)),
+        "payment_status":    getattr(org, "payment_status", "active"),
+        "billing_period":    getattr(org, "billing_period",  "monthly"),
+        "addon_enabled":     getattr(org, "addon_enabled",   False),
     }
 
 
@@ -412,9 +413,10 @@ Thank you for using Claustor AI.
 # ── Razorpay Standard Checkout ────────────────────────────────────
 
 class RazorpayOrderRequest(BaseModel):
-    plan:   str
-    addon:  bool = False
-    period: str  = "monthly"  # monthly | 6months | 12months
+    plan:         str
+    addon:        bool = False
+    period:       str  = "monthly"
+    apply_credit: bool = True   # apply pro-rata credit if available
 
 
 @router.post("/razorpay/create-order")
@@ -428,20 +430,23 @@ async def razorpay_create_order(
     import razorpay
     import uuid as _uuid
 
-    from app.core.pricing import calculate_amount, PLAN_PRICING
-    if req.plan not in PLAN_PRICING:
+    PLAN_AMOUNTS = {
+        "starter":      399900,   # ₹3,999 in paise
+        "professional": 1649900,  # ₹16,499 in paise
+    }
+    ADDON_AMOUNTS = {
+        "starter":      100000,   # ₹1,000
+        "professional": 250000,   # ₹2,500
+    }
+
+    if req.plan not in PLAN_AMOUNTS:
         raise HTTPException(status_code=400, detail=f"Invalid plan: {req.plan}")
 
-    pricing      = calculate_amount(req.plan, req.addon, req.period)
-    amount       = pricing["total_paise"]
-    base_amount  = pricing["base_amount"]
-    addon_amount = pricing["addon_amount"]
-    gst_amount   = pricing["gst_amount"]
-    period_months = pricing["period_months"]
+    amount = PLAN_AMOUNTS[req.plan]
+    if req.addon:
+        amount += ADDON_AMOUNTS.get(req.plan, 0)
 
     if amount < 100:
-        raise HTTPException(status_code=400, detail="Amount must be at least ₹1")
-
         raise HTTPException(status_code=400, detail="Amount must be at least ₹1")
 
     if not settings.RAZORPAY_KEY_ID:
@@ -513,34 +518,28 @@ async def razorpay_verify_payment(
     # Calculate next billing date based on period
     from datetime import datetime, timezone, timedelta
     from app.core.pricing import BILLING_PERIODS
-    from sqlalchemy import text as _text
     period_info  = BILLING_PERIODS.get(req.period, BILLING_PERIODS["monthly"])
     total_months = period_info["charge_months"] + period_info["free_months"]
     now          = datetime.now(timezone.utc)
+    # Approximate months as 30 days each
     next_billing = now + timedelta(days=total_months * 30)
 
-    # Use raw SQL to avoid ORM column mapping issues
-    await db.execute(_text("""
-        UPDATE organisations SET
-            plan               = :plan,
-            addon_enabled      = :addon,
-            payment_status     = 'active',
-            next_billing_date  = :next_billing,
-            last_payment_date  = :now,
-            last_payment_amount= :amount,
-            billing_period     = :period,
-            grace_period_end   = NULL,
-            reminder_sent_days = ARRAY[]::integer[]
-        WHERE id = :org_id
-    """), {
-        "plan":         req.plan,
-        "addon":        req.addon,
-        "next_billing": next_billing,
-        "now":          now,
-        "amount":       int(req.total_amount) if hasattr(req,"total_amount") else 0,
-        "period":       req.period,
-        "org_id":       str(user.org_id),
-    })
+    # Activate plan with expiry tracking
+    await db.execute(
+        update(Organisation)
+        .where(Organisation.id == user.org_id)
+        .values(
+            plan=req.plan,
+            addon_enabled=req.addon,
+            payment_status="active",
+            next_billing_date=next_billing,
+            last_payment_date=now,
+            last_payment_amount=int(req.total_amount) if hasattr(req,"total_amount") else 0,
+            billing_period=req.period,
+            grace_period_end=None,
+            reminder_sent_days=[],
+        )
+    )
     await db.commit()
 
     logger.info("razorpay_payment_verified",
@@ -552,6 +551,90 @@ async def razorpay_verify_payment(
         "plan":    req.plan,
         "message": f"Payment verified. Successfully upgraded to {req.plan} plan.",
     }
+
+# ── Pro-rata Credit Calculation ───────────────────────────────────
+
+@router.get("/razorpay/prorate")
+async def get_prorate_credit(
+    target_plan: str,
+    period:      str = "monthly",
+    addon:       bool = False,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Calculate pro-rata credit for starter → professional upgrade.
+    Returns full breakdown: new price, credit, amount to pay.
+    """
+    from sqlalchemy import text
+    from app.core.pricing import calculate_amount, calculate_prorate_credit
+    from datetime import datetime, timezone
+
+    # Block invalid upgrades
+    UPGRADE_RULES = {
+        ("free",         "starter"):      True,
+        ("free",         "professional"): True,
+        ("starter",      "professional"): True,
+        ("professional", "starter"):      False,  # blocked
+        ("professional", "free"):         False,  # blocked
+    }
+
+    r = await db.execute(text("""
+        SELECT plan, next_billing_date, last_payment_amount,
+               billing_period, payment_status
+        FROM organisations WHERE id = :id
+    """), {"id": str(user.org_id)})
+    org = r.fetchone()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+
+    current_plan, next_billing, last_amount, billing_period, payment_status = org
+
+    # Check upgrade rules
+    allowed = UPGRADE_RULES.get((current_plan, target_plan), True)
+    if not allowed:
+        raise HTTPException(status_code=400,
+            detail=f"Downgrade from {current_plan} to {target_plan} is not allowed")
+
+    # Calculate new plan price
+    pricing = calculate_amount(target_plan, addon, period)
+
+    # Calculate credit (only for starter → professional)
+    credit_info = {"credit": 0, "daily_rate": 0, "remaining_days": 0}
+    if current_plan == "starter" and target_plan == "professional":
+        credit_info = calculate_prorate_credit(
+            current_plan   = current_plan,
+            last_payment_amount = last_amount or 0,
+            billing_period = billing_period or "monthly",
+            next_billing_date   = next_billing,
+        )
+
+    # Apply credit
+    credit        = credit_info["credit"]
+    subtotal      = pricing["base_amount"] + pricing["addon_amount"]
+    credit_applied = min(credit, subtotal)  # can't credit more than new price
+    discounted     = max(0, subtotal - credit_applied)
+    gst            = round(discounted * 0.18)
+    total_to_pay   = discounted + gst
+    total_paise    = total_to_pay * 100
+
+    return {
+        "current_plan":    current_plan,
+        "target_plan":     target_plan,
+        "period":          period,
+        "addon":           addon,
+        "new_plan_price":  subtotal,
+        "credit_applied":  credit_applied,
+        "remaining_days":  credit_info["remaining_days"],
+        "daily_rate":      credit_info["daily_rate"],
+        "discounted_base": discounted,
+        "gst":             gst,
+        "total_to_pay":    total_to_pay,
+        "total_paise":     total_paise,
+        "is_upgrade":      allowed,
+        "has_credit":      credit_applied > 0,
+    }
+
 
 @router.get("/razorpay/payments")
 async def get_razorpay_payments(
@@ -573,11 +656,11 @@ async def get_razorpay_payments(
     for row in rows:
         d = row[0] or {}
         payments.append({
-            "id":           d.get("payment_id",""),
-            "order_id":     d.get("order_id",""),
-            "plan":         d.get("plan",""),
+            "id":           d.get("payment_id", ""),
+            "order_id":     d.get("order_id", ""),
+            "plan":         d.get("plan", ""),
             "addon":        d.get("addon", False),
-            "period":       d.get("period","monthly"),
+            "period":       d.get("period", "monthly"),
             "base_amount":  d.get("base_amount", 0),
             "addon_amount": d.get("addon_amount", 0),
             "gst_amount":   d.get("gst_amount", 0),

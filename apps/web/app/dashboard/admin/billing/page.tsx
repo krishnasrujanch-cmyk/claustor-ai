@@ -324,6 +324,13 @@ function PlanCard({ plan, isCurrent, isUpgrade, isDowngrade, onAction, upgrading
                 boxShadow:`0 2px 8px ${C.primary}30`}}>
               {upgrading===plan.id?"Upgrading...":"Upgrade →"}
             </button>
+          ) : isDowngrade && plan.id === "starter" && !isUpgrade ? (
+            <button disabled
+              style={{width:"100%",padding:"10px",border:"1px solid #E5E7EB",
+                borderRadius:10,background:"#F9FAFB",cursor:"not-allowed",
+                fontSize:13,color:"#9CA3AF",fontWeight:600}}>
+              Not Available
+            </button>
           ) : (
             <button onClick={()=>onAction(plan.id,"downgrade")}
               disabled={upgrading===plan.id}
@@ -346,6 +353,7 @@ export default function BillingPage() {
   const [orgInd, setOrgInd]             = useState<any>(null);
   const [addonEnabled, setAddonEnabled]   = useState(false);
   const [addonModal, setAddonModal]       = useState<{planId:string;action:string}|null>(null);
+  const [proRate, setProRate]             = useState<any>(null);
   const [addonSelected, setAddonSelected] = useState(false);
   const [periodSelected, setPeriodSelected] = useState<"monthly"|"6months"|"12months">("monthly");
   const [loading, setLoading]           = useState(true);
@@ -358,9 +366,9 @@ export default function BillingPage() {
     const h = { Authorization: `Bearer ${token}` };
     try {
       const [s, inv, ind, rzpPayments] = await Promise.all([
-        billingAPI.summary().catch(()=>null),
-        billingAPI.invoices().catch(()=>({invoices:[]})),
-        fetch(`${API}/api/v1/industries/org`, { headers: h }).then(r=>r.ok?r.json():{}).catch(()=>({})),
+        billingAPI.summary(),
+        billingAPI.invoices(),
+        fetch(`${API}/api/v1/industries/org`, { headers: h }).then(r=>r.json()),
         fetch(`${API}/api/v1/billing/razorpay/payments`, { headers: h }).then(r=>r.ok?r.json():{payments:[]}).catch(()=>({payments:[]})),
       ]);
       setSummary(s);
@@ -375,9 +383,6 @@ export default function BillingPage() {
         status: "paid", provider:"razorpay",
         created_at: p.created_at,
       }));
-      console.log("rzpPayments:", rzpPayments);
-      console.log("rzpInvs:", rzpInvs);
-      console.log("inv:", inv);
       setInvoices([...rzpInvs, ...((inv as any).invoices||[])]);
       setOrgInd(ind);
       setAddonEnabled(ind.addon_enabled || false);
@@ -413,7 +418,15 @@ export default function BillingPage() {
     }
     setAddonSelected(false);
     setPeriodSelected("monthly");
+    setProRate(null);
     setAddonModal({planId, action});
+    // Fetch pro-rata credit if upgrading from starter
+    if (planId === "professional") {
+      const token = getToken();
+      fetch(`${API}/api/v1/billing/razorpay/prorate?target_plan=professional&period=monthly&addon=false`, {
+        headers: {Authorization: `Bearer ${token}`}
+      }).then(r=>r.ok?r.json():null).then(d=>{ if(d) setProRate(d); }).catch(()=>{});
+    }
   };
 
   // Load Razorpay checkout.js
@@ -515,38 +528,16 @@ export default function BillingPage() {
     finally { setUpgrading(null); }
   };
 
-  const downloadInvoicePDF = (idx: number) => {
-    const inv = invoices[idx];
-    if (!inv) return;
-    const base      = inv.base_amount  || inv.amount || 0;
-    const addon     = inv.addon_amount || 0;
-    const gst       = inv.gst_amount   || Math.round((base+addon)*0.18);
-    const total     = inv.total_amount || inv.amount || base+addon+gst;
-    const planLabel = inv.plan ? inv.plan.charAt(0).toUpperCase()+inv.plan.slice(1) : "Plan";
-    const period    = inv.period==="12months"?"12 Months":inv.period==="6months"?"6 Months":"Monthly";
-    const date      = new Date(inv.created_at||Date.now()).toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"});
-    const invoiceNo = `CLST-${new Date(inv.created_at||Date.now()).getFullYear()}-${String(idx+1).padStart(4,"0")}`;
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice ${invoiceNo}</title>
-<style>body{font-family:Arial,sans-serif;margin:0;padding:40px;color:#111827;font-size:13px}.logo{font-size:22px;font-weight:900;color:#0066FF}table{width:100%;border-collapse:collapse;margin:24px 0}th{background:#F8FAFC;padding:10px 14px;text-align:left;font-size:11px;color:#6B7280;text-transform:uppercase}td{padding:12px 14px;border-bottom:1px solid #E5E7EB}.total td{font-weight:700;font-size:14px;color:#0066FF;border-top:2px solid #0066FF;border-bottom:none}</style>
-</head><body>
-<div style="display:flex;justify-content:space-between;margin-bottom:32px">
-  <div><div class="logo">Claustor AI</div><div style="color:#6B7280">claustor.ai · hello@claustor.ai</div></div>
-  <div style="text-align:right"><div style="font-size:20px;font-weight:700">TAX INVOICE</div><div style="color:#6B7280">${invoiceNo} · ${date}</div><span style="background:#F0FDF4;color:#16A34A;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700">✓ PAID</span></div>
-</div>
-<table>
-  <tr><th>Description</th><th style="text-align:right">Amount (INR)</th></tr>
-  <tr><td>${planLabel} Plan — ${period}</td><td style="text-align:right">₹${base.toLocaleString("en-IN")}</td></tr>
-  ${inv.addon?`<tr><td>Industry Pack Add-on — ${period}</td><td style="text-align:right">₹${addon.toLocaleString("en-IN")}</td></tr>`:""}
-  <tr><td style="color:#6B7280">CGST @ 9%</td><td style="text-align:right;color:#6B7280">₹${Math.round(gst/2).toLocaleString("en-IN")}</td></tr>
-  <tr><td style="color:#6B7280">SGST @ 9%</td><td style="text-align:right;color:#6B7280">₹${Math.round(gst/2).toLocaleString("en-IN")}</td></tr>
-  <tr class="total"><td>Total</td><td style="text-align:right">₹${total.toLocaleString("en-IN")}</td></tr>
-</table>
-<div style="margin-top:40px;color:#9CA3AF;font-size:11px;text-align:center">Claustor AI · DKU Technologies · GSTIN: [YOUR_GSTIN] · Computer-generated invoice</div>
-</body></html>`;
-    const blob = new Blob([html],{type:"text/html"});
-    const url  = URL.createObjectURL(blob);
-    const w    = window.open(url,"_blank");
-    if(w) setTimeout(()=>w.print(),500);
+  const downloadInvoicePDF = async (idx: number) => {
+    const token = getToken();
+    const r = await fetch(`${API}/api/v1/billing/invoice/${idx}/pdf`,
+      {headers:{Authorization:`Bearer ${token}`}});
+    if (r.ok) {
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href=url; a.download=`claustor-invoice-${idx+1}.pdf`; a.click();
+    } else { setMsg("❌ Invoice PDF generation failed"); }
   };
 
   const currentPlan     = summary?.plan || "free";
@@ -787,7 +778,6 @@ export default function BillingPage() {
       </div>
 
       {/* Invoice History */}
-      {/* DEBUG: */}<div style={{color:"red",fontSize:11}}>invoices count: {invoices.length}</div>
       <div style={{background:C.surface,border:`1px solid ${C.border}`,
         borderRadius:14,overflow:"hidden"}}>
         <div style={{padding:"16px 24px",borderBottom:`1px solid ${C.border}`,
@@ -856,6 +846,15 @@ export default function BillingPage() {
           {key:"6months",  label:"6 Months",  months:5,  free:1, badge:"1 Month FREE"},
           {key:"12months", label:"12 Months", months:10, free:2, badge:"BEST VALUE"},
         ];
+        // Refresh prorate when period or addon changes
+        const [_pr, _setPr] = [proRate, setProRate];
+        const refreshProrate = (newPeriod: string, newAddon: boolean) => {
+          if (plan.id !== "professional") return;
+          const token = getToken();
+          fetch(`${API}/api/v1/billing/razorpay/prorate?target_plan=professional&period=${newPeriod}&addon=${newAddon}`,{
+            headers:{Authorization:`Bearer ${token}`}
+          }).then(r=>r.ok?r.json():null).then(d=>{if(d)setProRate(d);}).catch(()=>{});
+        };
         const sel = periods.find(p=>p.key===periodSelected)!;
         const total = monthly * sel.months;
         const saving = monthly * sel.free;
@@ -879,7 +878,7 @@ export default function BillingPage() {
 
               {/* Addon toggle */}
               {plan.addon > 0 && (
-                <div onClick={()=>setAddonSelected(!addonSelected)}
+                <div onClick={()=>{ setAddonSelected(!addonSelected); refreshProrate(periodSelected, !addonSelected); }}
                   style={{padding:"12px 16px",borderRadius:10,marginBottom:16,
                     background:addonSelected?"#EFF6FF":"#F8FAFC",
                     border:`2px solid ${addonSelected?"#0066FF":"#E5E7EB"}`,
@@ -918,7 +917,7 @@ export default function BillingPage() {
                     const save = monthly * p.free;
                     const isSelected = periodSelected===p.key;
                     return (
-                      <div key={p.key} onClick={()=>setPeriodSelected(p.key)}
+                      <div key={p.key} onClick={()=>{ setPeriodSelected(p.key); refreshProrate(p.key, addonSelected); }}
                         style={{padding:"12px 16px",borderRadius:10,
                           background:isSelected?"#EFF6FF":"#F8FAFC",
                           border:`2px solid ${isSelected?"#0066FF":"#E5E7EB"}`,
@@ -971,13 +970,33 @@ export default function BillingPage() {
               {/* Total summary */}
               <div style={{padding:"12px 16px",borderRadius:10,marginBottom:20,
                 background:"#F0FDF4",border:"1px solid #BBF7D0"}}>
-                <div style={{display:"flex",justifyContent:"space-between",
-                  alignItems:"center"}}>
+                {/* Pro-rata credit breakdown */}
+                {proRate?.has_credit && (
+                  <div style={{marginBottom:8,paddingBottom:8,borderBottom:"1px solid #BBF7D0"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                      <span style={{color:"#6B7280"}}>New plan price</span>
+                      <span style={{color:"#111827"}}>₹{proRate.new_plan_price.toLocaleString()}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                      <span style={{color:"#16A34A"}}>
+                        Starter credit ({proRate.remaining_days} days remaining)
+                      </span>
+                      <span style={{color:"#16A34A",fontWeight:700}}>
+                        -₹{proRate.credit_applied.toLocaleString()}
+                      </span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                      <span style={{color:"#6B7280"}}>GST (18%)</span>
+                      <span style={{color:"#111827"}}>₹{proRate.gst.toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
                     <div style={{fontSize:12,color:"#6B7280"}}>
                       {plan.label} {addonSelected?"+ Industry Pack":""} · {sel.label}
                     </div>
-                    {saving>0&&(
+                    {saving>0&&!proRate?.has_credit&&(
                       <div style={{fontSize:11,color:"#22C55E",fontWeight:600}}>
                         You save ₹{saving.toLocaleString()} vs monthly
                       </div>
@@ -985,7 +1004,7 @@ export default function BillingPage() {
                   </div>
                   <div style={{textAlign:"right"}}>
                     <div style={{fontSize:20,fontWeight:900,color:"#111827"}}>
-                      ₹{total.toLocaleString()}
+                      ₹{proRate?.has_credit ? proRate.total_to_pay.toLocaleString() : total.toLocaleString()}
                     </div>
                     <div style={{fontSize:10,color:"#6B7280"}}>incl. 18% GST</div>
                   </div>
@@ -1002,10 +1021,8 @@ export default function BillingPage() {
                 </button>
                 <button onClick={()=>{
                   const {planId,action}=addonModal;
-                  const chosenPeriod = periodSelected;
-                  console.log("Period selected:", chosenPeriod, "Addon:", addonSelected);
                   setAddonModal(null);
-                  handlePlanAction(planId, action, addonSelected, chosenPeriod);
+                  handlePlanAction(planId, action, addonSelected, periodSelected);
                 }}
                   style={{flex:2,padding:"11px",border:"none",borderRadius:10,
                     background:"#0066FF",cursor:"pointer",
