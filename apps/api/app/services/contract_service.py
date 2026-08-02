@@ -420,6 +420,14 @@ class ContractService:
         if not contract:
             return False
 
+        # Decrement storage usage
+        from sqlalchemy import text as _dst
+        file_size_mb = (contract.file_size_bytes or 0) / (1024 * 1024)
+        await self.db.execute(
+            _dst("UPDATE organisations SET storage_used_mb = GREATEST(0, storage_used_mb - :mb) WHERE id = :id"),
+            {"mb": round(file_size_mb, 3), "id": str(org_id)}
+        )
+
         # Delete Pinecone vectors
         try:
             from app.infrastructure.vector_store.pinecone_store import get_vector_store

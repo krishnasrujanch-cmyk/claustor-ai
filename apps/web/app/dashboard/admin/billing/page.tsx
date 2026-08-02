@@ -1,4 +1,5 @@
 "use client";
+import { useAuthStore } from "@/store/auth";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { billing as billingAPI, getToken } from "@/lib/api";
@@ -354,6 +355,7 @@ export default function BillingPage() {
   const [invoices, setInvoices]         = useState<any[]>([]);
   const [orgInd, setOrgInd]             = useState<any>(null);
   const router = useRouter();
+  const { loadUser } = useAuthStore();
   const [addonEnabled, setAddonEnabled]   = useState(false);
   const [enterpriseModal, setEnterpriseModal] = useState(false);
   const [enterpriseForm, setEnterpriseForm]   = useState({business_name:"",industry:"",company_size:"",contact_name:"",business_email:"",mobile:"",contracts_per_month:"",message:""});
@@ -462,7 +464,7 @@ export default function BillingPage() {
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail);
         setMsg("✅ Downgraded to free plan.");
-        setTimeout(()=>window.location.reload(), 1200);
+        setTimeout(async()=>{ await loadUser(); router.refresh(); load(); }, 1200);
       } catch(e:any){ setMsg(`❌ ${e.message}`); }
       finally{ setUpgrading(null); }
       return;
@@ -487,7 +489,7 @@ export default function BillingPage() {
             }),
           });
           const ver = await verRes.json();
-          if (ver.success) { setMsg("✅ Upgraded to Professional!"); setTimeout(()=>{ router.refresh(); load(); }, 1200); }
+          if (ver.success) { setMsg("✅ Upgraded to Professional!"); setTimeout(async()=>{ await loadUser(); router.refresh(); load(); }, 1200); }
           else { setMsg("❌ Upgrade failed. Contact support."); }
         } catch(e) { setMsg("❌ Error during upgrade."); }
         finally { setUpgrading(null); }
@@ -530,7 +532,7 @@ export default function BillingPage() {
           const ver = await verRes.json();
           if (ver.success) {
             setMsg("✅ Payment successful! Plan upgraded.");
-            setTimeout(()=>{ router.refresh(); load(); }, 1200);
+            setTimeout(async()=>{ await loadUser(); router.refresh(); load(); }, 1200);
           } else {
             setMsg("❌ Payment verification failed. Contact support.");
           }
