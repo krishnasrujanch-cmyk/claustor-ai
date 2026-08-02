@@ -8,7 +8,7 @@ from typing import Annotated
 
 import structlog
 from fastapi import APIRouter
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,19 +72,6 @@ async def chat(
     """
     if not req.query or not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
-
-    # Check query limit
-    from sqlalchemy import text as _ql_text
-    _ql = await db.execute(_ql_text(
-        "SELECT queries_used, max_queries_mo FROM organisations WHERE id = :id"
-    ), {"id": str(user.org_id)})
-    _ql_row = _ql.fetchone()
-    if _ql_row and _ql_row[1] != -1 and (_ql_row[0] or 0) >= (_ql_row[1] or 100):
-        raise HTTPException(status_code=429, detail=(
-            f"You have reached your monthly query limit of {_ql_row[1]}. "
-            "Please upgrade your plan to continue using AI Copilot."
-        ))
-
 
     if len(req.query) > 2000:
         raise HTTPException(status_code=400, detail="Query too long. Maximum 2000 characters.")
@@ -264,19 +251,6 @@ async def chat_stream(
     if not req.query or not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    # Check query limit
-    from sqlalchemy import text as _ql_text
-    _ql = await db.execute(_ql_text(
-        "SELECT queries_used, max_queries_mo FROM organisations WHERE id = :id"
-    ), {"id": str(user.org_id)})
-    _ql_row = _ql.fetchone()
-    if _ql_row and _ql_row[1] != -1 and (_ql_row[0] or 0) >= (_ql_row[1] or 100):
-        raise HTTPException(status_code=429, detail=(
-            f"You have reached your monthly query limit of {_ql_row[1]}. "
-            "Please upgrade your plan to continue using AI Copilot."
-        ))
-
-
     if len(req.query) > 2000:
         raise HTTPException(status_code=400, detail="Query too long.")
 
@@ -287,23 +261,88 @@ async def chat_stream(
                 req.query, org_id=str(user.org_id), user_id=str(user.id))
             if not jailbreak.is_clean:
                 yield "data: " + json.dumps({"type":"error","message":"Query blocked by security filter."}) + "\n\n"
+
                 return
 
             # Step 1: Safety + retrieval (non-streaming portion)
             agent = get_chat_agent()
 
-            # Get context via normal retrieval
+            # ── Intent Classification & Smart Routing ────────────────
             from app.infrastructure.security.sanitizer import validate_context_window
-            context = await agent.retriever.retrieve(
-                query=req.query.strip(),
-                org_id=user.org_id,
-                db=db,
-                plan=user.plan,
-                contract_id=req.contract_id,
-            )
+            from app.domain.models import Conversation as _StreamConv
+            from sqlalchemy import select as _ssel, desc as _sdesc
+            from app.agents.rag.intent_classifier import classify_intent
+            from app.agents.rag.structured_query import (
+                run_structured_query, run_missing_clause_query)
 
-            # Validate context window
-            safe_ctx, _ = validate_context_window(context.context_text, max_tokens=80000)
+            raw_query = req.query.strip()
+
+            # 1. Load recent history for follow-up detection
+            _has_history = False
+            _last_assistant = ""
+            _scoped_contract_id = req.contract_id
+            try:
+                _hist_r = await db.execute(
+                    _ssel(_StreamConv.role, _StreamConv.content, _StreamConv.contract_id)
+                    .where(_StreamConv.org_id == user.org_id,
+                           _StreamConv.user_id == user.id)
+                    .order_by(_sdesc(_StreamConv.created_at))
+                    .limit(6)
+                )
+                _hist_rows = _hist_r.fetchall()
+                _has_history = len(_hist_rows) > 0
+                for _t in _hist_rows:
+                    if _t[0] == "assistant":
+                        _last_assistant = _t[1][:400]
+                        if _t[2] and not req.contract_id:
+                            _scoped_contract_id = _t[2]
+                        break
+            except Exception:
+                pass
+
+            # 2. Classify intent
+            intent = classify_intent(raw_query, has_history=_has_history)
+
+            # 3. Determine retrieval query
+            retrieval_query = raw_query
+            if intent.intent == "followup" and _last_assistant:
+                retrieval_query = _last_assistant[:300] + " " + raw_query
+
+            # 4. Structured DB query
+            extra_context = ""
+            if intent.intent in ("structured", "hybrid"):
+                extra_context = await run_structured_query(
+                    intent_sub_type=intent.sub_type,
+                    date_start=intent.date_start,
+                    date_end=intent.date_end,
+                    timeframe=intent.timeframe,
+                    query=raw_query,
+                    org_id=user.org_id,
+                    db=db,
+                    contract_id=_scoped_contract_id,
+                )
+            elif intent.intent == "missing":
+                extra_context = await run_missing_clause_query(
+                    query=raw_query, org_id=user.org_id, db=db)
+
+            # 5. Vector search (skip for pure structured queries)
+            if intent.intent == "structured":
+                class _EmptyCtx:
+                    context_text = ""
+                    chunks = []
+                context = _EmptyCtx()
+            else:
+                context = await agent.retriever.retrieve(
+                    query=retrieval_query,
+                    org_id=user.org_id,
+                    db=db,
+                    plan=user.plan,
+                    contract_id=_scoped_contract_id,
+                )
+
+            # 6. Combine and validate context
+            combined = (context.context_text or "") + extra_context
+            safe_ctx, _ = validate_context_window(combined, max_tokens=80000)
 
             # Build messages
             messages = agent._build_messages(
@@ -336,62 +375,66 @@ async def chat_stream(
             for i, word in enumerate(words):
                 chunk = word + (" " if i < len(words)-1 else "")
                 yield "data: " + json.dumps({"type":"token","content":chunk}) + "\n\n"
+
                 if i % 5 == 0:  # small pause every 5 words
                     await asyncio.sleep(0.01)
 
             # Step 3: Citations + hallucination check
-            # Convert chunks to dicts + verify citations
-            chunk_dicts = []
             raw_chunks = context.chunks if hasattr(context, "chunks") else []
+            # Convert HybridSearchResult objects to dicts
+            chunks = []
             for ci, ch in enumerate(raw_chunks):
-                if hasattr(ch, "to_dict"):
+                if isinstance(ch, dict):
+                    d = ch
+                elif hasattr(ch, "to_dict"):
                     d = ch.to_dict()
-                elif hasattr(ch, "clause_type"):
-                    d = {"clause_type": ch.clause_type, "text": ch.text}
                 else:
-                    d = ch if isinstance(ch, dict) else {}
+                    d = {
+                        "index":       ci + 1,
+                        "clause_type": getattr(ch, "clause_type", ""),
+                        "text":        getattr(ch, "text", ""),
+                        "chunk_index": ci + 1,
+                    }
                 d["index"] = ci + 1
-                chunk_dicts.append(d)
-            halluc = verify_citations(full_answer, chunk_dicts)
+                chunks.append(d)
+            halluc = verify_citations(full_answer, chunks)
 
-            # Extract citations
+            # Extract citations from answer
             import re
             cited = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", full_answer)))
             citations = []
             for idx in cited:
-                if idx <= len(chunk_dicts):
-                    c = chunk_dicts[idx-1]
+                if idx <= len(chunks):
+                    c = chunks[idx-1] if idx-1 < len(chunks) else {}
                     citations.append({
                         "index":       idx,
-                        "clause_type": c.get("clause_type",""),
-                        "text":        c.get("text","")[:200],
+                        "clause_type": getattr(c, "clause_type", None) or (c.get("clause_type","") if isinstance(c,dict) else ""),
+                        "text":        (getattr(c, "text", None) or (c.get("text","") if isinstance(c,dict) else ""))[:200],
                     })
 
             yield "data: " + json.dumps({"type":"citations","citations":citations}) + "\n\n"
-            _meta = json.dumps({"type":"meta","groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6)})
-            yield "data: " + _meta + "\n\n"
+
+            yield "data: " + json.dumps({"type":"meta","groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6)}) + "\n\n"
+
             yield "data: " + json.dumps({"type":"done"}) + "\n\n"
+
 
             # ── Observability logging ─────────────────────
             try:
                 from app.infrastructure.observability.logger import (
                     ObservabilityEvent, fire_and_forget_log)
                 fire_and_forget_log(ObservabilityEvent(
-                    agent_role="answerer",
-                    model=response.model,
+                    agent_role="answerer", model=response.model,
                     provider=str(response.provider),
                     prompt_tokens=response.input_tokens,
                     completion_tokens=response.output_tokens,
-                    cost_usd=response.cost_usd,
-                    latency_ms=response.latency_ms,
+                    cost_usd=response.cost_usd, latency_ms=response.latency_ms,
                     hallucination=halluc.is_hallucinated,
                     groundedness=halluc.groundedness,
                     citations_verified=halluc.verified_citations,
                     citations_total=halluc.total_citations,
-                    chunks_retrieved=len(raw_chunks),
-                    chunks_used=len(citations),
-                    safety_passed=True,
-                    org_id=str(user.org_id),
+                    chunks_retrieved=len(chunks), chunks_used=len(citations),
+                    safety_passed=True, org_id=str(user.org_id),
                     user_id=str(user.id),
                     contract_id=str(req.contract_id) if req.contract_id else None,
                     query_preview=req.query[:200],
@@ -416,6 +459,7 @@ async def chat_stream(
         except Exception as e:
             logger.error("stream_error", error=str(e))
             yield "data: " + json.dumps({"type":"error","message":str(e)}) + "\n\n"
+
 
     return StreamingResponse(
         event_generator(),

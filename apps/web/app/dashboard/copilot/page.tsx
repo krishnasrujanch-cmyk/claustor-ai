@@ -190,6 +190,8 @@ export default function CopilotPage() {
   const [messages, setMessages]   = useState<Msg[]>([]);
   const [input, setInput]         = useState("");
   const [tab, setTab]             = useState("risk");
+  const [conversationId, setConversationId] = useState<string|null>(null);
+  const [suggestedContract, setSuggestedContract] = useState<string|null>(null);
   const [loading, setLoading]     = useState(false);
   const [dropdown, setDropdown]   = useState(false);
   const [copied, setCopied]       = useState<number|null>(null);
@@ -210,7 +212,7 @@ export default function CopilotPage() {
       const res = await fetch(`${API}/api/v1/chat/stream`,{
         method:"POST",
         headers:{"Authorization":`Bearer ${token}`,"Content-Type":"application/json"},
-        body:JSON.stringify({query,contract_id:sel||null}),
+        body:JSON.stringify({query,contract_id:sel||null,conversation_id:conversationId}),
         signal:abort.signal,
       });
       if(!res.ok) {
@@ -239,6 +241,10 @@ export default function CopilotPage() {
             else if(d.type==="citations") cits=d.citations||[];
             else if(d.type==="meta"){ground=d.groundedness;toks=d.tokens;}
             else if(d.type==="done"){setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:full,citations:cits,groundedness:ground,tokens:toks,isStreaming:false};return u;});}
+            else if(d.type==="conversation_id"){setConversationId(d.conversation_id);}
+            else if(d.type==="contract_context" && !sel && d.contract_id){
+              setSuggestedContract(d.contract_id);
+            }
             else if(d.type==="error"){setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:d.message||"Error",isStreaming:false,error:true};return u;});}
           }catch{}
         }
@@ -246,7 +252,7 @@ export default function CopilotPage() {
     }catch(err:any){
       if(err.name==="AbortError") return;
       try{
-        const r=await fetch(`${API}/api/v1/chat/`,{method:"POST",headers:{"Authorization":`Bearer ${getToken()}`,"Content-Type":"application/json"},body:JSON.stringify({query,contract_id:sel||null})});
+        const r=await fetch(`${API}/api/v1/chat/`,{method:"POST",headers:{"Authorization":`Bearer ${getToken()}`,"Content-Type":"application/json"},body:JSON.stringify({query,contract_id:sel||null,conversation_id:conversationId})});
         const d=await r.json();
         setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:d.answer||"Error",citations:d.citations||[],isStreaming:false};return u;});
       }catch{setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:"Connection error.",isStreaming:false,error:true};return u;});}
@@ -261,6 +267,26 @@ export default function CopilotPage() {
         <div style={{width:30,height:30,borderRadius:"50%",background:`conic-gradient(from 0deg,${C.primary},${C.accent},#A855F7)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"white",flexShrink:0}}>✦</div>
         <span style={{fontSize:15,fontWeight:700,color:C.heading,flex:1}}>AI Copilot</span>
 
+        {/* Contract focus suggestion */}
+        {suggestedContract && !sel && (
+          <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:8,
+            padding:"8px 14px",marginBottom:8,display:"flex",alignItems:"center",
+            justifyContent:"space-between",fontSize:12}}>
+            <span style={{color:"#1D4ED8"}}>
+              💡 Select this contract for focused follow-up questions
+            </span>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{setSel(suggestedContract);setSuggestedContract(null);}}
+                style={{background:"#0066FF",color:"white",border:"none",borderRadius:6,
+                  padding:"4px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                Focus on this contract
+              </button>
+              <button onClick={()=>setSuggestedContract(null)}
+                style={{background:"none",border:"none",cursor:"pointer",
+                  fontSize:11,color:"#6B7280"}}>✕</button>
+            </div>
+          </div>
+        )}
         {/* Contract selector */}
         <div style={{position:"relative"}}>
           <button onClick={()=>setDropdown(!dropdown)}
@@ -327,6 +353,13 @@ export default function CopilotPage() {
                 </div>
 
                 {/* Footer */}
+                {msg.role==="assistant" && !msg.isStreaming && !msg.error && !sel && messages.indexOf(msg) === messages.length-1 && (
+                  <div style={{fontSize:11,color:"#6B7280",marginTop:6,
+                    padding:"6px 10px",background:"#F8FAFC",borderRadius:6,
+                    border:"1px solid #E5E7EB"}}>
+                    💡 For follow-up questions, select a specific contract above
+                  </div>
+                )}
                 {msg.role==="assistant" && !msg.isStreaming && !msg.error && (
                   <div style={{marginTop:8}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>

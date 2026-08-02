@@ -157,9 +157,33 @@ class ChatAgent:
                 query=query,
             )
 
+        # ── Step 1.5: Enrich follow-up queries with conversation history ──
+        retrieval_query = query
+        try:
+            from app.domain.models import Conversation as _Conv
+            from sqlalchemy import select as _sel2, desc as _desc2
+            _hist_r = await db.execute(
+                _sel2(_Conv.role, _Conv.content, _Conv.contract_id)
+                .where(_Conv.org_id == org_id, _Conv.user_id == user_id)
+                .order_by(_desc2(_Conv.created_at))
+                .limit(6)
+            )
+            _turns = _hist_r.fetchall()
+            vague = ["this","it","that","more","details","elaborate","explain",
+                     "share","tell me","abt","about","give","expand","what about"]
+            is_vague = any(w in query.lower() for w in vague) and len(query.split()) < 10
+            if is_vague and not contract_id and _turns:
+                for t in _turns:
+                    if t[0] == "assistant":
+                        retrieval_query = t[1][:300] + " " + query
+                        break
+        except Exception as _fe:
+            print(f"ENRICHMENT ERROR: {_fe}")
+        print(f"ENRICHMENT RESULT: {repr(retrieval_query)[:80]}")
+
         # ── Step 2: Retrieve Context ──────────────────
         context = await self.retriever.retrieve(
-            query=query,
+            query=retrieval_query,
             org_id=org_id,
             db=db,
             plan=plan,

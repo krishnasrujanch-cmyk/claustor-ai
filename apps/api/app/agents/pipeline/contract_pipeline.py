@@ -527,16 +527,30 @@ RULES:
 
     async def _extract_contract_metadata(self, full_text: str) -> dict:
         """Extract key contract metadata (parties, dates, value etc)."""
+        import re
+
+        # Smart excerpt: first 4000 chars + any section with term/expiry keywords
+        excerpts = [full_text[:4000]]
+        term_keywords = ["term and terminat", "initial term", "expiry", "expiration",
+                         "effective date", "commencement", "duration", "period of agreement",
+                         "governing law", "jurisdiction", "contract value", "total value"]
+        for kw in term_keywords:
+            idx = full_text.lower().find(kw)
+            if idx > 0:
+                excerpt = full_text[max(0, idx-100):idx+500]
+                if excerpt not in excerpts:
+                    excerpts.append(excerpt)
+
+        combined = "\n\n---\n\n".join(excerpts)[:12000]
+
         prompt = f"""Extract key metadata from this contract.
-
-CONTRACT TEXT (first 3000 chars):
-{full_text[:3000]}
-
+CONTRACT TEXT (key sections):
+{combined}
 Return JSON with these fields (use null if not found):
 - contract_type: type of contract (MSA, NDA, SLA, Employment, Vendor, License, Lease, Loan, Other)
 - counterparty: name of the other party (not our company)
 - effective_date: contract start date (YYYY-MM-DD format or null)
-- expiry_date: contract end date (YYYY-MM-DD format or null)
+- expiry_date: contract end date (YYYY-MM-DD format or null). IMPORTANT: If not explicitly stated, calculate from effective_date + term duration. Examples: "10-year term" from 2026-06-01 = 2036-06-01, "3 years" from 2026-01-01 = 2029-01-01
 - auto_renewal: true/false/null
 - renewal_notice_days: number of days notice required for termination (integer or null)
 - governing_law: jurisdiction/state/country
@@ -544,9 +558,7 @@ Return JSON with these fields (use null if not found):
 - contract_currency: currency code (INR, USD, EUR etc or null)
 - language: primary language (en, hi, etc)
 - summary: 2-3 sentence executive summary of what this contract is about
-
 Return ONLY valid JSON."""
-
         response = await self.llm.complete(
             messages=[
                 LLMMessage(role="system", content="You are a contract analyst. Return only valid JSON."),
@@ -555,13 +567,13 @@ Return ONLY valid JSON."""
             role=AgentRole.EXTRACTOR,
             json_mode=True,
         )
-
-        import json
+        import json as _json
         try:
-            return json.loads(response.content.strip())
-        except json.JSONDecodeError:
+            result = _json.loads(response.content.strip())
+            print(f"METADATA EXTRACTED: expiry={result.get('expiry_date')} effective={result.get('effective_date')}")
+            return result
+        except Exception:
             return {}
-
     async def _extract_obligations(self, full_text: str) -> list[dict]:
         """Extract obligations with due dates."""
         prompt = f"""Extract all obligations and important dates from this contract.
