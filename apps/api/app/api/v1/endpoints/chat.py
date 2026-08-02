@@ -73,6 +73,19 @@ async def chat(
     if not req.query or not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
+    # Check query limit
+    from sqlalchemy import text as _ql_text
+    _ql = await db.execute(_ql_text(
+        "SELECT queries_used, max_queries_mo FROM organisations WHERE id = :id"
+    ), {"id": str(user.org_id)})
+    _ql_row = _ql.fetchone()
+    if _ql_row and _ql_row[1] != -1 and (_ql_row[0] or 0) >= (_ql_row[1] or 100):
+        raise HTTPException(status_code=429, detail=(
+            f"You have reached your monthly query limit of {_ql_row[1]}. "
+            "Please upgrade your plan to continue using AI Copilot."
+        ))
+
+
     if len(req.query) > 2000:
         raise HTTPException(status_code=400, detail="Query too long. Maximum 2000 characters.")
 
@@ -250,6 +263,19 @@ async def chat_stream(
 
     if not req.query or not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    # Check query limit
+    from sqlalchemy import text as _ql_text
+    _ql = await db.execute(_ql_text(
+        "SELECT queries_used, max_queries_mo FROM organisations WHERE id = :id"
+    ), {"id": str(user.org_id)})
+    _ql_row = _ql.fetchone()
+    if _ql_row and _ql_row[1] != -1 and (_ql_row[0] or 0) >= (_ql_row[1] or 100):
+        raise HTTPException(status_code=429, detail=(
+            f"You have reached your monthly query limit of {_ql_row[1]}. "
+            "Please upgrade your plan to continue using AI Copilot."
+        ))
+
 
     if len(req.query) > 2000:
         raise HTTPException(status_code=400, detail="Query too long.")

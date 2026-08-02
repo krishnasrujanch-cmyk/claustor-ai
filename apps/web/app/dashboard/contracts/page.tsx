@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { Pagination } from "@/components/shared/Pagination";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { getToken } from "@/lib/api";
@@ -203,7 +204,11 @@ export default function ContractsPage() {
         xhr.onload = ()=>{
           if(xhr.status===202||xhr.status===200)
             resolve(JSON.parse(xhr.responseText).contract_id);
-          else reject(new Error(JSON.parse(xhr.responseText).detail||"Upload failed"));
+          else {
+            let detail = "Upload failed";
+            try { detail = JSON.parse(xhr.responseText).detail || detail; } catch(e){}
+            reject(new Error(detail));
+          }
         };
         xhr.onerror = ()=>reject(new Error("Network error"));
         xhr.open("POST",`${API}/api/v1/contracts/`);
@@ -234,7 +239,17 @@ export default function ContractsPage() {
           } catch(e){clearInterval(poll);reject(e);}
         },2000);
       });
-    } catch(e:any){update({error:e.message,status:"failed"});}
+    } catch(e:any){
+      const msg = e.message || "Upload failed";
+      const isLimit = msg.toLowerCase().includes("limit") || msg.toLowerCase().includes("upgrade");
+      update({
+        error: isLimit
+          ? "⚠️ Contract limit reached. Upgrade your plan to upload more."
+          : msg,
+        status:"failed"
+      });
+      if (isLimit) setToast("⚠️ Contract limit reached — upgrade your plan to continue.");
+    }
   };
 
   const deleteContract = async (id:string,title:string) => {
@@ -619,8 +634,16 @@ export default function ContractsPage() {
       {toast&&(
         <div style={{position:"fixed",bottom:24,right:24,background:"#1C1B2E",
           color:"white",padding:"14px 20px",borderRadius:12,fontSize:14,
-          fontWeight:500,boxShadow:"0 8px 24px rgba(0,0,0,0.3)",zIndex:9999}}>
-          {toast}
+          fontWeight:500,boxShadow:"0 8px 24px rgba(0,0,0,0.3)",zIndex:9999,
+          display:"flex",alignItems:"center",gap:12}}>
+          <span>{toast}</span>
+          {toast.includes("limit") && (
+            <Link href="/dashboard/admin/billing"
+              style={{color:"#60A5FA",fontWeight:700,fontSize:13,
+                textDecoration:"none",whiteSpace:"nowrap"}}>
+              Upgrade →
+            </Link>
+          )}
         </div>
       )}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>

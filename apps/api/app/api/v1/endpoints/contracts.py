@@ -38,7 +38,12 @@ async def upload_contract(
 
     file_bytes = await file.read()
     service = ContractService(db)
-    await service.check_contract_limit(user.org_id, user.plan)
+    try:
+        await service.check_contract_limit(user.org_id, user.plan)
+    except Exception as _lim:
+        if "limit" in str(_lim).lower() or "upgrade" in str(_lim).lower():
+            raise HTTPException(status_code=403, detail=str(_lim))
+        raise
     service.validate_file(file.filename or "contract.pdf", file_bytes, file.content_type)
 
     # Handle versioning

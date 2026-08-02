@@ -264,6 +264,12 @@ class Clause(Base):
 
     # Risk
     risk_score: Mapped[float] = mapped_column(Float, default=0.0)
+    playbook_match: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deviation_from_std: Mapped[str | None]   = mapped_column(Text, nullable=True)
+    adjusted_risk:       Mapped[float | None] = mapped_column(Float, nullable=True)
+    industry_weight:     Mapped[float | None] = mapped_column(Float, nullable=True, default=1.0)
+    related_clauses:     Mapped[list | None]  = mapped_column(JSONB, nullable=True)
+    cross_references:    Mapped[list | None]  = mapped_column(JSONB, nullable=True)
     risk_level: Mapped[str] = mapped_column(String(20), default="low")
     risk_reason: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)

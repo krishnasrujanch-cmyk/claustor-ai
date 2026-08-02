@@ -761,6 +761,15 @@ async def get_razorpay_payments(
     return {"payments": payments, "total": len(payments)}
 
 
+# Plan limits — update here when changing plan tiers
+PLAN_LIMITS = {
+    "free":         {"max_contracts": 5,       "max_queries_mo": 100,    "max_storage_mb": 100},
+    "starter":      {"max_contracts": 100,     "max_queries_mo": 5000,   "max_storage_mb": 1000},
+    "professional": {"max_contracts": 1000,    "max_queries_mo": 50000,  "max_storage_mb": 10000},
+    "enterprise":   {"max_contracts": -1,      "max_queries_mo": -1,     "max_storage_mb": -1},
+}
+
+
 # ── Enterprise Lead Form ──────────────────────────────────────────
 
 class EnterpriseLeadRequest(BaseModel):

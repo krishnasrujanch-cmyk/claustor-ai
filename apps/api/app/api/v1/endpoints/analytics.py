@@ -60,12 +60,15 @@ async def get_overview(
     )
     expiring_soon = expiring_result.scalar() or 0
 
-    # Clause stats
+    # Clause stats — apply contract_id filter if provided
+    clause_where = [Contract.org_id == user.org_id]
+    if contract_id:
+        clause_where.append(Contract.id == _uuid.UUID(contract_id))
     clause_result = await db.execute(
         select(func.count(Clause.id).label("total_clauses"),
                func.avg(Clause.risk_score).label("avg_clause_risk"))
         .join(Contract, Clause.contract_id == Contract.id)
-        .where(Contract.org_id == user.org_id)
+        .where(*clause_where)
     )
     clause_row = clause_result.first()
 

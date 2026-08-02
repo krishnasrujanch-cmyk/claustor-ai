@@ -171,6 +171,14 @@ class ContractService:
             (local_dir / filename).write_bytes(file_bytes)
             gcs_path = f"local/{org_id}/{contract_id}/{filename}"
 
+        # Update storage usage
+        from sqlalchemy import text as _st
+        file_size_mb = len(file_bytes) / (1024 * 1024)
+        await self.db.execute(
+            _st("UPDATE organisations SET storage_used_mb = storage_used_mb + :mb WHERE id = :id"),
+            {"mb": round(file_size_mb, 3), "id": str(org_id)}
+        )
+
         # Create contract record
         contract = Contract(
             id=contract_id,

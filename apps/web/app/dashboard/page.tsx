@@ -381,7 +381,15 @@ export default function DashboardPage() {
         const allC=contractsData.contracts||[];
         setAllContracts(allC);
         setRecent(allC.slice(0,5));
-        setUsage(usageData.usage);
+        const rawUsage = usageData.usage || {};
+        setUsage({
+          queries_used:    rawUsage.queries?.used      || 0,
+          queries_limit:   rawUsage.queries?.limit     || 100,
+          contracts_used:  rawUsage.contracts?.used    || 0,
+          contracts_limit: rawUsage.contracts?.limit   || 5,
+          storage_used:    rawUsage.storage_mb?.used   || 0,
+          storage_limit:   rawUsage.storage_mb?.limit  || 100,
+        });
         setObligations(obligationsData.obligations||[]);
         setReviews(reviewsData.reviews||[]);
         // Insights
@@ -446,7 +454,7 @@ export default function DashboardPage() {
     {Icon:AlertTriangle,label:"High Risk",        value:stats.high,            sub:"Requires action",   color:C.error,   bg:"#FEF2F2",    usageKey:null, limit:0},
     {Icon:ClipboardList,label:"Pending Reviews",  value:stats.pending,         sub:"Awaiting decision", color:"#9333EA", bg:"#FAF5FF",    usageKey:null, limit:0},
     {Icon:Clock,        label:"Due Obligations",  value:stats.due,             sub:"Within 30 days",    color:C.warning, bg:"#FFFBEB",    usageKey:null, limit:0},
-    {Icon:Zap,          label:"AI Queries",       value:usage?.queries_used||0,sub:`of ${(usage?.queries_limit||50000).toLocaleString()}`, color:"#8B5CF6", bg:"#F5F3FF", usageKey:"queries_used", limit:usage?.queries_limit||50000},
+    {Icon:Zap,          label:"AI Queries",       value:usage?.queries_used||0,sub:`of ${(usage?.queries_limit||100).toLocaleString()}`, color:"#8B5CF6", bg:"#F5F3FF", usageKey:"queries_used", limit:usage?.queries_limit||100},
   ];
 
   return (

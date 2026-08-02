@@ -213,7 +213,20 @@ export default function CopilotPage() {
         body:JSON.stringify({query,contract_id:sel||null}),
         signal:abort.signal,
       });
-      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      if(!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          errMsg = errData.detail || errMsg;
+        } catch {}
+        if(res.status === 429) {
+          setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",
+            content:"⚠️ You've reached your monthly AI query limit. Please upgrade your plan to continue.",
+            isStreaming:false,error:true};return u;});
+          return;
+        }
+        throw new Error(errMsg);
+      }
       const reader=res.body!.getReader(); const dec=new TextDecoder();
       let full="",cits:any[]=[],ground:number|undefined,toks:number|undefined;
       while(true){
