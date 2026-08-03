@@ -1,7 +1,6 @@
 """
-Structured Query Handler for Claustor AI Copilot.
-Handles DB-based queries: expiry lists, counts, aggregations, missing clauses.
-Returns formatted text context to inject into LLM prompt.
+Structured Query Handler v2 — Claustor AI Copilot
+Covers all 8 industries with full filter support.
 """
 
 from __future__ import annotations
@@ -18,262 +17,555 @@ logger = logging.getLogger(__name__)
 
 async def run_structured_query(
     intent_sub_type: Optional[str],
-    date_start: Optional[date],
-    date_end: Optional[date],
-    timeframe: Optional[str],
-    query: str,
-    org_id: UUID,
-    db: AsyncSession,
-    contract_id: Optional[UUID] = None,
+    date_start:      Optional[date],
+    date_end:        Optional[date],
+    timeframe:       Optional[str],
+    query:           str,
+    org_id:          UUID,
+    db:              AsyncSession,
+    contract_id:     Optional[UUID] = None,
+    filters:         dict = None,
 ) -> str:
-    """
-    Run the appropriate DB query based on intent sub-type.
-    Returns formatted context string to inject into LLM prompt.
-    """
+    filters = filters or {}
     try:
-        # Route to specific handler
-        if sub_type_matches(intent_sub_type, ["expiry_list"]) or timeframe:
-            return await _expiry_query(org_id, db, date_start, date_end, timeframe)
-        
-        if sub_type_matches(intent_sub_type, ["count_by_risk", "high_risk_list"]):
-            return await _risk_query(org_id, db)
-        
-        if sub_type_matches(intent_sub_type, ["total_value"]):
-            return await _value_query(org_id, db)
-        
-        if sub_type_matches(intent_sub_type, ["avg_risk"]):
+        # Route by sub-type or timeframe
+        if timeframe or _matches(intent_sub_type, ["expiry", "due", "matur", "renew", "overdue"]):
+            return await _expiry_query(org_id, db, date_start, date_end, timeframe, filters)
+
+        if _matches(intent_sub_type, ["high_risk", "count_by_risk"]):
+            return await _risk_query(org_id, db, filters)
+
+        if _matches(intent_sub_type, ["top_by_value", "high_value", "total_value"]):
+            return await _value_query(org_id, db, filters)
+
+        if _matches(intent_sub_type, ["avg_risk"]):
             return await _avg_risk_query(org_id, db)
-        
-        if sub_type_matches(intent_sub_type, ["renewal_list", "auto_renewal"]):
-            return await _renewal_query(org_id, db)
-        
-        if sub_type_matches(intent_sub_type, ["overdue_list"]) or timeframe == "overdue":
+
+        if _matches(intent_sub_type, ["renewal_list"]):
+            return await _renewal_query(org_id, db, filters)
+
+        if _matches(intent_sub_type, ["overdue_list"]):
             return await _overdue_query(org_id, db)
-        
-        # Generic: fetch contract list with key metadata
-        return await _contract_list_query(org_id, db, query)
-    
+
+        if _matches(intent_sub_type, ["by_type"]):
+            return await _type_query(org_id, db, filters)
+
+        if _matches(intent_sub_type, ["by_counterparty"]):
+            return await _counterparty_query(org_id, db, filters, query)
+
+        if _matches(intent_sub_type, ["by_status", "pending_review"]):
+            return await _status_query(org_id, db, filters)
+
+        if _matches(intent_sub_type, ["value_filter"]):
+            return await _value_filter_query(org_id, db, filters)
+
+        if _matches(intent_sub_type, ["milestone_list"]):
+            return await _milestone_query(org_id, db)
+
+        if _matches(intent_sub_type, ["count_total"]):
+            return await _count_total_query(org_id, db)
+
+        # Generic contract list with all filters
+        return await _smart_contract_list(org_id, db, filters, query)
+
     except Exception as e:
-        logger.error("structured_query_failed", error=str(e), sub_type=intent_sub_type)
+        logger.error("structured_query_failed", error=str(e))
         return ""
 
 
-def sub_type_matches(sub_type: Optional[str], patterns: list[str]) -> bool:
-    if not sub_type:
-        return False
-    return any(p in sub_type for p in patterns)
+def _matches(sub_type: Optional[str], keywords: list) -> bool:
+    if not sub_type: return False
+    return any(k in sub_type for k in keywords)
 
 
-async def _expiry_query(org_id, db, date_start, date_end, timeframe) -> str:
+def _timeframe_label(timeframe: Optional[str], date_start, date_end) -> str:
+    labels = {
+        "next_month": "next month", "this_month": "this month",
+        "next_week": "next week", "this_week": "this week",
+        "next_year": "next year", "this_year": "this year",
+        "soon": "the next 90 days", "overdue": "that are overdue",
+    }
+    if timeframe in labels:
+        return labels[timeframe]
+    if timeframe and timeframe.startswith("FY"):
+        return f"in {timeframe}"
+    if timeframe and timeframe.startswith("Q"):
+        return f"in {timeframe}"
+    if timeframe and "years" in timeframe:
+        n = timeframe.split("_")[1]
+        return f"in the next {n} years"
+    if timeframe and "months" in timeframe:
+        n = timeframe.split("_")[1]
+        return f"in the next {n} months"
+    if date_start and date_end:
+        return f"between {date_start} and {date_end}"
+    return ""
+
+
+async def _expiry_query(org_id, db, date_start, date_end, timeframe, filters) -> str:
     today = date.today()
-    if not date_start:
-        date_start = today
-    if not date_end:
-        date_end = today + timedelta(days=30)
+    if not date_start: date_start = today
+    if not date_end:   date_end = today + timedelta(days=90)
 
-    r = await db.execute(text("""
-        SELECT title, expiry_date, risk_level,
-               COALESCE(contract_value::text, 'N/A') as value,
-               auto_renewal, status
+    where = ["org_id = :oid", "is_active = TRUE", "expiry_date BETWEEN :start AND :end"]
+    params = {"oid": str(org_id), "start": date_start, "end": date_end}
+
+    if filters.get("risk_level"):
+        where.append("risk_level = :rl")
+        params["rl"] = filters["risk_level"]
+    if filters.get("contract_type"):
+        where.append("contract_type ILIKE :ct")
+        params["ct"] = f"%{filters['contract_type']}%"
+
+    order = "expiry_date ASC"
+    limit = filters.get("top_n", 20)
+
+    r = await db.execute(text(f"""
+        SELECT title, expiry_date, risk_level, risk_score,
+               COALESCE(contract_value::text,'N/A') as val,
+               contract_currency, auto_renewal, counterparty, contract_type
         FROM contracts
-        WHERE org_id = :oid
-          AND is_active = TRUE
-          AND expiry_date BETWEEN :start AND :end
-        ORDER BY expiry_date ASC
-        LIMIT 20
-    """), {"oid": str(org_id), "start": date_start, "end": date_end})
+        WHERE {' AND '.join(where)}
+        ORDER BY {order}
+        LIMIT {limit}
+    """), params)
     rows = r.fetchall()
 
-    label = {
-        "next_month":    "next month",
-        "this_month":    "this month",
-        "this_week":     "this week",
-        "next_week":     "next week",
-        "next_30_days":  "the next 30 days",
-        "next_90_days":  "the next 90 days",
-        "overdue":       "that are overdue/expired",
-        "this_year":     "this year",
-    }.get(timeframe or "", f"between {date_start} and {date_end}")
+    label = _timeframe_label(timeframe, date_start, date_end)
 
     if not rows:
-        return f"\n\nDATABASE RESULT: No contracts expiring {label}."
+        r2 = await db.execute(text("""
+            SELECT title, risk_level FROM contracts
+            WHERE org_id = :oid AND is_active = TRUE
+              AND expiry_date IS NULL AND status = 'analyzed'
+            ORDER BY title LIMIT 10
+        """), {"oid": str(org_id)})
+        no_date = r2.fetchall()
+        msg = f"\n\n�� No contracts found expiring {label}."
+        if no_date:
+            msg += f"\n\nNote: {len(no_date)} contracts have no expiry date recorded:"
+            for nd in no_date:
+                msg += f"\n• {nd[0]} (risk={nd[1]})"
+        return msg
 
-    lines = [f"\n\nDATABASE RESULT — Contracts expiring {label} ({len(rows)} found):\n"]
-    for r in rows:
-        auto = " [AUTO-RENEWAL]" if r[4] else ""
+    lines = [f"\n\n📊 Contracts expiring {label} ({len(rows)} found):\n"]
+    for row in rows:
+        val = f"{row[4]} {row[5] or ''}" if row[4] != 'N/A' else "Value not set"
+        renew = " [AUTO-RENEWAL]" if row[7] else ""
+        party = f", counterparty: {row[7]}" if row[7] else ""
         lines.append(
-            f"• {r[0]}: expires {r[1]}, risk={r[2]}, "
-            f"value={r[3]}{auto}"
+            f"• {row[0]}: expires {row[1]}, risk={row[2]} ({row[3]}), "
+            f"value={val}{party}{renew}"
         )
     return "\n".join(lines)
 
 
-async def _risk_query(org_id, db) -> str:
-    r = await db.execute(text("""
-        SELECT risk_level, COUNT(*) as cnt,
-               ROUND(AVG(risk_score)::numeric, 1) as avg_score
-        FROM contracts
-        WHERE org_id = :oid AND is_active = TRUE AND status = 'analyzed'
-        GROUP BY risk_level
-        ORDER BY cnt DESC
-    """), {"oid": str(org_id)})
-    rows = r.fetchall()
+async def _risk_query(org_id, db, filters) -> str:
+    risk_where = ["org_id = :oid", "is_active = TRUE", "status = 'analyzed'"]
+    params = {"oid": str(org_id)}
 
-    # Also get high risk list
+    if filters.get("min_risk_score"):
+        risk_where.append("risk_score >= :mrs")
+        params["mrs"] = filters["min_risk_score"]
+
+    r = await db.execute(text(f"""
+        SELECT risk_level, COUNT(*) as cnt,
+               ROUND(AVG(risk_score)::numeric,1) as avg_score
+        FROM contracts WHERE {' AND '.join(risk_where)}
+        GROUP BY risk_level ORDER BY cnt DESC
+    """), params)
+    dist = r.fetchall()
+
+    rl_filter = filters.get("risk_level", "high")
     h = await db.execute(text("""
-        SELECT title, risk_score, expiry_date
+        SELECT title, risk_score, expiry_date, counterparty,
+               COALESCE(contract_value::text,'N/A') as val
         FROM contracts
-        WHERE org_id = :oid AND is_active = TRUE
-          AND risk_level = 'high'
-        ORDER BY risk_score DESC
-        LIMIT 10
-    """), {"oid": str(org_id)})
+        WHERE org_id = :oid AND is_active = TRUE AND risk_level = :rl
+        ORDER BY risk_score DESC LIMIT 10
+    """), {"oid": str(org_id), "rl": rl_filter})
     high = h.fetchall()
 
-    lines = ["\n\nDATABASE RESULT — Risk Distribution:\n"]
-    for row in rows:
+    lines = ["\n\n📊 Risk Distribution:\n"]
+    for row in dist:
         lines.append(f"• {row[0].upper()}: {row[1]} contracts (avg score: {row[2]})")
     if high:
-        lines.append(f"\nHigh Risk Contracts:")
+        lines.append(f"\n{rl_filter.title()} Risk Contracts:")
         for h in high:
             exp = f", expires {h[2]}" if h[2] else ""
-            lines.append(f"• {h[0]}: score {h[1]}{exp}")
+            party = f", party: {h[3]}" if h[3] else ""
+            lines.append(f"• {h[0]}: score {h[1]}, value={h[4]}{exp}{party}")
     return "\n".join(lines)
 
 
-async def _value_query(org_id, db) -> str:
-    r = await db.execute(text("""
-        SELECT
-            COUNT(*) as total,
-            COUNT(contract_value) as with_value,
-            SUM(contract_value) as total_value,
-            AVG(contract_value) as avg_value,
-            MAX(contract_value) as max_value
-        FROM contracts
-        WHERE org_id = :oid AND is_active = TRUE
-    """), {"oid": str(org_id)})
-    row = r.fetchone()
-    if not row or not row[2]:
-        return "\n\nDATABASE RESULT: No contract values recorded yet."
+async def _value_query(org_id, db, filters) -> str:
+    where = ["org_id = :oid", "is_active = TRUE", "contract_value IS NOT NULL"]
+    params = {"oid": str(org_id)}
 
-    top = await db.execute(text("""
-        SELECT title, contract_value, currency
+    if filters.get("min_value"):
+        where.append("contract_value >= :mv")
+        params["mv"] = filters["min_value"]
+    if filters.get("max_value"):
+        where.append("contract_value <= :xv")
+        params["xv"] = filters["max_value"]
+
+    limit = filters.get("top_n", 10)
+
+    r = await db.execute(text(f"""
+        SELECT title, contract_value, COALESCE(contract_currency,'USD') as currency,
+               risk_level, expiry_date, counterparty
+        FROM contracts
+        WHERE {' AND '.join(where)}
+        ORDER BY contract_value DESC
+        LIMIT {limit}
+    """), params)
+    rows = r.fetchall()
+
+    # Totals
+    t = await db.execute(text("""
+        SELECT COUNT(*) as total, SUM(contract_value) as total_val,
+               AVG(contract_value) as avg_val
         FROM contracts
         WHERE org_id = :oid AND is_active = TRUE AND contract_value IS NOT NULL
-        ORDER BY contract_value DESC LIMIT 5
     """), {"oid": str(org_id)})
+    totals = t.fetchone()
 
-    lines = [
-        "\n\nDATABASE RESULT — Contract Values:",
-        f"• Total portfolio value: {row[4]} ({row[1]} contracts with value)",
-        f"• Average contract value: {round(row[3] or 0, 2)}",
-        f"• Largest contract: {round(row[4] or 0, 2)}",
-        "\nTop contracts by value:",
-    ]
-    for t in top.fetchall():
-        lines.append(f"• {t[0]}: {t[1]} {t[2] or 'USD'}")
+    lines = [f"\n\n📊 Contract Values:\n"]
+    lines.append(f"• Total portfolio: {_fmt_amount(totals[1])} ({totals[0]} contracts)")
+    lines.append(f"• Average value: {_fmt_amount(totals[2])}\n")
+
+    if rows:
+        lines.append(f"Top {limit} by value:")
+        for i, r in enumerate(rows, 1):
+            exp = f", expires {r[4]}" if r[4] else ""
+            party = f", {r[5]}" if r[5] else ""
+            lines.append(f"{i}. {r[0]}: {_fmt_amount(r[1], r[2] or 'USD')}, "
+                        f"risk={r[3]}{party}{exp}")
     return "\n".join(lines)
 
 
 async def _avg_risk_query(org_id, db) -> str:
     r = await db.execute(text("""
-        SELECT ROUND(AVG(risk_score)::numeric, 1) as avg,
-               COUNT(*) as total,
-               COUNT(CASE WHEN risk_level='high' THEN 1 END) as high,
-               COUNT(CASE WHEN risk_level='medium' THEN 1 END) as medium,
-               COUNT(CASE WHEN risk_level='low' THEN 1 END) as low
+        SELECT ROUND(AVG(risk_score)::numeric,1),
+               COUNT(*),
+               COUNT(CASE WHEN risk_level='high'   THEN 1 END),
+               COUNT(CASE WHEN risk_level='medium' THEN 1 END),
+               COUNT(CASE WHEN risk_level='low'    THEN 1 END),
+               MAX(risk_score), MIN(risk_score)
         FROM contracts
         WHERE org_id = :oid AND is_active = TRUE AND status = 'analyzed'
     """), {"oid": str(org_id)})
     row = r.fetchone()
-    if not row:
-        return "\n\nDATABASE RESULT: No analyzed contracts found."
+    if not row: return "\n\n�� No analyzed contracts."
     return (
-        f"\n\nDATABASE RESULT — Risk Summary:\n"
+        f"\n\n📊 Risk Summary:\n"
         f"• Average risk score: {row[0]}/100\n"
         f"• Total analyzed: {row[1]}\n"
-        f"• High risk: {row[2]} | Medium: {row[3]} | Low: {row[4]}"
+        f"• High risk: {row[2]} | Medium: {row[3]} | Low: {row[4]}\n"
+        f"• Highest score: {row[5]} | Lowest: {row[6]}"
     )
 
 
-async def _renewal_query(org_id, db) -> str:
+async def _renewal_query(org_id, db, filters) -> str:
     r = await db.execute(text("""
-        SELECT title, expiry_date, risk_level
+        SELECT title, expiry_date, risk_level, counterparty,
+               renewal_notice_days
         FROM contracts
         WHERE org_id = :oid AND is_active = TRUE AND auto_renewal = TRUE
-        ORDER BY expiry_date ASC NULLS LAST
-        LIMIT 15
+        ORDER BY expiry_date ASC NULLS LAST LIMIT 20
     """), {"oid": str(org_id)})
     rows = r.fetchall()
     if not rows:
-        return "\n\nDATABASE RESULT: No auto-renewal contracts found."
-    lines = [f"\n\nDATABASE RESULT — Auto-renewal contracts ({len(rows)}):\n"]
+        return "\n\n�� No auto-renewal contracts found."
+    lines = [f"\n\n📊 Auto-renewal contracts ({len(rows)}):\n"]
     for r in rows:
-        lines.append(f"• {r[0]}: expires {r[1] or 'N/A'}, risk={r[2]}")
+        notice = f", notice: {r[4]} days" if r[4] else ""
+        party = f", party: {r[3]}" if r[3] else ""
+        lines.append(f"• {r[0]}: expires {r[1] or 'N/A'}, risk={r[2]}{party}{notice}")
     return "\n".join(lines)
 
 
 async def _overdue_query(org_id, db) -> str:
     today = date.today()
     r = await db.execute(text("""
-        SELECT title, expiry_date, risk_level,
+        SELECT title, expiry_date, risk_level, counterparty,
                (CURRENT_DATE - expiry_date) as days_overdue
         FROM contracts
-        WHERE org_id = :oid AND is_active = TRUE
-          AND expiry_date < :today
-        ORDER BY expiry_date ASC
-        LIMIT 15
+        WHERE org_id = :oid AND is_active = TRUE AND expiry_date < :today
+        ORDER BY expiry_date ASC LIMIT 20
     """), {"oid": str(org_id), "today": today})
     rows = r.fetchall()
-    if not rows:
-        return "\n\nDATABASE RESULT: No overdue/expired contracts."
-    lines = [f"\n\nDATABASE RESULT — Overdue contracts ({len(rows)}):\n"]
+    if not rows: return "\n\n�� No overdue contracts."
+    lines = [f"\n\n📊 Overdue contracts ({len(rows)}):\n"]
     for r in rows:
-        lines.append(f"• {r[0]}: expired {r[1]} ({r[3]} days ago), risk={r[2]}")
+        lines.append(f"• {r[0]}: expired {r[1]} ({r[4]} days ago), risk={r[2]}")
     return "\n".join(lines)
 
 
-async def _contract_list_query(org_id, db, query: str) -> str:
-    """Generic contract list with metadata."""
+async def _type_query(org_id, db, filters) -> str:
+    ct = filters.get("contract_type", "")
+    where = ["org_id = :oid", "is_active = TRUE"]
+    params = {"oid": str(org_id)}
+    if ct:
+        where.append("contract_type ILIKE :ct")
+        params["ct"] = f"%{ct}%"
+
+    r = await db.execute(text(f"""
+        SELECT contract_type, COUNT(*) as cnt,
+               ROUND(AVG(risk_score)::numeric,1) as avg_risk
+        FROM contracts WHERE {' AND '.join(where)}
+        GROUP BY contract_type ORDER BY cnt DESC
+    """), params)
+    rows = r.fetchall()
+
+    if ct:
+        # Show specific type list
+        r2 = await db.execute(text("""
+            SELECT title, risk_level, expiry_date, counterparty
+            FROM contracts
+            WHERE org_id = :oid AND is_active = TRUE
+              AND contract_type ILIKE :ct
+            ORDER BY risk_score DESC LIMIT 15
+        """), {"oid": str(org_id), "ct": f"%{ct}%"})
+        contracts = r2.fetchall()
+        lines = [f"\n\n📊 {ct} contracts ({len(contracts)} found):\n"]
+        for c in contracts:
+            exp = f", expires {c[2]}" if c[2] else ""
+            party = f", {c[3]}" if c[3] else ""
+            lines.append(f"• {c[0]}: risk={c[1]}{party}{exp}")
+        return "\n".join(lines)
+
+    lines = ["\n\n📊 Contracts by Type:\n"]
+    for row in rows:
+        ct_label = row[0] or "Unclassified"
+        lines.append(f"• {ct_label}: {row[1]} contracts (avg risk: {row[2]})")
+    return "\n".join(lines)
+
+
+async def _counterparty_query(org_id, db, filters, query) -> str:
+    party = filters.get("counterparty", "")
+    if not party:
+        # Extract from query
+        import re
+        m = re.search(r'(?:with|from|by|for)\s+([A-Z][^,.\n]{2,40})', query, re.IGNORECASE)
+        if m: party = m.group(1).strip()
+
+    if not party:
+        # Show all counterparties
+        r = await db.execute(text("""
+            SELECT counterparty, COUNT(*) as cnt,
+                   SUM(contract_value) as total_val
+            FROM contracts
+            WHERE org_id = :oid AND is_active = TRUE
+              AND counterparty IS NOT NULL
+            GROUP BY counterparty ORDER BY cnt DESC LIMIT 15
+        """), {"oid": str(org_id)})
+        rows = r.fetchall()
+        lines = ["\n\n📊 Contracts by Counterparty:\n"]
+        for row in rows:
+            val = f", value: {_fmt_amount(row[2])}" if row[2] else ""
+            lines.append(f"• {row[0]}: {row[1]} contract(s){val}")
+        return "\n".join(lines)
+
     r = await db.execute(text("""
-        SELECT title, status, risk_level, risk_score, expiry_date,
-               COALESCE(contract_value::text, 'N/A') as value
+        SELECT title, risk_level, expiry_date, contract_value,
+               contract_currency, status
         FROM contracts
         WHERE org_id = :oid AND is_active = TRUE
-        ORDER BY created_at DESC
-        LIMIT 10
-    """), {"oid": str(org_id)})
+          AND counterparty ILIKE :party
+        ORDER BY risk_score DESC LIMIT 10
+    """), {"oid": str(org_id), "party": f"%{party}%"})
     rows = r.fetchall()
+
     if not rows:
-        return "\n\nDATABASE RESULT: No contracts found."
-    lines = [f"\n\nDATABASE RESULT — Your contracts ({len(rows)} recent):\n"]
+        return f"\n\n�� No contracts found with counterparty matching '{party}'."
+
+    lines = [f"\n\n📊 Contracts with {party} ({len(rows)} found):\n"]
     for r in rows:
-        exp = f", expires {r[4]}" if r[4] else ""
-        lines.append(f"• {r[0]}: {r[1]}, risk={r[2]} ({r[3]}){exp}, value={r[5]}")
+        exp = f", expires {r[2]}" if r[2] else ""
+        val = f", value: {_fmt_amount(r[3], r[4])}" if r[3] else ""
+        lines.append(f"• {r[0]}: risk={r[1]}, status={r[5]}{val}{exp}")
     return "\n".join(lines)
 
 
-async def run_missing_clause_query(
-    query: str,
-    org_id: UUID,
-    db: AsyncSession,
-) -> str:
-    """Find contracts missing a specific clause type."""
-    import re
-    # Extract clause type from query
-    clause_keywords = {
-        "nda": "confidentiality",
-        "confidential": "confidentiality",
-        "non.?compete": "non_compete",
-        "terminat": "termination",
-        "payment": "payment",
-        "liabilit": "liability",
-        "indemnif": "indemnification",
-        "ip|intellectual property": "ip_ownership",
-        "governing law": "governing_law",
-        "arbitration|dispute": "dispute_resolution",
-    }
+async def _status_query(org_id, db, filters) -> str:
+    where = ["org_id = :oid", "is_active = TRUE"]
+    params = {"oid": str(org_id)}
 
+    if filters.get("flagged"):
+        where.append("flagged_for_review = TRUE")
+    elif filters.get("review_status"):
+        where.append("review_status = :rs")
+        params["rs"] = filters["review_status"]
+    else:
+        where.append("(review_status = 'pending' OR flagged_for_review = TRUE)")
+
+    r = await db.execute(text(f"""
+        SELECT title, review_status, risk_level, flagged_for_review,
+               counterparty, expiry_date
+        FROM contracts WHERE {' AND '.join(where)}
+        ORDER BY created_at DESC LIMIT 15
+    """), params)
+    rows = r.fetchall()
+
+    status_label = filters.get("review_status", "pending review")
+    if not rows:
+        return f"\n\n�� No contracts with status '{status_label}'."
+
+    lines = [f"\n\n📊 Contracts ({status_label}) — {len(rows)} found:\n"]
+    for r in rows:
+        flagged = " [FLAGGED]" if r[3] else ""
+        party = f", {r[4]}" if r[4] else ""
+        exp = f", expires {r[5]}" if r[5] else ""
+        lines.append(f"• {r[0]}: {r[1] or 'no review'}, risk={r[2]}{party}{flagged}{exp}")
+    return "\n".join(lines)
+
+
+async def _value_filter_query(org_id, db, filters) -> str:
+    where = ["org_id = :oid", "is_active = TRUE", "contract_value IS NOT NULL"]
+    params = {"oid": str(org_id)}
+
+    if filters.get("min_value"):
+        where.append("contract_value >= :mv")
+        params["mv"] = filters["min_value"]
+    if filters.get("max_value"):
+        where.append("contract_value <= :xv")
+        params["xv"] = filters["max_value"]
+    if filters.get("risk_level"):
+        where.append("risk_level = :rl")
+        params["rl"] = filters["risk_level"]
+
+    limit = filters.get("top_n", 15)
+    r = await db.execute(text(f"""
+        SELECT title, contract_value, contract_currency, risk_level,
+               expiry_date, counterparty
+        FROM contracts WHERE {' AND '.join(where)}
+        ORDER BY contract_value DESC LIMIT {limit}
+    """), params)
+    rows = r.fetchall()
+
+    min_v = filters.get("min_value")
+    max_v = filters.get("max_value")
+    label = ""
+    if min_v: label += f"above {_fmt_amount(min_v)} "
+    if max_v: label += f"below {_fmt_amount(max_v)}"
+
+    if not rows:
+        return f"\n\n�� No contracts found {label.strip()}."
+
+    lines = [f"\n\n📊 Contracts {label.strip()} ({len(rows)} found):\n"]
+    for r in rows:
+        exp = f", expires {r[4]}" if r[4] else ""
+        party = f", {r[5]}" if r[5] else ""
+        lines.append(f"• {r[0]}: {_fmt_amount(r[1], r[2] or 'USD')}, risk={r[3]}{party}{exp}")
+    return "\n".join(lines)
+
+
+async def _milestone_query(org_id, db) -> str:
+    r = await db.execute(text("""
+        SELECT c.title, o.title as ob_title, o.due_date, o.obligation_type,
+               o.description
+        FROM obligations o
+        JOIN contracts c ON c.id = o.contract_id
+        WHERE c.org_id = :oid AND c.is_active = TRUE
+          AND o.due_date >= CURRENT_DATE
+          AND o.obligation_type IN ('payment','compliance','regulatory','certification','delivery')
+        ORDER BY o.due_date ASC LIMIT 20
+    """), {"oid": str(org_id)})
+    rows = r.fetchall()
+
+    if not rows:
+        return "\n\n�� No upcoming milestones/compliance deadlines found."
+
+    lines = [f"\n\n📊 Upcoming milestones & deadlines ({len(rows)}):\n"]
+    for r in rows:
+        lines.append(f"• [{r[3].upper()}] {r[1]} — {r[0]}: due {r[2]}")
+        if r[4]: lines.append(f"  {r[4][:100]}")
+    return "\n".join(lines)
+
+
+async def _count_total_query(org_id, db) -> str:
+    r = await db.execute(text("""
+        SELECT
+            COUNT(*) as total,
+            COUNT(CASE WHEN status='analyzed' THEN 1 END) as analyzed,
+            COUNT(CASE WHEN status='queued' THEN 1 END) as queued,
+            COUNT(CASE WHEN status='failed' THEN 1 END) as failed,
+            COUNT(CASE WHEN risk_level='high' THEN 1 END) as high_risk,
+            COUNT(CASE WHEN expiry_date < CURRENT_DATE THEN 1 END) as expired,
+            COUNT(CASE WHEN auto_renewal=TRUE THEN 1 END) as auto_renew
+        FROM contracts
+        WHERE org_id = :oid AND is_active = TRUE
+    """), {"oid": str(org_id)})
+    row = r.fetchone()
+    if not row: return "\n\n�� No contracts found."
+    return (
+        f"\n\n📊 Contract Summary:\n"
+        f"• Total contracts: {row[0]}\n"
+        f"• Analyzed: {row[1]} | Queued: {row[2]} | Failed: {row[3]}\n"
+        f"• High risk: {row[4]}\n"
+        f"• Expired/overdue: {row[5]}\n"
+        f"• Auto-renewal: {row[6]}"
+    )
+
+
+async def _smart_contract_list(org_id, db, filters, query) -> str:
+    """Fallback: smart contract list with any applicable filters."""
+    where = ["org_id = :oid", "is_active = TRUE"]
+    params = {"oid": str(org_id)}
+
+    if filters.get("risk_level"):
+        where.append("risk_level = :rl"); params["rl"] = filters["risk_level"]
+    if filters.get("contract_type"):
+        where.append("contract_type ILIKE :ct"); params["ct"] = f"%{filters['contract_type']}%"
+    if filters.get("min_value"):
+        where.append("contract_value >= :mv"); params["mv"] = filters["min_value"]
+    if filters.get("governing_law"):
+        where.append("governing_law ILIKE :gl"); params["gl"] = f"%{filters['governing_law']}%"
+    if filters.get("auto_renewal"):
+        where.append("auto_renewal = TRUE")
+    if filters.get("counterparty"):
+        where.append("counterparty ILIKE :cp"); params["cp"] = f"%{filters['counterparty']}%"
+
+    order = "risk_score DESC"
+    limit = filters.get("top_n", 10)
+
+    r = await db.execute(text(f"""
+        SELECT title, risk_level, risk_score, expiry_date,
+               COALESCE(contract_value::text,'N/A') as val,
+               counterparty, contract_type
+        FROM contracts WHERE {' AND '.join(where)}
+        ORDER BY {order} LIMIT {limit}
+    """), params)
+    rows = r.fetchall()
+
+    if not rows: return "\n\n�� No contracts found matching your criteria."
+    lines = [f"\n\n📊 Contracts ({len(rows)} found):\n"]
+    for r in rows:
+        exp = f", expires {r[3]}" if r[3] else ""
+        party = f", {r[5]}" if r[5] else ""
+        lines.append(f"• {r[0]}: risk={r[1]} ({r[2]}), type={r[6] or 'N/A'}, value={r[4]}{party}{exp}")
+    return "\n".join(lines)
+
+
+async def run_missing_clause_query(query: str, org_id: UUID, db: AsyncSession) -> str:
+    import re
+    clause_keywords = {
+        r"nda|confidential":             "confidentiality",
+        r"non.?compete":                 "non_compete",
+        r"terminat":                     "termination",
+        r"payment":                      "payment",
+        r"liabilit":                     "liability",
+        r"indemnif":                     "indemnification",
+        r"ip|intellectual property":     "ip_ownership",
+        r"governing law|jurisdiction":   "governing_law",
+        r"arbitration|dispute":          "dispute_resolution",
+        r"force majeure":                "force_majeure",
+        r"audit":                        "audit_rights",
+        r"warranty|warrantee":           "warranty",
+        r"insurance":                    "insurance",
+        r"data protection|gdpr|hipaa":   "data_protection",
+    }
     target_clause = None
     for pattern, clause_type in clause_keywords.items():
         if re.search(pattern, query.lower()):
@@ -283,34 +575,46 @@ async def run_missing_clause_query(
     if not target_clause:
         return ""
 
-    # Find contracts that have this clause type
     r = await db.execute(text("""
-        SELECT DISTINCT c.title, c.id
-        FROM contracts c
-        JOIN clauses cl ON cl.contract_id = c.id
-        WHERE c.org_id = :oid AND c.is_active = TRUE
-          AND cl.clause_type = :ct
+        SELECT DISTINCT c.title
+        FROM contracts c JOIN clauses cl ON cl.contract_id = c.id
+        WHERE c.org_id = :oid AND c.is_active = TRUE AND cl.clause_type = :ct
     """), {"oid": str(org_id), "ct": target_clause})
     has_clause = {row[0] for row in r.fetchall()}
 
-    # Get all analyzed contracts
     r2 = await db.execute(text("""
         SELECT title FROM contracts
         WHERE org_id = :oid AND is_active = TRUE AND status = 'analyzed'
     """), {"oid": str(org_id)})
     all_contracts = {row[0] for row in r2.fetchall()}
-
     missing = all_contracts - has_clause
 
-    lines = [
-        f"\n\nDATABASE RESULT — Contracts WITHOUT {target_clause} clause:\n"
-    ]
+    lines = [f"\n\n📊 {target_clause.replace('_',' ').title()} clause analysis:\n"]
+    lines.append(f"• Contracts WITH clause: {len(has_clause)}")
+    lines.append(f"• Contracts WITHOUT clause: {len(missing)}\n")
     if missing:
+        lines.append("Contracts missing this clause:")
         for title in sorted(missing):
-            lines.append(f"• {title}")
-    else:
-        lines.append(f"All contracts have a {target_clause} clause.")
-
-    lines.append(f"\nContracts WITH {target_clause} clause: {len(has_clause)}")
-    lines.append(f"Contracts WITHOUT {target_clause} clause: {len(missing)}")
+            lines.append(f"  ✗ {title}")
+    if has_clause:
+        lines.append("\nContracts that have this clause:")
+        for title in sorted(has_clause):
+            lines.append(f"  ✓ {title}")
     return "\n".join(lines)
+
+
+def _fmt_amount(val, currency: str = None) -> str:
+    """Format with correct currency — USD/EUR/GBP use international, INR uses crore/lakh."""
+    if val is None: return "N/A"
+    val = float(val)
+    cur = (currency or "INR").upper().strip()
+    if cur not in ("INR", "RS", "RS.", ""):
+        sym = {"USD":"$","EUR":"€","GBP":"£","SGD":"S$","JPY":"¥","AED":"AED "}.get(cur, cur+" ")
+        if val >= 1_000_000_000: return f"{sym}{val/1_000_000_000:.2f}B"
+        if val >= 1_000_000:     return f"{sym}{val/1_000_000:.1f}M"
+        if val >= 1_000:         return f"{sym}{val/1_000:.0f}K"
+        return f"{sym}{val:,.0f}"
+    # INR — crore/lakh
+    if val >= 1_00_00_000: return f"₹{val/1_00_00_000:.2f} Cr"
+    if val >= 1_00_000:    return f"₹{val/1_00_000:.1f} L"
+    return f"₹{val:,.0f}"

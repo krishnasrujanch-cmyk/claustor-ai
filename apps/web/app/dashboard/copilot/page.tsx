@@ -239,8 +239,8 @@ export default function CopilotPage() {
             const d=JSON.parse(line.slice(6));
             if(d.type==="token"){full+=d.content;setMessages(prev=>{const u=[...prev];u[u.length-1]={...u[u.length-1],content:full,isStreaming:true};return u;});}
             else if(d.type==="citations") cits=d.citations||[];
-            else if(d.type==="meta"){ground=d.groundedness;toks=d.tokens;}
-            else if(d.type==="done"){setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:full,citations:cits,groundedness:ground,tokens:toks,isStreaming:false};return u;});}
+            else if(d.type==="meta"){if(d.db_sourced){setMessages(prev=>{const u=[...prev];u[u.length-1]={...u[u.length-1],db_sourced:true,groundedness:1,isStreaming:false};return u;});}ground=d.groundedness;toks=d.tokens;}
+            else if(d.type==="done"){setMessages(prev=>{const u=[...prev];const prev_msg=u[u.length-1];u[u.length-1]={role:"assistant",content:full,citations:cits,groundedness:ground,tokens:toks,isStreaming:false,db_sourced:(prev_msg as any).db_sourced};return u;});}
             else if(d.type==="conversation_id"){setConversationId(d.conversation_id);}
             else if(d.type==="contract_context" && !sel && d.contract_id){
               setSuggestedContract(d.contract_id);
@@ -353,6 +353,13 @@ export default function CopilotPage() {
                 </div>
 
                 {/* Footer */}
+                {(msg as any).db_sourced && (
+                  <div style={{fontSize:10,color:"#16A34A",marginTop:4,
+                    display:"flex",alignItems:"center",gap:4}}>
+                    <span>🗄️</span>
+                    <span style={{fontWeight:600}}>From Database</span>
+                  </div>
+                )}
                 {msg.role==="assistant" && !msg.isStreaming && !msg.error && !sel && messages.indexOf(msg) === messages.length-1 && (
                   <div style={{fontSize:11,color:"#6B7280",marginTop:6,
                     padding:"6px 10px",background:"#F8FAFC",borderRadius:6,

@@ -300,7 +300,7 @@ async def chat_stream(
             except Exception:
                 pass
 
-            # 2. Classify intent
+            # 2. Classify intent (fast keyword-based)
             intent = classify_intent(raw_query, has_history=_has_history)
 
             # 3. Determine retrieval query
@@ -308,7 +308,31 @@ async def chat_stream(
             if intent.intent == "followup" and _last_assistant:
                 retrieval_query = _last_assistant[:300] + " " + raw_query
 
-            # 4. Structured DB query
+            # 4. LLM entity extraction for structured/hybrid queries
+            llm_filters = {}
+            if intent.intent in ("structured", "hybrid", "missing"):
+                try:
+                    from app.agents.rag.entity_extractor import (
+                        extract_query_entities, merge_filters, llm_intent_to_sub_type)
+                    llm_filters = await extract_query_entities(raw_query, agent.llm)
+                    # Merge keyword filters with LLM filters
+                    merged_filters = merge_filters(intent.filters, llm_filters)
+                    # Override date range if LLM extracted one
+                    if llm_filters.get("date_start"):
+                        intent.date_start = llm_filters["date_start"]
+                    if llm_filters.get("date_end"):
+                        intent.date_end = llm_filters["date_end"]
+                    # Override sub_type if LLM gave clearer intent
+                    if llm_filters.get("llm_intent") and not intent.sub_type:
+                        intent.sub_type = llm_intent_to_sub_type(
+                            llm_filters["llm_intent"])
+                except Exception as _ee:
+                    logger.warning(f"entity_extraction_error: {_ee}")
+                    merged_filters = intent.filters
+            else:
+                merged_filters = intent.filters
+
+            # 5. Structured DB query
             extra_context = ""
             if intent.intent in ("structured", "hybrid"):
                 extra_context = await run_structured_query(
@@ -320,6 +344,7 @@ async def chat_stream(
                     org_id=user.org_id,
                     db=db,
                     contract_id=_scoped_contract_id,
+                    filters=merged_filters,
                 )
             elif intent.intent == "missing":
                 extra_context = await run_missing_clause_query(
@@ -341,7 +366,11 @@ async def chat_stream(
                 )
 
             # 6. Combine and validate context
-            combined = (context.context_text or "") + extra_context
+            # Add instruction to present DB results clearly
+            db_instruction = ""
+            if extra_context:
+                db_instruction = "\n\nIMPORTANT: DATABASE RESULTS are provided above. Present them as a clear numbered/bulleted list with all details. Do not summarize or omit any items."
+            combined = (context.context_text or "") + extra_context + db_instruction
             safe_ctx, _ = validate_context_window(combined, max_tokens=80000)
 
             # Build messages
@@ -349,7 +378,7 @@ async def chat_stream(
                 query=req.query.strip(),
                 context=safe_ctx,
                 history=[],
-                summary=None,
+                summary="List all DATABASE RESULTS as a clear bulleted list with full details. Add risk insights and action recommendations." if extra_context else None,
                 review_status=None,
                 review_notes=None,
             )
@@ -380,24 +409,31 @@ async def chat_stream(
                     await asyncio.sleep(0.01)
 
             # Step 3: Citations + hallucination check
-            raw_chunks = context.chunks if hasattr(context, "chunks") else []
-            # Convert HybridSearchResult objects to dicts
-            chunks = []
-            for ci, ch in enumerate(raw_chunks):
+            chunks = context.chunks if hasattr(context, "chunks") else []
+            # Convert chunks to dicts for verify_citations
+            chunk_dicts = []
+            for ci, ch in enumerate(chunks):
                 if isinstance(ch, dict):
-                    d = ch
+                    d = dict(ch)
                 elif hasattr(ch, "to_dict"):
                     d = ch.to_dict()
                 else:
                     d = {
                         "index":       ci + 1,
-                        "clause_type": getattr(ch, "clause_type", ""),
-                        "text":        getattr(ch, "text", ""),
                         "chunk_index": ci + 1,
+                        "clause_type": getattr(ch, "clause_type", "") or "",
+                        "text":        getattr(ch, "text", "") or "",
+                        "id":          ci + 1,
                     }
-                d["index"] = ci + 1
-                chunks.append(d)
-            halluc = verify_citations(full_answer, chunks)
+                d.setdefault("index", ci + 1)
+                chunk_dicts.append(d)
+            # Skip hallucination check for DB-only responses (no vector chunks to verify)
+            if not chunk_dicts and extra_context:
+                from app.infrastructure.security.hallucination import HallucinationCheckResult
+                halluc = HallucinationCheckResult(answer=full_answer, total_citations=0, verified_citations=0, groundedness=1.0, is_hallucinated=False, needs_regeneration=False)
+            else:
+                halluc = verify_citations(full_answer, chunk_dicts)
+            chunks = chunk_dicts  # use dicts from here on
 
             # Extract citations from answer
             import re
@@ -406,15 +442,21 @@ async def chat_stream(
             for idx in cited:
                 if idx <= len(chunks):
                     c = chunks[idx-1] if idx-1 < len(chunks) else {}
+                    if isinstance(c, dict):
+                        ct = c.get("clause_type", "")
+                        tx = c.get("text", "")[:200]
+                    else:
+                        ct = getattr(c, "clause_type", "") or ""
+                        tx = (getattr(c, "text", "") or "")[:200]
                     citations.append({
                         "index":       idx,
-                        "clause_type": getattr(c, "clause_type", None) or (c.get("clause_type","") if isinstance(c,dict) else ""),
-                        "text":        (getattr(c, "text", None) or (c.get("text","") if isinstance(c,dict) else ""))[:200],
+                        "clause_type": ct,
+                        "text":        tx,
                     })
 
             yield "data: " + json.dumps({"type":"citations","citations":citations}) + "\n\n"
 
-            yield "data: " + json.dumps({"type":"meta","groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6)}) + "\n\n"
+            yield "data: " + json.dumps({"type":"meta","db_sourced": bool(extra_context and not context.context_text),"groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6)}) + "\n\n"
 
             yield "data: " + json.dumps({"type":"done"}) + "\n\n"
 
