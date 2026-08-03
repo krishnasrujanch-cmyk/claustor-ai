@@ -2,15 +2,39 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { contracts as contractsAPI, getToken } from "@/lib/api";
 import { Contract } from "@/lib/api";
-import { ChevronDown, Send, Copy, Check, RotateCcw, AlertTriangle, CheckCircle, Shield, DollarSign, BookOpen, FileText } from "lucide-react";
+import { Send, Copy, Check, RotateCcw, AlertTriangle, CheckCircle, Shield, DollarSign, BookOpen, FileText, Search, X } from "lucide-react";
 
 const API = "http://localhost:8000";
 const C = {
   primary:"#0066FF", primaryLight:"#E6F0FF", accent:"#00A3FF",
   heading:"#111827", body:"#374151", muted:"#6B7280",
-  border:"#E5E7EB", surface:"#FFFFFF", bg:"#FAFBFC",
+  border:"#E5E7EB", surface:"#FFFFFF", bg:"#F8FAFC",
   success:"#22C55E", warning:"#F59E0B", error:"#EF4444",
 };
+
+// Claustor logo SVG component
+function ClauStorMark({ size=20, white=false }: { size?: number; white?: boolean }) {
+  const c = white ? "rgba(255,255,255,0.95)" : "#0066FF";
+  const c2 = white ? "rgba(255,255,255,0.6)" : "#00A3FF";
+  const c3 = white ? "rgba(255,255,255,0.3)" : "rgba(0,102,255,0.2)";
+  return (
+    <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+      <path d="M26 7C23 5 19.5 4 15 4C8.4 4 3 9.4 3 18s5.4 14 12 14c4.5 0 8-1 11-3"
+        stroke={c} strokeWidth="3.5" strokeLinecap="round" fill="none"/>
+      <circle cx="26" cy="7" r="2.5" fill={c2}/>
+      <circle cx="26" cy="29" r="2.5" fill={c2}/>
+      <line x1="26" y1="7" x2="32" y2="7" stroke={c2} strokeWidth="1.5"/>
+      <circle cx="32" cy="7" r="1.5" fill={c2}/>
+      <line x1="26" y1="29" x2="32" y2="29" stroke={c2} strokeWidth="1.5"/>
+      <circle cx="32" cy="29" r="1.5" fill={c2}/>
+      <rect x="11" y="12" width="10" height="12" rx="1.5"
+        fill={c3} stroke={c2} strokeWidth="0.8"/>
+      <line x1="13" y1="16" x2="19" y2="16" stroke={c2} strokeWidth="0.8"/>
+      <line x1="13" y1="19" x2="19" y2="19" stroke={c2} strokeWidth="0.8"/>
+      <line x1="13" y1="22" x2="17" y2="22" stroke={c} strokeWidth="1"/>
+    </svg>
+  );
+}
 
 const PROMPT_SUBTITLES: Record<string,[string,string][]> = {
   risk: [
@@ -59,45 +83,32 @@ function getFollowUps(query: string): string[] {
   return ["Summarise key risks","What clauses need negotiation?","What are the key dates and deadlines?"];
 }
 
-// Render text with [N] citations as styled chips + basic markdown
 function RichText({ text, citations }: { text: string; citations?: any[] }) {
   const lines = text.split("\n");
   return (
     <div>
       {lines.map((line, li) => {
         if (!line.trim()) return <div key={li} style={{height:6}}/>;
-
-        // Detect numbered list item
         const numMatch = line.match(/^(\d+)\.\s+(.+)$/);
         if (numMatch) {
-          const num     = numMatch[1];
+          const num = numMatch[1];
           const noStars = numMatch[2].replace(/\*\*/g, "");
           const colonIdx = noStars.indexOf(":");
           const titleRaw = colonIdx > 0 ? noStars.slice(0, colonIdx) : noStars;
-          const rest     = colonIdx > 0 ? noStars.slice(colonIdx + 1).trim() : "";
-          const title    = titleRaw.replace(/\[\d+[^\]]*\]/g, "").trim();
+          const rest = colonIdx > 0 ? noStars.slice(colonIdx + 1).trim() : "";
+          const title = titleRaw.replace(/\[\d+[^\]]*\]/g, "").trim();
           const riskMatch = noStars.match(/\b(HIGH|MEDIUM|LOW)\b/i);
           const risk = riskMatch ? riskMatch[1].toLowerCase() : undefined;
-                    const riskColor = risk==="high"?C.error:risk==="medium"?C.warning:risk==="low"?C.success:null;
-          const riskBg    = risk==="high"?"#FEF2F2":risk==="medium"?"#FFFBEB":risk==="low"?"#F0FDF4":"transparent";
-
+          const riskColor = risk==="high"?C.error:risk==="medium"?C.warning:risk==="low"?C.success:null;
+          const riskBg = risk==="high"?"#FEF2F2":risk==="medium"?"#FFFBEB":risk==="low"?"#F0FDF4":"transparent";
           return (
             <div key={li} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
-              <span style={{width:22,height:22,borderRadius:"50%",background:C.primary,
-                color:"white",fontSize:10,fontWeight:700,flexShrink:0,
-                display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>
-                {num}
-              </span>
-              <div style={{flex:1,background:C.bg,border:`1px solid ${riskColor||C.border}`,
-                borderLeft:`3px solid ${riskColor||C.primary}`,
-                borderRadius:"0 8px 8px 0",padding:"8px 12px"}}>
+              <span style={{width:22,height:22,borderRadius:"50%",background:C.primary,color:"white",fontSize:10,fontWeight:700,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>{num}</span>
+              <div style={{flex:1,background:C.bg,border:`1px solid ${riskColor||C.border}`,borderLeft:`3px solid ${riskColor||C.primary}`,borderRadius:"0 8px 8px 0",padding:"8px 12px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:rest?4:0,flexWrap:"wrap"}}>
                   <span style={{fontSize:13,fontWeight:700,color:C.heading}}>{inlineParse(title,citations)}</span>
                   {riskColor && (
-                    <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:20,
-                      background:riskBg,color:riskColor,border:`1px solid ${riskColor}30`,whiteSpace:"nowrap"}}>
-                      {risk!.toUpperCase()} RISK
-                    </span>
+                    <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:20,background:riskBg,color:riskColor,border:`1px solid ${riskColor}30`,whiteSpace:"nowrap"}}>{risk!.toUpperCase()} RISK</span>
                   )}
                 </div>
                 {rest && <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>{inlineParse(rest,citations)}</div>}
@@ -105,8 +116,6 @@ function RichText({ text, citations }: { text: string; citations?: any[] }) {
             </div>
           );
         }
-
-        // Bullet
         const bulletMatch = line.match(/^[-•*]\s+(.+)/);
         if (bulletMatch) return (
           <div key={li} style={{display:"flex",gap:8,marginBottom:4,fontSize:13,color:C.body,lineHeight:1.6}}>
@@ -114,28 +123,15 @@ function RichText({ text, citations }: { text: string; citations?: any[] }) {
             <span>{inlineParse(bulletMatch[1],citations)}</span>
           </div>
         );
-
-        // Heading
         const hMatch = line.match(/^#{1,3}\s+(.+)/);
-        if (hMatch) return (
-          <div key={li} style={{fontSize:14,fontWeight:700,color:C.heading,margin:"10px 0 5px"}}>
-            {hMatch[1]}
-          </div>
-        );
-
-        // Normal line
-        return (
-          <p key={li} style={{margin:"0 0 5px",fontSize:13,color:C.body,lineHeight:1.7}}>
-            {inlineParse(line,citations)}
-          </p>
-        );
+        if (hMatch) return <div key={li} style={{fontSize:14,fontWeight:700,color:C.heading,margin:"10px 0 5px"}}>{hMatch[1]}</div>;
+        return <p key={li} style={{margin:"0 0 5px",fontSize:13,color:C.body,lineHeight:1.7}}>{inlineParse(line,citations)}</p>;
       })}
     </div>
   );
 }
 
 function inlineParse(text: string, citations?: any[]): React.ReactNode {
-  // Split on [N] citations and **bold**
   const parts = text.split(/(\[\d+\]|\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
     if (/^\[\d+\]$/.test(part)) {
@@ -143,9 +139,7 @@ function inlineParse(text: string, citations?: any[]): React.ReactNode {
       const chunk = citations?.find(c=>c.index===idx);
       return <CitChip key={i} idx={idx} chunk={chunk}/>;
     }
-    if (/^\*\*[^*]+\*\*$/.test(part)) {
-      return <strong key={i} style={{fontWeight:700,color:C.heading}}>{part.slice(2,-2)}</strong>;
-    }
+    if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={i} style={{fontWeight:700,color:C.heading}}>{part.slice(2,-2)}</strong>;
     return <span key={i}>{part}</span>;
   });
 }
@@ -154,34 +148,175 @@ function CitChip({ idx, chunk }: { idx:number; chunk?:any }) {
   const [hover, setHover] = useState(false);
   return (
     <span style={{position:"relative",display:"inline-block"}}>
-      <span
-        onMouseEnter={()=>setHover(true)}
-        onMouseLeave={()=>setHover(false)}
+      <span onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
         style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:20,
           background:hover?"#0066FF":C.primaryLight,color:hover?"white":C.primary,
-          border:`1px solid ${C.primary}30`,cursor:"pointer",
-          verticalAlign:"super",lineHeight:1.2,transition:"all 0.15s",margin:"0 1px"}}>
+          border:`1px solid ${C.primary}30`,cursor:"pointer",verticalAlign:"super",
+          lineHeight:1.2,transition:"all 0.15s",margin:"0 1px"}}>
         [{idx}]
       </span>
       {hover && chunk?.text && (
-        <div style={{position:"absolute",bottom:"130%",left:"50%",transform:"translateX(-50%)",
+        <span style={{position:"absolute",bottom:"130%",left:"50%",transform:"translateX(-50%)",
           width:240,zIndex:999,background:"#0A1128",color:"white",borderRadius:8,
-          padding:"10px 12px",fontSize:11,lineHeight:1.5,
+          padding:"10px 12px",fontSize:11,lineHeight:1.5,display:"block",
           boxShadow:"0 8px 24px rgba(0,0,0,0.25)",pointerEvents:"none"}}>
-          <div style={{fontSize:9,color:"#94A3B8",marginBottom:3,fontWeight:700,textTransform:"uppercase"}}>
-            {chunk.clause_type?.replace(/_/g," ")||"clause"}
-          </div>
+          <span style={{display:"block",fontSize:9,color:"#94A3B8",marginBottom:3,fontWeight:700,textTransform:"uppercase"}}>{chunk.clause_type?.replace(/_/g," ")||"clause"}</span>
           {chunk.text.slice(0,160)}...
-          <div style={{position:"absolute",top:"100%",left:"50%",transform:"translateX(-50%)",
-            borderLeft:"6px solid transparent",borderRight:"6px solid transparent",
-            borderTop:"6px solid #0A1128"}}/>
-        </div>
+          <span style={{position:"absolute",top:"100%",left:"50%",transform:"translateX(-50%)",display:"block",
+            borderLeft:"6px solid transparent",borderRight:"6px solid transparent",borderTop:"6px solid #0A1128"}}/>
+        </span>
       )}
     </span>
   );
 }
 
-interface Msg { role:"user"|"assistant"; content:string; citations?:any[]; groundedness?:number; tokens?:number; isStreaming?:boolean; error?:boolean; }
+// Typing indicator
+function TypingDots() {
+  return (
+    <span style={{display:"inline-flex",gap:3,alignItems:"center",padding:"2px 0"}}>
+      {[0,1,2].map(i=>(
+        <span key={i} style={{width:6,height:6,borderRadius:"50%",background:C.primary,opacity:0.4,
+          animation:`typingDot 1.2s ease-in-out ${i*0.2}s infinite`}}/>
+      ))}
+    </span>
+  );
+}
+
+// Searchable contract dropdown
+function ContractDropdown({ contracts, sel, selName, onSelect }: {
+  contracts: Contract[]; sel: string; selName: string;
+  onSelect: (id: string, name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 50);
+    else setSearch("");
+  }, [open]);
+
+  const filtered = contracts.filter(c =>
+    c.title.toLowerCase().includes(search.toLowerCase()) ||
+    (c.counterparty || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  const riskColor = (level: string) =>
+    level==="high"?C.error:level==="medium"?C.warning:level==="low"?C.success:C.muted;
+
+  return (
+    <div ref={ref} style={{position:"relative"}}>
+      <button onClick={()=>setOpen(!open)}
+        style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",
+          border:`1px solid ${open?C.primary:C.border}`,borderRadius:8,
+          background:sel
+            ? "rgba(0,102,255,0.06)"
+            : "white",
+          backdropFilter:"blur(8px)",
+          cursor:"pointer",fontSize:12,
+          color:sel?C.primary:C.body,
+          transition:"all 0.15s",
+          boxShadow:open?"0 0 0 3px rgba(0,102,255,0.1)":"none"}}>
+        <FileText size={11}/>
+        <span style={{maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selName}</span>
+        <span style={{marginLeft:2,color:C.muted,fontSize:10,transform:open?"rotate(180deg)":"none",transition:"transform 0.15s",display:"inline-block"}}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{position:"absolute",right:0,top:36,width:280,
+          background:"rgba(255,255,255,0.95)",backdropFilter:"blur(12px)",
+          border:`1px solid ${C.border}`,borderRadius:12,
+          boxShadow:"0 12px 32px rgba(0,0,0,0.12)",zIndex:200}}>
+
+          {/* Search */}
+          <div style={{padding:"8px 10px",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,
+              background:C.bg,borderRadius:7,padding:"5px 10px",
+              border:`1px solid ${C.border}`}}>
+              <Search size={11} color={C.muted}/>
+              <input ref={inputRef} value={search} onChange={e=>setSearch(e.target.value)}
+                placeholder="Search contracts..."
+                style={{border:"none",background:"transparent",fontSize:12,
+                  color:C.body,outline:"none",width:"100%",fontFamily:"inherit"}}/>
+              {search && (
+                <button onClick={()=>setSearch("")}
+                  style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex"}}>
+                  <X size={10} color={C.muted}/>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Options */}
+          <div style={{maxHeight:240,overflowY:"auto"}}>
+            <div onClick={()=>{onSelect("","All contracts");setOpen(false);}}
+              style={{padding:"9px 14px",cursor:"pointer",fontSize:12,
+                background:!sel?"rgba(0,102,255,0.06)":"transparent",
+                color:!sel?C.primary:C.body,
+                display:"flex",alignItems:"center",gap:8,
+                transition:"background 0.1s"}}
+              onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=!sel?"rgba(0,102,255,0.08)":"#F8FAFC"}
+              onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=!sel?"rgba(0,102,255,0.06)":"transparent"}>
+              <span style={{fontSize:11}}>🌐</span>
+              <span style={{fontWeight:!sel?600:400}}>All contracts</span>
+            </div>
+            {filtered.length === 0 && (
+              <div style={{padding:"16px 14px",fontSize:12,color:C.muted,textAlign:"center"}}>
+                No contracts found
+              </div>
+            )}
+            {filtered.map(c=>(
+              <div key={c.id} onClick={()=>{onSelect(c.id,c.title);setOpen(false);}}
+                style={{padding:"9px 14px",cursor:"pointer",fontSize:12,
+                  background:sel===c.id?"rgba(0,102,255,0.06)":"transparent",
+                  borderTop:`1px solid ${C.border}`,transition:"background 0.1s"}}
+                onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=sel===c.id?"rgba(0,102,255,0.08)":"#F8FAFC"}
+                onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=sel===c.id?"rgba(0,102,255,0.06)":"transparent"}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
+                    fontWeight:sel===c.id?600:400,color:sel===c.id?C.primary:C.heading}}>
+                    {c.title}
+                  </span>
+                  {(c as any).risk_level && (
+                    <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:10,
+                      background:riskColor((c as any).risk_level)+"15",
+                      color:riskColor((c as any).risk_level),flexShrink:0}}>
+                      {(c as any).risk_level.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                {(c as any).counterparty && (
+                  <div style={{fontSize:10,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {(c as any).counterparty}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{padding:"6px 10px",borderTop:`1px solid ${C.border}`,
+            fontSize:10,color:C.muted,textAlign:"center"}}>
+            {filtered.length} contract{filtered.length!==1?"s":""} {search?"found":"total"}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface Msg {
+  role:"user"|"assistant"; content:string; citations?:any[];
+  groundedness?:number; tokens?:number; isStreaming?:boolean;
+  error?:boolean; db_sourced?:boolean;
+}
 
 export default function CopilotPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -193,13 +328,38 @@ export default function CopilotPage() {
   const [conversationId, setConversationId] = useState<string|null>(null);
   const [suggestedContract, setSuggestedContract] = useState<string|null>(null);
   const [loading, setLoading]     = useState(false);
-  const [dropdown, setDropdown]   = useState(false);
+  const [dynamicTabs, setDynamicTabs] = useState<any[]>([]);
+  const [promptsLoading, setPromptsLoading] = useState(false);
   const [copied, setCopied]       = useState<number|null>(null);
   const abortRef  = useRef<AbortController|null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(()=>{ contractsAPI.list({page:1,page_size:50}).then(d=>setContracts((d as any).contracts||[])); },[]);
+  useEffect(()=>{
+    (async()=>{
+      let all:Contract[]=[],page=1;
+      while(true){
+        const d:any=await contractsAPI.list({page,page_size:100});
+        const batch=d.contracts||[];
+        all=[...all,...batch];
+        if(batch.length<100)break;
+        page++;
+      }
+      setContracts(all);
+    })();
+  },[]);
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages]);
+
+  useEffect(()=>{
+    setPromptsLoading(true);
+    const url = sel
+      ? `${API}/api/v1/chat/suggested-prompts?contract_id=${sel}`
+      : `${API}/api/v1/chat/suggested-prompts`;
+    fetch(url,{headers:{"Authorization":`Bearer ${getToken()}`}})
+      .then(r=>r.json())
+      .then(d=>{ if(d.tabs?.length) setDynamicTabs(d.tabs); })
+      .catch(()=>{})
+      .finally(()=>setPromptsLoading(false));
+  },[sel]);
 
   const send = useCallback(async(query:string)=>{
     if(!query.trim()||loading) return;
@@ -217,10 +377,7 @@ export default function CopilotPage() {
       });
       if(!res.ok) {
         let errMsg = `HTTP ${res.status}`;
-        try {
-          const errData = await res.json();
-          errMsg = errData.detail || errMsg;
-        } catch {}
+        try { const errData = await res.json(); errMsg = errData.detail || errMsg; } catch {}
         if(res.status === 429) {
           setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",
             content:"⚠️ You've reached your monthly AI query limit. Please upgrade your plan to continue.",
@@ -230,7 +387,7 @@ export default function CopilotPage() {
         throw new Error(errMsg);
       }
       const reader=res.body!.getReader(); const dec=new TextDecoder();
-      let full="",cits:any[]=[],ground:number|undefined,toks:number|undefined;
+      let full="",cits:any[]=[],ground:number|undefined,toks:number|undefined,dbSourced=false;
       while(true){
         const{done,value}=await reader.read(); if(done) break;
         for(const line of dec.decode(value,{stream:true}).split("\n")){
@@ -239,12 +396,13 @@ export default function CopilotPage() {
             const d=JSON.parse(line.slice(6));
             if(d.type==="token"){full+=d.content;setMessages(prev=>{const u=[...prev];u[u.length-1]={...u[u.length-1],content:full,isStreaming:true};return u;});}
             else if(d.type==="citations") cits=d.citations||[];
-            else if(d.type==="meta"){if(d.db_sourced){setMessages(prev=>{const u=[...prev];u[u.length-1]={...u[u.length-1],db_sourced:true,groundedness:1,isStreaming:false};return u;});}ground=d.groundedness;toks=d.tokens;}
-            else if(d.type==="done"){setMessages(prev=>{const u=[...prev];const prev_msg=u[u.length-1];u[u.length-1]={role:"assistant",content:full,citations:cits,groundedness:ground,tokens:toks,isStreaming:false,db_sourced:(prev_msg as any).db_sourced};return u;});}
-            else if(d.type==="conversation_id"){setConversationId(d.conversation_id);}
-            else if(d.type==="contract_context" && !sel && d.contract_id){
-              setSuggestedContract(d.contract_id);
+            else if(d.type==="meta"){
+              if(d.db_sourced){dbSourced=true;setMessages(prev=>{const u=[...prev];u[u.length-1]={...u[u.length-1],db_sourced:true,groundedness:1,isStreaming:false};return u;});}
+              ground=d.groundedness;toks=d.tokens;
             }
+            else if(d.type==="done"){setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:full,citations:cits,groundedness:ground,tokens:toks,isStreaming:false,db_sourced:dbSourced};return u;});}
+            else if(d.type==="conversation_id"){setConversationId(d.conversation_id);}
+            else if(d.type==="contract_context" && !sel && d.contract_id){setSuggestedContract(d.contract_id);}
             else if(d.type==="error"){setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:d.message||"Error",isStreaming:false,error:true};return u;});}
           }catch{}
         }
@@ -257,94 +415,152 @@ export default function CopilotPage() {
         setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:d.answer||"Error",citations:d.citations||[],isStreaming:false};return u;});
       }catch{setMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:"Connection error.",isStreaming:false,error:true};return u;});}
     }finally{setLoading(false);}
-  },[sel,loading]);
+  },[sel,loading,conversationId]);
 
   return (
     <div style={{height:"calc(100vh - 64px)",display:"flex",flexDirection:"column",background:C.bg}}>
 
       {/* Header */}
-      <div style={{padding:"10px 20px",background:C.surface,borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-        <div style={{width:30,height:30,borderRadius:"50%",background:`conic-gradient(from 0deg,${C.primary},${C.accent},#A855F7)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"white",flexShrink:0}}>✦</div>
+      <div style={{padding:"10px 20px",background:"rgba(255,255,255,0.8)",backdropFilter:"blur(12px)",
+        borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        <div style={{width:30,height:30,borderRadius:9,background:"white",border:"1.5px solid rgba(0,102,255,0.2)",
+          display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+          boxShadow:"0 2px 8px rgba(0,102,255,0.15)"}}>
+          <ClauStorMark size={18}/>
+        </div>
         <span style={{fontSize:15,fontWeight:700,color:C.heading,flex:1}}>AI Copilot</span>
 
-        {/* Contract focus suggestion */}
         {suggestedContract && !sel && (
-          <div style={{background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:8,
-            padding:"8px 14px",marginBottom:8,display:"flex",alignItems:"center",
-            justifyContent:"space-between",fontSize:12}}>
-            <span style={{color:"#1D4ED8"}}>
-              💡 Select this contract for focused follow-up questions
-            </span>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>{setSel(suggestedContract);setSuggestedContract(null);}}
-                style={{background:"#0066FF",color:"white",border:"none",borderRadius:6,
-                  padding:"4px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>
-                Focus on this contract
-              </button>
-              <button onClick={()=>setSuggestedContract(null)}
-                style={{background:"none",border:"none",cursor:"pointer",
-                  fontSize:11,color:"#6B7280"}}>✕</button>
-            </div>
+          <div style={{background:"rgba(0,102,255,0.06)",border:"1px solid rgba(0,102,255,0.2)",
+            borderRadius:8,padding:"6px 12px",display:"flex",alignItems:"center",gap:8,fontSize:12}}>
+            <span style={{color:"#1D4ED8"}}>💡 Focus on this contract?</span>
+            <button onClick={()=>{setSel(suggestedContract);setSuggestedContract(null);}}
+              style={{background:"rgba(0,102,255,0.1)",backdropFilter:"blur(8px)",color:C.primary,
+                border:"1px solid rgba(0,102,255,0.2)",borderRadius:6,padding:"3px 10px",
+                cursor:"pointer",fontSize:11,fontWeight:700}}>
+              Focus
+            </button>
+            <button onClick={()=>setSuggestedContract(null)}
+              style={{background:"none",border:"none",cursor:"pointer",display:"flex",padding:0}}>
+              <X size={12} color={C.muted}/>
+            </button>
           </div>
         )}
-        {/* Contract selector */}
-        <div style={{position:"relative"}}>
-          <button onClick={()=>setDropdown(!dropdown)}
-            style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",border:`1px solid ${C.border}`,borderRadius:8,background:sel?C.primaryLight:C.surface,cursor:"pointer",fontSize:12,color:sel?C.primary:C.body}}>
-            <FileText size={11}/><span style={{maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selName}</span><ChevronDown size={11}/>
+
+        <ContractDropdown
+          contracts={contracts} sel={sel} selName={selName}
+          onSelect={(id,name)=>{setSel(id);setSelName(name);}}
+        />
+
+        {messages.length>0 && (
+          <button onClick={()=>{setMessages([]);abortRef.current?.abort();}}
+            style={{padding:"5px 10px",border:`1px solid ${C.border}`,borderRadius:8,
+              background:"rgba(255,255,255,0.6)",backdropFilter:"blur(8px)",
+              cursor:"pointer",fontSize:11,color:C.muted,transition:"all 0.15s"}}
+            onMouseEnter={e=>(e.currentTarget as HTMLElement).style.borderColor=C.primary}
+            onMouseLeave={e=>(e.currentTarget as HTMLElement).style.borderColor=C.border}>
+            Clear
           </button>
-          {dropdown && (
-            <div style={{position:"absolute",right:0,top:36,width:260,background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.1)",zIndex:100,maxHeight:260,overflowY:"auto"}}>
-              <div onClick={()=>{setSel("");setSelName("All contracts");setDropdown(false);}} style={{padding:"9px 14px",cursor:"pointer",fontSize:12,background:!sel?C.primaryLight:"white",color:!sel?C.primary:C.body}}>All contracts</div>
-              {contracts.map(c=>(
-                <div key={c.id} onClick={()=>{setSel(c.id);setSelName(c.title);setDropdown(false);}}
-                  style={{padding:"9px 14px",cursor:"pointer",fontSize:12,background:sel===c.id?C.primaryLight:"white",color:sel===c.id?C.primary:C.body,borderTop:`1px solid ${C.border}`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {c.title}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        {messages.length>0 && <button onClick={()=>{setMessages([]);abortRef.current?.abort();}} style={{padding:"5px 10px",border:`1px solid ${C.border}`,borderRadius:8,background:"none",cursor:"pointer",fontSize:11,color:C.muted}}>Clear</button>}
+        )}
       </div>
 
       {/* Messages */}
       <div style={{flex:1,overflowY:"auto",padding:"20px"}}>
         {messages.length===0 && (
           <div style={{maxWidth:560,margin:"0 auto",textAlign:"center",paddingTop:28}}>
-            <div style={{width:52,height:52,borderRadius:"50%",margin:"0 auto 14px",background:`conic-gradient(from 0deg,${C.primary},${C.accent},#A855F7)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"white"}}>✦</div>
+            <div style={{width:56,height:56,borderRadius:16,margin:"0 auto 14px",
+              background:"white",border:"2px solid rgba(0,102,255,0.15)",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              boxShadow:"0 8px 24px rgba(0,102,255,0.12)"}}>
+              <ClauStorMark size={32}/>
+            </div>
             <h2 style={{fontSize:19,fontWeight:700,color:C.heading,marginBottom:8}}>What do you want to know?</h2>
             <p style={{fontSize:13,color:C.muted,marginBottom:24}}>Ask about risks, clauses, parties, obligations, or anything in your contracts.</p>
             <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:12,flexWrap:"wrap"}}>
-              {PROMPT_TABS.map(t=>(
+              {(dynamicTabs.length?dynamicTabs.map((t:any)=>({...t,Icon:PROMPT_TABS.find(p=>p.key===t.key)?.Icon||FileText,color:PROMPT_TABS.find(p=>p.key===t.key)?.color||C.primary,prompts:t.prompts?.map((p:any)=>p.question||p)})):PROMPT_TABS).map((t:any)=>(
                 <button key={t.key} onClick={()=>setTab(t.key)}
-                  style={{padding:"5px 12px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:tab===t.key?t.color:C.bg,color:tab===t.key?"white":C.muted,display:"flex",alignItems:"center",gap:4,transition:"all 0.15s"}}>
+                  style={{padding:"5px 14px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:600,
+                    background:tab===t.key?t.color:"rgba(255,255,255,0.7)",
+                    backdropFilter:"blur(8px)",
+                    color:tab===t.key?"white":C.muted,
+                    border:tab===t.key?"none":`1px solid ${C.border}`,
+                    display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",
+                    boxShadow:tab===t.key?`0 4px 12px ${t.color}40`:"none"}}>
                   <t.Icon size={10}/>{t.label}
                 </button>
               ))}
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {PROMPT_TABS.find(t=>t.key===tab)?.prompts.map(p=>(
-                <button key={p} onClick={()=>send(p)} style={{padding:"9px 14px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,cursor:"pointer",fontSize:13,color:C.body,textAlign:"left",transition:"all 0.15s"}}
-                  onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.borderColor=C.primary;(e.currentTarget as HTMLElement).style.color=C.primary;}}
-                  onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.borderColor=C.border;(e.currentTarget as HTMLElement).style.color=C.body;}}>
-                  {p}
-                </button>
-              ))}
+              {promptsLoading && (
+                <div style={{textAlign:"center",padding:"20px",color:C.muted,fontSize:12}}>
+                  Generating questions for this contract...
+                </div>
+              )}
+              {!promptsLoading && (dynamicTabs.length?dynamicTabs:PROMPT_TABS).find((t:any)=>t.key===tab)?.prompts?.map((p:any,i:number)=>{
+                const question = typeof p === "string" ? p : p.question;
+                const sub = typeof p === "string" ? (PROMPT_SUBTITLES[tab]?.[i]?.[1]||"") : (p.subtitle||"");
+                return (
+                  <button key={question} onClick={()=>send(question)}
+                    style={{padding:"10px 14px",background:"rgba(255,255,255,0.7)",
+                      backdropFilter:"blur(8px)",
+                      border:`1px solid ${C.border}`,borderRadius:10,cursor:"pointer",
+                      textAlign:"left",transition:"all 0.15s",
+                      boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}
+                    onMouseEnter={e=>{
+                      (e.currentTarget as HTMLElement).style.borderColor=C.primary;
+                      (e.currentTarget as HTMLElement).style.background="rgba(0,102,255,0.04)";
+                    }}
+                    onMouseLeave={e=>{
+                      (e.currentTarget as HTMLElement).style.borderColor=C.border;
+                      (e.currentTarget as HTMLElement).style.background="rgba(255,255,255,0.7)";
+                    }}>
+                    <div style={{fontSize:13,color:C.heading,fontWeight:500,marginBottom:2}}>{question}</div>
+                    {sub && <div style={{fontSize:11,color:C.muted}}>{sub}</div>}
+                  </button>
+                );
+              })
+}
             </div>
           </div>
         )}
 
         <div style={{maxWidth:800,margin:"0 auto"}}>
           {messages.map((msg,idx)=>(
-            <div key={idx} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start",marginBottom:18,alignItems:"flex-start",gap:8}}>
+            <div key={idx} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start",
+              marginBottom:18,alignItems:"flex-start",gap:10,
+              animation:"msgIn 0.25s ease-out"}}>
               {msg.role==="assistant" && (
-                <div style={{width:26,height:26,borderRadius:"50%",flexShrink:0,background:`conic-gradient(from 0deg,${C.primary},${C.accent},#A855F7)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:"white",marginTop:3}}>✦</div>
+                <div style={{width:28,height:28,borderRadius:9,flexShrink:0,
+                  background:"white",border:"1.5px solid rgba(0,102,255,0.2)",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  marginTop:3,boxShadow:"0 2px 8px rgba(0,102,255,0.1)"}}>
+                  <ClauStorMark size={16}/>
+                </div>
               )}
               <div style={{maxWidth:"88%",minWidth:0}}>
-                <div style={{padding:msg.role==="user"?"9px 14px":"12px 16px",borderRadius:msg.role==="user"?"12px 12px 2px 12px":"2px 12px 12px 12px",background:msg.role==="user"?C.primary:msg.error?"#FEF2F2":C.surface,color:msg.role==="user"?"white":msg.error?C.error:C.body,border:msg.role==="assistant"?`1px solid ${msg.error?"#EF444330":C.border}`:"none",fontSize:13,lineHeight:1.7}}>
+                <div style={{
+                  padding:msg.role==="user"?"10px 16px":"14px 18px",
+                  borderRadius:msg.role==="user"?"16px 16px 4px 16px":"4px 16px 16px 16px",
+                  background:msg.role==="user"
+                    ? "linear-gradient(135deg,#0066FF,#0052CC)"
+                    : msg.error
+                      ? "#FEF2F2"
+                      : "rgba(255,255,255,0.85)",
+                  backdropFilter:msg.role==="assistant"?"blur(12px)":"none",
+                  color:msg.role==="user"?"white":msg.error?C.error:C.body,
+                  border:msg.role==="assistant"
+                    ? `1px solid ${msg.error?"#EF444330":"rgba(0,0,0,0.06)"}`
+                    : "none",
+                  fontSize:13,lineHeight:1.7,
+                  boxShadow:msg.role==="user"
+                    ? "0 4px 16px rgba(0,102,255,0.25)"
+                    : msg.error
+                      ? "none"
+                      : "0 2px 8px rgba(0,0,0,0.06)"}}>
                   {msg.isStreaming ? (
-                    <span>{msg.content}<span style={{display:"inline-block",width:6,height:14,background:C.primary,marginLeft:2,verticalAlign:"text-bottom",borderRadius:2,animation:"blink 0.8s infinite"}}/></span>
+                    msg.content
+                      ? <span>{msg.content}<span style={{display:"inline-block",width:6,height:14,background:C.primary,marginLeft:2,verticalAlign:"text-bottom",borderRadius:2,animation:"blink 0.8s infinite"}}/></span>
+                      : <TypingDots/>
                   ) : msg.role==="assistant" && !msg.error ? (
                     <RichText text={msg.content} citations={msg.citations}/>
                   ) : (
@@ -352,37 +568,51 @@ export default function CopilotPage() {
                   )}
                 </div>
 
-                {/* Footer */}
-                {(msg as any).db_sourced && (
-                  <div style={{fontSize:10,color:"#16A34A",marginTop:4,
-                    display:"flex",alignItems:"center",gap:4}}>
-                    <span>🗄️</span>
-                    <span style={{fontWeight:600}}>From Database</span>
+                {msg.db_sourced && (
+                  <div style={{fontSize:10,color:"#16A34A",marginTop:4,display:"flex",alignItems:"center",gap:4}}>
+                    <span>🗄️</span><span style={{fontWeight:600}}>Live Database</span>
                   </div>
                 )}
-                {msg.role==="assistant" && !msg.isStreaming && !msg.error && !sel && messages.indexOf(msg) === messages.length-1 && (
-                  <div style={{fontSize:11,color:"#6B7280",marginTop:6,
-                    padding:"6px 10px",background:"#F8FAFC",borderRadius:6,
-                    border:"1px solid #E5E7EB"}}>
-                    💡 For follow-up questions, select a specific contract above
+
+                {msg.role==="assistant" && !msg.isStreaming && !msg.error && !sel && idx===messages.length-1 && (
+                  <div style={{fontSize:11,color:C.muted,marginTop:6,padding:"5px 10px",
+                    background:"rgba(255,255,255,0.6)",backdropFilter:"blur(8px)",
+                    borderRadius:6,border:`1px solid ${C.border}`}}>
+                    💡 Select a contract above for focused follow-up questions
                   </div>
                 )}
+
                 {msg.role==="assistant" && !msg.isStreaming && !msg.error && (
                   <div style={{marginTop:8}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-                      {msg.groundedness!==undefined && (
-                        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:msg.groundedness>=0.9?"#F0FDF4":"#FFFBEB",color:msg.groundedness>=0.9?C.success:C.warning,border:`1px solid ${msg.groundedness>=0.9?C.success:C.warning}30`,display:"inline-flex",alignItems:"center",gap:4}}>
+                      {msg.groundedness!==undefined && !msg.db_sourced && msg.groundedness>0 && (
+                        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,
+                          background:msg.groundedness>=0.9?"rgba(34,197,94,0.1)":"rgba(245,158,11,0.1)",
+                          color:msg.groundedness>=0.9?C.success:C.warning,
+                          border:`1px solid ${msg.groundedness>=0.9?C.success:C.warning}30`,
+                          backdropFilter:"blur(4px)",
+                          display:"inline-flex",alignItems:"center",gap:4}}>
                           <CheckCircle size={9}/> Verified {Math.round(msg.groundedness*100)}%
                         </span>
                       )}
                       {msg.tokens && <span style={{fontSize:10,color:C.muted}}>{msg.tokens.toLocaleString()} tokens</span>}
                       <div style={{marginLeft:"auto",display:"flex",gap:5}}>
                         <button onClick={()=>{navigator.clipboard.writeText(msg.content);setCopied(idx);setTimeout(()=>setCopied(null),2000);}}
-                          style={{display:"flex",alignItems:"center",gap:3,padding:"4px 9px",border:`1px solid ${C.border}`,borderRadius:20,background:C.surface,cursor:"pointer",fontSize:11,color:C.muted}}>
+                          style={{display:"flex",alignItems:"center",gap:3,padding:"4px 9px",
+                            border:`1px solid ${C.border}`,borderRadius:20,
+                            background:"rgba(255,255,255,0.7)",backdropFilter:"blur(8px)",
+                            cursor:"pointer",fontSize:11,color:C.muted,transition:"all 0.15s"}}
+                          onMouseEnter={e=>(e.currentTarget as HTMLElement).style.borderColor=C.primary}
+                          onMouseLeave={e=>(e.currentTarget as HTMLElement).style.borderColor=C.border}>
                           {copied===idx?<><Check size={9}/>Copied</>:<><Copy size={9}/>Copy</>}
                         </button>
                         <button onClick={()=>{const prev=messages[idx-1];if(prev)send(prev.content);}}
-                          style={{display:"flex",alignItems:"center",gap:3,padding:"4px 9px",border:`1px solid ${C.border}`,borderRadius:20,background:C.surface,cursor:"pointer",fontSize:11,color:C.muted}}>
+                          style={{display:"flex",alignItems:"center",gap:3,padding:"4px 9px",
+                            border:`1px solid ${C.border}`,borderRadius:20,
+                            background:"rgba(255,255,255,0.7)",backdropFilter:"blur(8px)",
+                            cursor:"pointer",fontSize:11,color:C.muted,transition:"all 0.15s"}}
+                          onMouseEnter={e=>(e.currentTarget as HTMLElement).style.borderColor=C.primary}
+                          onMouseLeave={e=>(e.currentTarget as HTMLElement).style.borderColor=C.border}>
                           <RotateCcw size={9}/>Retry
                         </button>
                       </div>
@@ -393,9 +623,12 @@ export default function CopilotPage() {
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                           {getFollowUps(messages[idx-1]?.content||"").map(q=>(
                             <button key={q} onClick={()=>send(q)}
-                              style={{padding:"5px 11px",border:`1px solid ${C.primary}20`,borderRadius:20,background:C.primaryLight,color:C.primary,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s"}}
-                              onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background=C.primary;(e.currentTarget as HTMLElement).style.color="white";}}
-                              onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background=C.primaryLight;(e.currentTarget as HTMLElement).style.color=C.primary;}}>
+                              style={{padding:"5px 12px",
+                                border:"1px solid rgba(0,102,255,0.2)",borderRadius:20,
+                                background:"rgba(0,102,255,0.06)",backdropFilter:"blur(8px)",
+                                color:C.primary,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s"}}
+                              onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background="rgba(0,102,255,0.15)";(e.currentTarget as HTMLElement).style.borderColor=C.primary;}}
+                              onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background="rgba(0,102,255,0.06)";(e.currentTarget as HTMLElement).style.borderColor="rgba(0,102,255,0.2)";}}>
                               {q}
                             </button>
                           ))}
@@ -412,27 +645,49 @@ export default function CopilotPage() {
       </div>
 
       {/* Input */}
-      <div style={{padding:"10px 20px 14px",background:C.surface,borderTop:`1px solid ${C.border}`,flexShrink:0}}>
+      <div style={{padding:"10px 20px 14px",background:"rgba(255,255,255,0.8)",
+        backdropFilter:"blur(12px)",borderTop:`1px solid ${C.border}`,flexShrink:0}}>
         <div style={{maxWidth:800,margin:"0 auto",display:"flex",gap:8,alignItems:"flex-end"}}>
-          <div style={{flex:1,border:`1.5px solid ${loading?C.primary:C.border}`,borderRadius:12,background:C.surface,overflow:"hidden",transition:"border-color 0.15s"}}>
+          <div style={{flex:1,border:`1.5px solid ${loading?C.primary:C.border}`,borderRadius:14,
+            background:"rgba(255,255,255,0.8)",backdropFilter:"blur(8px)",
+            overflow:"hidden",transition:"all 0.15s",
+            boxShadow:loading?`0 0 0 3px rgba(0,102,255,0.1)`:"0 2px 8px rgba(0,0,0,0.04)"}}>
             <textarea
               value={input} onChange={e=>setInput(e.target.value)}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send(input);}}}
-              placeholder={sel ? `Ask about ${selName}...` : "Ask anything about your contracts..."}
+              placeholder={sel ? `Ask about ${selName}...` : messages.length>1?"💡 Select a contract above for focused follow-ups...":"Ask anything about your contracts..."}
               rows={1} disabled={loading}
-              style={{width:"100%",padding:"10px 14px",border:"none",fontSize:13,color:C.heading,background:"transparent",resize:"none",outline:"none",fontFamily:"inherit",lineHeight:1.5,maxHeight:120,overflowY:"auto",boxSizing:"border-box"}}
+              style={{width:"100%",padding:"10px 14px",border:"none",fontSize:13,color:C.heading,
+                background:"transparent",resize:"none",outline:"none",fontFamily:"inherit",
+                lineHeight:1.5,maxHeight:120,overflowY:"auto",boxSizing:"border-box"}}
               onInput={e=>{const t=e.currentTarget;t.style.height="auto";t.style.height=Math.min(t.scrollHeight,120)+"px";}}
             />
           </div>
           <button onClick={()=>loading?abortRef.current?.abort():send(input)}
-            style={{width:38,height:38,borderRadius:10,border:"none",background:loading?"#FEF2F2":input.trim()?C.primary:"#E2E8F0",color:loading?C.error:input.trim()?"white":C.muted,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
-            {loading?<span style={{fontSize:11,fontWeight:700}}>✕</span>:<Send size={14}/>}
+            style={{width:40,height:40,borderRadius:12,border:"none",
+              background:loading
+                ? "rgba(239,68,68,0.1)"
+                : input.trim()
+                  ? "linear-gradient(135deg,#0066FF,#0052CC)"
+                  : "rgba(226,232,240,0.8)",
+              backdropFilter:"blur(8px)",
+              color:loading?C.error:input.trim()?"white":C.muted,
+              cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+              flexShrink:0,transition:"all 0.2s",
+              boxShadow:input.trim()&&!loading?"0 4px 12px rgba(0,102,255,0.3)":"none"}}>
+            {loading?<span style={{fontSize:13,fontWeight:700}}>✕</span>:<Send size={15}/>}
           </button>
         </div>
-        <p style={{fontSize:10,color:C.muted,textAlign:"center",marginTop:5}}>AI-powered · Citations verified · Not legal advice</p>
+        <p style={{fontSize:10,color:C.muted,textAlign:"center",marginTop:5}}>
+          AI-powered · Citations verified · Not legal advice
+        </p>
       </div>
 
-      <style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
+      <style>{`
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+        @keyframes typingDot{0%,100%{opacity:0.4;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+        @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+      `}</style>
     </div>
   );
 }

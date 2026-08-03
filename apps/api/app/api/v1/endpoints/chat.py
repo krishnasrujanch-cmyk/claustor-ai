@@ -512,3 +512,81 @@ async def chat_stream(
             "Access-Control-Allow-Origin": "*",
         },
     )
+
+
+@router.get("/suggested-prompts")
+async def get_suggested_prompts(
+    contract_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Generate dynamic prompts based on contract type and industry."""
+    from app.infrastructure.llm.base import AgentRole, LLMMessage
+    from app.agents.rag.chat_agent import ChatAgent
+
+    contract_meta = {}
+    if contract_id:
+        from app.domain.models import Contract as _C
+        from sqlalchemy import select as _s
+        r = await db.execute(
+            _s(_C.contract_type, _C.risk_level, _C.governing_law,
+               _C.counterparty, _C.summary)
+            .where(_C.id == contract_id, _C.org_id == user.org_id)
+        )
+        row = r.fetchone()
+        if row:
+            contract_meta = {
+                "contract_type": row[0], "risk_level": row[1],
+                "governing_law": row[2], "counterparty": row[3],
+                "summary": row[4],
+            }
+
+    prompt = f"""Generate 4 categories of questions for a contract analyst.
+Contract context: {contract_meta if contract_meta else "General contract portfolio"}
+
+Return JSON:
+{{
+  "tabs": [
+    {{
+      "key": "risk",
+      "label": "Risk",
+      "prompts": [
+        {{"question": "...", "subtitle": "..."}}
+      ]
+    }},
+    {{
+      "key": "financial",
+      "label": "Financial",
+      "prompts": [...]
+    }},
+    {{
+      "key": "legal",
+      "label": "Legal",
+      "prompts": [...]
+    }},
+    {{
+      "key": "obligations",
+      "label": "Obligations",
+      "prompts": [...]
+    }}
+  ]
+}}
+4 prompts per tab. Make them specific to the contract type: {contract_meta.get('contract_type','general')}.
+Return ONLY valid JSON."""
+
+    try:
+        agent = ChatAgent()
+        response = await agent.llm.complete(
+            messages=[
+                LLMMessage(role="system", content="Return only valid JSON."),
+                LLMMessage(role="user", content=prompt),
+            ],
+            role=AgentRole.EXTRACTOR,
+            json_mode=True,
+        )
+        import json as _j
+        return _j.loads(response.content.strip())
+    except Exception as e:
+        logger.warning(f"suggested_prompts_failed: {e}")
+        # Return defaults
+        return {"tabs": []}
