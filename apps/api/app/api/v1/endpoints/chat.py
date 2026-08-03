@@ -267,18 +267,34 @@ async def chat_stream(
             # Step 1: Safety + retrieval (non-streaming portion)
             agent = get_chat_agent()
 
-            # ── Intent Classification & Smart Routing ────────────────
+            # ── Smart Query Routing (Judge + Guardrails + Reranker) ──
             from app.infrastructure.security.sanitizer import validate_context_window
             from app.domain.models import Conversation as _StreamConv
             from sqlalchemy import select as _ssel, desc as _sdesc
-            from app.agents.rag.intent_classifier import classify_intent
             from app.agents.rag.structured_query import (
                 run_structured_query, run_missing_clause_query)
+            from app.agents.rag.judge_router import judge_classify
+            from app.agents.rag.guardrails import (
+                check_prompt_injection, check_and_sanitize_pii,
+                validate_token_limit, build_response_schema_instruction)
 
             raw_query = req.query.strip()
 
-            # 1. Load recent history for follow-up detection
-            _has_history = False
+            # ── Guardrail 1: Prompt Injection Detection ──
+            _injection_check = check_prompt_injection(raw_query)
+            if not _injection_check.passed:
+                yield "data: " + json.dumps({"type":"error","message":_injection_check.blocked_reason}) + "\n\n"
+                return
+
+            # ── Guardrail 2: PII Detection + Sanitization ──
+            _pii_check = check_and_sanitize_pii(raw_query)
+            if _pii_check.sanitized_query:
+                raw_query = _pii_check.sanitized_query
+            if _pii_check.pii_detected:
+                logger.warning(f"pii_sanitized: types={_pii_check.pii_detected}")
+
+            # ── Step 1: Load Conversation History ──
+            _hist_rows = []
             _last_assistant = ""
             _scoped_contract_id = req.contract_id
             try:
@@ -290,7 +306,6 @@ async def chat_stream(
                     .limit(6)
                 )
                 _hist_rows = _hist_r.fetchall()
-                _has_history = len(_hist_rows) > 0
                 for _t in _hist_rows:
                     if _t[0] == "assistant":
                         _last_assistant = _t[1][:400]
@@ -300,63 +315,44 @@ async def chat_stream(
             except Exception:
                 pass
 
-            # 2. Classify intent (fast keyword-based)
-            intent = classify_intent(raw_query, has_history=_has_history)
+            # ── Step 2: JUDGE — Intent + Entity + Query Rewrite ──
+            judge = await judge_classify(
+                query=raw_query,
+                llm=agent.llm,
+                history_turns=[(r[0], r[1]) for r in _hist_rows],
+                org_id=user.org_id,
+            )
 
-            # 3. Determine retrieval query
-            retrieval_query = raw_query
-            if intent.intent == "followup" and _last_assistant:
-                retrieval_query = _last_assistant[:300] + " " + raw_query
+            # Use Judge's rewritten query for better vector retrieval
+            retrieval_query = judge.rewritten_query or raw_query
+            if judge.is_followup and _last_assistant:
+                retrieval_query = _last_assistant[:200] + " " + raw_query
 
-            # 4. LLM entity extraction for structured/hybrid queries
-            llm_filters = {}
-            if intent.intent in ("structured", "hybrid", "missing"):
-                try:
-                    from app.agents.rag.entity_extractor import (
-                        extract_query_entities, merge_filters, llm_intent_to_sub_type)
-                    llm_filters = await extract_query_entities(raw_query, agent.llm)
-                    # Merge keyword filters with LLM filters
-                    merged_filters = merge_filters(intent.filters, llm_filters)
-                    # Override date range if LLM extracted one
-                    if llm_filters.get("date_start"):
-                        intent.date_start = llm_filters["date_start"]
-                    if llm_filters.get("date_end"):
-                        intent.date_end = llm_filters["date_end"]
-                    # Override sub_type if LLM gave clearer intent
-                    if llm_filters.get("llm_intent") and not intent.sub_type:
-                        intent.sub_type = llm_intent_to_sub_type(
-                            llm_filters["llm_intent"])
-                except Exception as _ee:
-                    logger.warning(f"entity_extraction_error: {_ee}")
-                    merged_filters = intent.filters
-            else:
-                merged_filters = intent.filters
+            # Extract date range from filters
+            _date_start = judge.filters.pop("date_start", None)
+            _date_end   = judge.filters.pop("date_end", None)
 
-            # 5. Structured DB query
+            # ── Step 3: DB Query (if needed) ──
             extra_context = ""
-            if intent.intent in ("structured", "hybrid"):
-                extra_context = await run_structured_query(
-                    intent_sub_type=intent.sub_type,
-                    date_start=intent.date_start,
-                    date_end=intent.date_end,
-                    timeframe=intent.timeframe,
-                    query=raw_query,
-                    org_id=user.org_id,
-                    db=db,
-                    contract_id=_scoped_contract_id,
-                    filters=merged_filters,
-                )
-            elif intent.intent == "missing":
-                extra_context = await run_missing_clause_query(
-                    query=raw_query, org_id=user.org_id, db=db)
+            if judge.needs_db:
+                if judge.intent == "missing" or judge.filters.get("missing_clause"):
+                    extra_context = await run_missing_clause_query(
+                        query=raw_query, org_id=user.org_id, db=db)
+                else:
+                    extra_context = await run_structured_query(
+                        intent_sub_type=judge.db_query_type,
+                        date_start=_date_start,
+                        date_end=_date_end,
+                        timeframe=None,
+                        query=raw_query,
+                        org_id=user.org_id,
+                        db=db,
+                        contract_id=_scoped_contract_id,
+                        filters=judge.filters,
+                    )
 
-            # 5. Vector search (skip for pure structured queries)
-            if intent.intent == "structured":
-                class _EmptyCtx:
-                    context_text = ""
-                    chunks = []
-                context = _EmptyCtx()
-            else:
+            # ── Step 4: Vector Search + Reranker (if needed) ──
+            if judge.needs_vector:
                 context = await agent.retriever.retrieve(
                     query=retrieval_query,
                     org_id=user.org_id,
@@ -364,12 +360,21 @@ async def chat_stream(
                     plan=user.plan,
                     contract_id=_scoped_contract_id,
                 )
+                try:
+                    from app.agents.rag.reranker import rerank_chunks
+                    if hasattr(context, "chunks") and context.chunks:
+                        context.chunks = rerank_chunks(raw_query, context.chunks, top_k=6)
+                except Exception:
+                    pass
+            else:
+                class _EmptyCtx:
+                    context_text = ""
+                    chunks = []
+                context = _EmptyCtx()
 
-            # 6. Combine and validate context
-            # Add instruction to present DB results clearly
-            db_instruction = ""
-            if extra_context:
-                db_instruction = "\n\nIMPORTANT: DATABASE RESULTS are provided above. Present them as a clear numbered/bulleted list with all details. Do not summarize or omit any items."
+            # ── Step 5: Combine Context + Response Schema ──
+            response_schema = build_response_schema_instruction(judge.intent)
+            db_instruction = (f"\n\nINSTRUCTION: {response_schema}") if extra_context else ""
             combined = (context.context_text or "") + extra_context + db_instruction
             safe_ctx, _ = validate_context_window(combined, max_tokens=80000)
 
@@ -378,7 +383,7 @@ async def chat_stream(
                 query=req.query.strip(),
                 context=safe_ctx,
                 history=[],
-                summary="List all DATABASE RESULTS as a clear bulleted list with full details. Add risk insights and action recommendations." if extra_context else None,
+                summary=None,
                 review_status=None,
                 review_notes=None,
             )
@@ -410,30 +415,7 @@ async def chat_stream(
 
             # Step 3: Citations + hallucination check
             chunks = context.chunks if hasattr(context, "chunks") else []
-            # Convert chunks to dicts for verify_citations
-            chunk_dicts = []
-            for ci, ch in enumerate(chunks):
-                if isinstance(ch, dict):
-                    d = dict(ch)
-                elif hasattr(ch, "to_dict"):
-                    d = ch.to_dict()
-                else:
-                    d = {
-                        "index":       ci + 1,
-                        "chunk_index": ci + 1,
-                        "clause_type": getattr(ch, "clause_type", "") or "",
-                        "text":        getattr(ch, "text", "") or "",
-                        "id":          ci + 1,
-                    }
-                d.setdefault("index", ci + 1)
-                chunk_dicts.append(d)
-            # Skip hallucination check for DB-only responses (no vector chunks to verify)
-            if not chunk_dicts and extra_context:
-                from app.infrastructure.security.hallucination import HallucinationCheckResult
-                halluc = HallucinationCheckResult(answer=full_answer, total_citations=0, verified_citations=0, groundedness=1.0, is_hallucinated=False, needs_regeneration=False)
-            else:
-                halluc = verify_citations(full_answer, chunk_dicts)
-            chunks = chunk_dicts  # use dicts from here on
+            halluc = verify_citations(full_answer, chunks)
 
             # Extract citations from answer
             import re
@@ -442,21 +424,15 @@ async def chat_stream(
             for idx in cited:
                 if idx <= len(chunks):
                     c = chunks[idx-1] if idx-1 < len(chunks) else {}
-                    if isinstance(c, dict):
-                        ct = c.get("clause_type", "")
-                        tx = c.get("text", "")[:200]
-                    else:
-                        ct = getattr(c, "clause_type", "") or ""
-                        tx = (getattr(c, "text", "") or "")[:200]
                     citations.append({
                         "index":       idx,
-                        "clause_type": ct,
-                        "text":        tx,
+                        "clause_type": c.get("clause_type",""),
+                        "text":        c.get("text","")[:200],
                     })
 
             yield "data: " + json.dumps({"type":"citations","citations":citations}) + "\n\n"
 
-            yield "data: " + json.dumps({"type":"meta","db_sourced": bool(extra_context and not context.context_text),"groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6)}) + "\n\n"
+            yield "data: " + json.dumps({"type":"meta","groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6)}) + "\n\n"
 
             yield "data: " + json.dumps({"type":"done"}) + "\n\n"
 
