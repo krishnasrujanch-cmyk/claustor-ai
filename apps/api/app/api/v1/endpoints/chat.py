@@ -415,7 +415,28 @@ async def chat_stream(
 
             # Step 3: Citations + hallucination check
             chunks = context.chunks if hasattr(context, "chunks") else []
-            halluc = verify_citations(full_answer, chunks)
+            # Convert HybridSearchResult objects to dicts
+            chunk_dicts = []
+            for ci, ch in enumerate(chunks):
+                if isinstance(ch, dict):
+                    d = dict(ch)
+                elif hasattr(ch, "to_dict"):
+                    d = ch.to_dict()
+                else:
+                    d = {"index": ci+1, "chunk_index": ci+1,
+                         "clause_type": getattr(ch,"clause_type","") or "",
+                         "text": getattr(ch,"text","") or "", "id": ci+1}
+                d.setdefault("index", ci+1)
+                chunk_dicts.append(d)
+            # Skip hallucination check for DB-only responses
+            if not chunk_dicts and extra_context:
+                from app.infrastructure.security.hallucination import HallucinationCheckResult
+                halluc = HallucinationCheckResult(answer=full_answer, total_citations=0,
+                    verified_citations=0, groundedness=1.0, is_hallucinated=False,
+                    needs_regeneration=False)
+            else:
+                halluc = verify_citations(full_answer, chunk_dicts)
+            chunks = chunk_dicts
 
             # Extract citations from answer
             import re
