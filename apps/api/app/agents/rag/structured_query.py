@@ -109,6 +109,9 @@ async def _expiry_query(org_id, db, date_start, date_end, timeframe, filters) ->
 
     where = ["org_id = :oid", "is_active = TRUE", "expiry_date BETWEEN :start AND :end"]
     params = {"oid": str(org_id), "start": date_start, "end": date_end}
+    if contract_id:
+        where.append("id = :cid")
+        params["cid"] = str(contract_id)
 
     if filters.get("risk_level"):
         where.append("risk_level = :rl")
@@ -509,10 +512,13 @@ async def _count_total_query(org_id, db) -> str:
     )
 
 
-async def _smart_contract_list(org_id, db, filters, query) -> str:
+async def _smart_contract_list(org_id, db, filters, query, contract_id=None) -> str:
     """Fallback: smart contract list with any applicable filters."""
     where = ["org_id = :oid", "is_active = TRUE"]
     params = {"oid": str(org_id)}
+    if contract_id:
+        where.append("id = :cid")
+        params["cid"] = str(contract_id)
 
     if filters.get("risk_level"):
         where.append("risk_level = :rl"); params["rl"] = filters["risk_level"]

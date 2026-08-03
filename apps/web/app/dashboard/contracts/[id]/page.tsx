@@ -19,6 +19,41 @@ function RiskBadge({ level }: { level:string }) {
   return <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:c.bg,color:c.text,textTransform:"uppercase"}}>{level}</span>;
 }
 
+
+function ClauStorMark({ size=20, white=false }: { size?: number; white?: boolean }) {
+  const c = white ? "rgba(255,255,255,0.95)" : "#0066FF";
+  const c2 = white ? "rgba(255,255,255,0.6)" : "#00A3FF";
+  const c3 = white ? "rgba(255,255,255,0.3)" : "rgba(0,102,255,0.2)";
+  return (
+    <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+      <path d="M26 7C23 5 19.5 4 15 4C8.4 4 3 9.4 3 18s5.4 14 12 14c4.5 0 8-1 11-3"
+        stroke={c} strokeWidth="3.5" strokeLinecap="round" fill="none"/>
+      <circle cx="26" cy="7" r="2.5" fill={c2}/>
+      <circle cx="26" cy="29" r="2.5" fill={c2}/>
+      <line x1="26" y1="7" x2="32" y2="7" stroke={c2} strokeWidth="1.5"/>
+      <circle cx="32" cy="7" r="1.5" fill={c2}/>
+      <line x1="26" y1="29" x2="32" y2="29" stroke={c2} strokeWidth="1.5"/>
+      <circle cx="32" cy="29" r="1.5" fill={c2}/>
+      <rect x="11" y="12" width="10" height="12" rx="1.5"
+        fill={c3} stroke={c2} strokeWidth="0.8"/>
+      <line x1="13" y1="16" x2="19" y2="16" stroke={c2} strokeWidth="0.8"/>
+      <line x1="13" y1="19" x2="19" y2="19" stroke={c2} strokeWidth="0.8"/>
+      <line x1="13" y1="22" x2="17" y2="22" stroke={c} strokeWidth="1"/>
+    </svg>
+  );
+}
+
+function TypingDots() {
+  return (
+    <span style={{display:"inline-flex",gap:3,alignItems:"center",padding:"4px 0"}}>
+      {[0,1,2].map(i=>(
+        <span key={i} style={{width:6,height:6,borderRadius:"50%",background:"#6B7280",opacity:0.4,
+          animation:`typingDot 1.2s ease-in-out ${i*0.2}s infinite`}}/>
+      ))}
+    </span>
+  );
+}
+
 function RiskHeatmap({ matrix, clauseTypes }: { matrix:any; clauseTypes:string[] }) {
   const getCell = (score:number, count:number) => {
     if (count===0) return {bg:"#F9FAFB",text:"#D1D5DB"};
@@ -123,7 +158,7 @@ export default function ContractDetailPage() {
 
   // Chat state
   const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState<Array<{role:string;content:string;citations?:any[]}>>([]);
+  const [chatMessages, setChatMessages] = useState<Array<{role:string;content:string;citations?:any[];groundedness?:number;db_sourced?:boolean}>>([]);
   const [chatLoading, setChatLoading] = useState(false);
 
   useEffect(() => {
@@ -232,17 +267,38 @@ export default function ContractDetailPage() {
     finally { setUploading(false); }
   };
 
-  const sendChat = async (e:React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()||chatLoading) return;
-    const query = chatInput.trim();
-    setChatMessages(prev=>[...prev,{role:"user",content:query}]);
+  const chatAbortRef = typeof window !== "undefined" ? { current: null as AbortController|null } : { current: null };
+  const sendChat = async (query?: string) => {
+    const q = (query || chatInput).trim();
+    if (!q || chatLoading) return;
     setChatInput(""); setChatLoading(true);
+    setChatMessages(prev=>[...prev,{role:"user",content:q},{role:"assistant",content:"",isStreaming:true} as any]);
     try {
-      const r = await chatAPI.send(query,id);
-      setChatMessages(prev=>[...prev,{role:"assistant",content:r.answer,citations:r.citations}]);
+      const token = getToken();
+      const res = await fetch(`${API}/api/v1/chat/stream`,{
+        method:"POST",
+        headers:{"Authorization":`Bearer ${token}`,"Content-Type":"application/json"},
+        body:JSON.stringify({query:q, contract_id:id}),
+      });
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body!.getReader(); const dec = new TextDecoder();
+      let full="", cits:any[]=[], ground:number|undefined, dbSourced=false;
+      while(true){
+        const{done,value}=await reader.read(); if(done) break;
+        for(const line of dec.decode(value,{stream:true}).split("\n")){
+          if(!line.startsWith("data: ")) continue;
+          try{
+            const d=JSON.parse(line.slice(6));
+            if(d.type==="token"){full+=d.content;setChatMessages(prev=>{const u=[...prev];u[u.length-1]={...u[u.length-1],content:full};return u;});}
+            else if(d.type==="citations") cits=d.citations||[];
+            else if(d.type==="meta"){if(d.db_sourced)dbSourced=true;ground=d.groundedness;}
+            else if(d.type==="done"){setChatMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:full,citations:cits,groundedness:ground,db_sourced:dbSourced};return u;});}
+            else if(d.type==="error"){setChatMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:d.message||"Error"};return u;});}
+          }catch{}
+        }
+      }
     } catch {
-      setChatMessages(prev=>[...prev,{role:"assistant",content:"Sorry, could not process that."}]);
+      setChatMessages(prev=>{const u=[...prev];u[u.length-1]={role:"assistant",content:"Sorry, could not process that."};return u;});
     } finally { setChatLoading(false); }
   };
 
@@ -756,16 +812,18 @@ export default function ContractDetailPage() {
 
       {/* Tab: Chat */}
       {tab==="chat" && (
-        <div style={{display:"flex",flexDirection:"column",height:520,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
-          {/* Rejection/revision banner in chat */}
+        <div style={{display:"flex",flexDirection:"column",height:560,
+          background:"rgba(255,255,255,0.85)",backdropFilter:"blur(12px)",
+          border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",
+          boxShadow:"0 4px 20px rgba(0,0,0,0.06)"}}>
+
+          {/* Review status banner */}
           {contract?.review_status && ["rejected","revision_needed"].includes(contract.review_status) && (
             <div style={{padding:"10px 16px",
               background:contract.review_status==="rejected"?"#FEF2F2":"#FFFBEB",
               borderBottom:`2px solid ${contract.review_status==="rejected"?"#EF4444":"#F59E0B"}`,
               display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-              <span style={{fontSize:18}}>
-                {contract.review_status==="rejected"?"❌":"🔄"}
-              </span>
+              <span style={{fontSize:18}}>{contract.review_status==="rejected"?"❌":"🔄"}</span>
               <div>
                 <span style={{fontSize:13,fontWeight:800,
                   color:contract.review_status==="rejected"?"#DC2626":"#D97706"}}>
@@ -774,41 +832,96 @@ export default function ContractDetailPage() {
                     :"REVISION REQUIRED — Address issues before signing"}
                 </span>
                 {contract.review_notes && (
-                  <span style={{fontSize:12,color:"#374151",marginLeft:8}}>
-                    · {contract.review_notes}
-                  </span>
+                  <span style={{fontSize:12,color:"#374151",marginLeft:8}}>· {contract.review_notes}</span>
                 )}
               </div>
             </div>
           )}
+
+          {/* Messages */}
           <div style={{flex:1,overflowY:"auto",padding:20,display:"flex",flexDirection:"column",gap:16}}>
             {chatMessages.length===0 && (
-              <div style={{textAlign:"center",paddingTop:40,color:C.muted}}>
-                <div style={{fontSize:32,marginBottom:12}}>🤖</div>
-                <p style={{fontSize:14,marginBottom:20}}>Ask anything about this contract</p>
+              <div style={{textAlign:"center",paddingTop:30,color:C.muted}}>
+                <div style={{width:52,height:52,borderRadius:14,margin:"0 auto 12px",
+                  background:"white",border:"1.5px solid rgba(0,102,255,0.2)",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  boxShadow:"0 4px 12px rgba(91,75,255,0.1)"}}>
+                  <ClauStorMark size={30}/>
+                </div>
+                <p style={{fontSize:14,marginBottom:20,color:C.muted}}>Ask anything about this contract</p>
                 <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center"}}>
-                  {["What is the liability cap?","What are the payment terms?","When does this expire?","Is there auto-renewal?"].map(q=>(
-                    <button key={q} onClick={()=>setChatInput(q)}
-                      style={{padding:"6px 12px",border:`1px solid ${C.border}`,borderRadius:20,background:C.bg,color:C.body,fontSize:12,cursor:"pointer"}}>
+                  {["What is the liability cap?","What are the payment terms?",
+                    "When does this expire?","Is there auto-renewal?",
+                    "What are the key risks?","Who are the parties?"].map(q=>(
+                    <button key={q} onClick={()=>sendChat(q)}
+                      style={{padding:"6px 14px",
+                        border:"1px solid rgba(91,75,255,0.2)",borderRadius:20,
+                        background:"rgba(91,75,255,0.05)",backdropFilter:"blur(8px)",
+                        color:C.primary,fontSize:12,cursor:"pointer",fontWeight:500,
+                        transition:"all 0.15s"}}
+                      onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background="rgba(91,75,255,0.12)";}}
+                      onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background="rgba(91,75,255,0.05)";}}>
                       {q}
                     </button>
                   ))}
                 </div>
               </div>
             )}
-            {chatMessages.map((msg,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start",gap:10}}>
-                <div style={{maxWidth:"75%",padding:"10px 14px",borderRadius:12,
-                  background:msg.role==="user"?C.primary:C.bg,
-                  color:msg.role==="user"?"white":C.body,
-                  border:msg.role==="assistant"?`1px solid ${C.border}`:"none",
-                  fontSize:14,lineHeight:1.6}}>
-                  {msg.role==="assistant" ? <MarkdownText content={msg.content} color={C.body}/> : msg.content}
+
+            {chatMessages.map((msg:any,i:number)=>(
+              <div key={i} style={{display:"flex",
+                justifyContent:msg.role==="user"?"flex-end":"flex-start",
+                gap:10,alignItems:"flex-start",
+                animation:"msgIn 0.25s ease-out"}}>
+                {msg.role==="assistant" && (
+                  <div style={{width:26,height:26,borderRadius:8,flexShrink:0,
+                    background:"white",border:"1.5px solid rgba(91,75,255,0.2)",
+                    display:"flex",alignItems:"center",justifyContent:"center",marginTop:2,
+                    boxShadow:"0 2px 6px rgba(91,75,255,0.1)"}}>
+                    <ClauStorMark size={15}/>
+                  </div>
+                )}
+                <div style={{maxWidth:"80%"}}>
+                  <div style={{padding:"10px 14px",
+                    borderRadius:msg.role==="user"?"14px 14px 4px 14px":"4px 14px 14px 14px",
+                    background:msg.role==="user"
+                      ? "linear-gradient(135deg,#0066FF,#0052CC)"
+                      : "rgba(255,255,255,0.9)",
+                    backdropFilter:msg.role==="assistant"?"blur(8px)":"none",
+                    color:msg.role==="user"?"white":C.body,
+                    border:msg.role==="assistant"?`1px solid rgba(0,0,0,0.06)`:"none",
+                    fontSize:13,lineHeight:1.7,
+                    boxShadow:msg.role==="user"
+                      ? "0 4px 12px rgba(91,75,255,0.25)"
+                      : "0 2px 6px rgba(0,0,0,0.05)"}}>
+                    {msg.role==="assistant"
+                      ? (msg.content
+                          ? <MarkdownText content={msg.content} color={C.body}/>
+                          : <TypingDots/>)
+                      : msg.content}
+                  </div>
+                  {msg.db_sourced && (
+                    <div style={{fontSize:10,color:"#16A34A",marginTop:3,display:"flex",alignItems:"center",gap:3}}>
+                      <span>🗄️</span><span style={{fontWeight:600}}>Live Database</span>
+                    </div>
+                  )}
+                  {msg.role==="assistant" && msg.groundedness!==undefined && !msg.db_sourced && msg.groundedness>0 && (
+                    <div style={{fontSize:10,marginTop:3,display:"inline-flex",alignItems:"center",gap:3,
+                      padding:"2px 7px",borderRadius:20,
+                      background:msg.groundedness>=0.8?"rgba(34,197,94,0.08)":"rgba(245,158,11,0.08)",
+                      color:msg.groundedness>=0.8?"#22C55E":"#F59E0B",
+                      border:`1px solid ${msg.groundedness>=0.8?"#22C55E30":"#F59E0B30"}`}}>
+                      ✓ Verified {Math.round(msg.groundedness*100)}%
+                    </div>
+                  )}
                   {msg.citations && msg.citations.length>0 && (
-                    <div style={{marginTop:8,display:"flex",flexWrap:"wrap",gap:4}}>
-                      {msg.citations.slice(0,3).map((cite:any)=>(
-                        <span key={cite.citation_number} style={{fontSize:10,padding:"2px 6px",borderRadius:10,background:`${C.primary}20`,color:C.primary,fontWeight:600}}>
-                          [{cite.citation_number}] {cite.clause_type||cite.source}
+                    <div style={{marginTop:5,display:"flex",flexWrap:"wrap",gap:4}}>
+                      {msg.citations.slice(0,4).map((cite:any,ci:number)=>(
+                        <span key={ci} style={{fontSize:10,padding:"2px 7px",borderRadius:10,
+                          background:"rgba(91,75,255,0.08)",backdropFilter:"blur(4px)",
+                          color:C.primary,fontWeight:600,
+                          border:"1px solid rgba(91,75,255,0.15)"}}>
+                          [{cite.index||cite.citation_number||ci+1}] {(cite.clause_type||cite.source||"").replace(/_/g," ")}
                         </span>
                       ))}
                     </div>
@@ -816,26 +929,53 @@ export default function ContractDetailPage() {
                 </div>
               </div>
             ))}
-            {chatLoading && (
-              <div style={{display:"flex",gap:4,paddingLeft:8}}>
-                {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.muted,animation:`bounce 1s ease-in-out ${i*0.15}s infinite`}}/>)}
-              </div>
-            )}
           </div>
-          <form onSubmit={sendChat} style={{display:"flex",gap:10,padding:"12px 16px",borderTop:`1px solid ${C.border}`}}>
-            <input value={chatInput} onChange={e=>setChatInput(e.target.value)}
-              placeholder="Ask about this contract..." disabled={chatLoading}
-              style={{flex:1,padding:"10px 14px",border:`1.5px solid ${C.border}`,borderRadius:8,fontSize:14,outline:"none"}}
-              onFocus={e=>e.target.style.borderColor=C.primary}
-              onBlur={e=>e.target.style.borderColor=C.border}/>
-            <button type="submit" disabled={chatLoading||!chatInput.trim()}
-              style={{padding:"10px 18px",background:C.primary,color:"white",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer"}}>
-              Ask →
-            </button>
-          </form>
+
+          {/* Input */}
+          <div style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`,
+            background:"rgba(255,255,255,0.8)",backdropFilter:"blur(8px)",flexShrink:0}}>
+            <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+              <div style={{flex:1,border:`1.5px solid ${chatLoading?C.primary:C.border}`,
+                borderRadius:12,background:"rgba(255,255,255,0.8)",overflow:"hidden",
+                transition:"all 0.15s",
+                boxShadow:chatLoading?`0 0 0 3px rgba(91,75,255,0.1)`:"none"}}>
+                <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChat();}}}
+                  placeholder="Ask about this contract..." disabled={chatLoading} rows={1}
+                  style={{width:"100%",padding:"9px 13px",border:"none",fontSize:13,
+                    color:C.heading,background:"transparent",resize:"none",outline:"none",
+                    fontFamily:"inherit",lineHeight:1.5,maxHeight:100,overflowY:"auto",
+                    boxSizing:"border-box"}}
+                  onInput={e=>{const t=e.currentTarget;t.style.height="auto";t.style.height=Math.min(t.scrollHeight,100)+"px";}}/>
+              </div>
+              <button onClick={()=>sendChat()}
+                disabled={chatLoading||!chatInput.trim()}
+                style={{width:38,height:38,borderRadius:10,border:"none",
+                  background:chatLoading?"rgba(239,68,68,0.1)":chatInput.trim()
+                    ? "linear-gradient(135deg,#0066FF,#0052CC)"
+                    : "rgba(226,232,240,0.8)",
+                  backdropFilter:"blur(8px)",
+                  color:chatLoading?"#EF4444":chatInput.trim()?"white":"#94A3B8",
+                  cursor:chatLoading||!chatInput.trim()?"not-allowed":"pointer",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  transition:"all 0.2s",
+                  boxShadow:chatInput.trim()&&!chatLoading?"0 4px 12px rgba(91,75,255,0.3)":"none"}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </div>
+            <p style={{fontSize:10,color:C.muted,textAlign:"center",marginTop:5}}>
+              AI-powered · Scoped to this contract · Not legal advice
+            </p>
+          </div>
         </div>
       )}
-      <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`}</style>
+      <style>{`
+        @keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
+        @keyframes typingDot{0%,100%{opacity:0.4;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+        @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+      `}</style>
 
       {/* Assign Review Modal */}
       {showAssign && (
