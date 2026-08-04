@@ -101,31 +101,45 @@ class ContractPipeline:
             _meta = _doc_processor.extract_metadata(file_bytes, _filename)
 
             # Build parsed object compatible with existing pipeline
+            from app.infrastructure.document.processor_utils import (
+                extract_document_enhanced, make_chunks,
+                extract_tables_as_markdown, remove_headers_footers,
+            )
+
             class _ParsedDoc:
-                def __init__(self, doc_result, meta, sig_info, template):
-                    self.full_text    = doc_result.get("full_text", "")
-                    self.chunks       = self._make_chunks(self.full_text)
-                    self.tables       = doc_result.get("tables", [])
-                    self.page_count   = meta.get("page_count", 0)
-                    self.metadata     = meta
+                def __init__(self, doc_result, meta, sig_info, template, plan="free", file_bytes=b"", filename=""):
+                    self.full_text      = doc_result.get("full_text", "")
+                    self.tables         = doc_result.get("tables", [])
+                    self.page_count     = meta.get("page_count", 0)
+                    self.metadata       = meta
                     self.has_signatures = sig_info.get("has_signatures", False)
-                    self.pii_masked   = doc_result.get("pii_masked", False)
-                    self.is_scanned   = doc_result.get("is_scanned", False)
-                    self.template     = template
+                    self.pii_masked     = doc_result.get("pii_masked", False)
+                    self.is_scanned     = doc_result.get("is_scanned", False)
+                    self.template       = template
+                    self.form_fields    = doc_result.get("form_fields", {})
+                    self.has_images     = doc_result.get("has_images", False)
+                    # Use enhanced chunker with table awareness
+                    self.chunks         = make_chunks(
+                        self.full_text,
+                        tables=self.tables,
+                        chunk_size=1000,
+                        overlap=150,
+                    )
 
-                def _make_chunks(self, text, chunk_size=1000, overlap=100):
-                    if not text:
-                        return []
-                    chunks = []
-                    words  = text.split()
-                    step   = chunk_size - overlap
-                    for i in range(0, len(words), step):
-                        chunk_words = words[i:i+chunk_size]
-                        chunks.append({"text": " ".join(chunk_words),
-                                       "chunk_index": len(chunks)})
-                    return chunks
+            # Use enhanced extraction
+            _enhanced = extract_document_enhanced(file_bytes, _filename, plan=_org_plan)
+            # Merge with existing doc_result (keep OCR, PII masking from existing processor)
+            _merged = {**_parsed_doc, **_enhanced}
+            # Prefer enhanced full_text if longer (better extraction)
+            if len(_enhanced.get("full_text","")) > len(_parsed_doc.get("full_text","")):
+                _merged["full_text"] = _enhanced["full_text"]
+            else:
+                _merged["full_text"] = _parsed_doc.get("full_text","")
+            # Always use enhanced tables (markdown format)
+            _merged["tables"] = _enhanced.get("tables", [])
 
-            parsed = _ParsedDoc(_parsed_doc, _meta, _sig_info, _template_match)
+            parsed = _ParsedDoc(_merged, _meta, _sig_info, _template_match,
+                               plan=_org_plan, file_bytes=file_bytes, filename=_filename)
 
             # ── Vision analysis for embedded images (Pro+) ──────
             if _org_plan in ("professional", "enterprise"):
@@ -206,45 +220,45 @@ class ContractPipeline:
 
             # ── Step 6: Index in Pinecone ─────────────────
             await self._update_status(db, contract_id, "indexing")
-            logger.info("pipeline_step", step="indexing", contract_id=str(contract_id))
+            logger.info(f"pipeline_step: step=indexing contract_id={contract_id}")
 
-            # Enrich chunks with contract metadata for better AI responses
-            contract_title   = contract_meta.get("title", "") or ""
-            counterparty     = contract_meta.get("counterparty", "") or ""
-            contract_value   = str(contract_meta.get("contract_value", "") or "")
-            enriched_chunks  = [
-                {
-                    **chunk,
-                    "contract_title": contract_title,
-                    "counterparty":   counterparty,
-                    "contract_value": contract_value,
-                }
-                for chunk in parsed.chunks
-            ]
+            # ── Hierarchical chunking — parent/child with rich metadata ──
+            from app.infrastructure.document.hierarchical_chunker import build_hierarchical_chunks
+            from app.infrastructure.vector_store.chunk_indexer import index_chunks
 
-            # Get contract family info for versioning
-            from app.domain.models import Contract as _CM
-            from sqlalchemy import select as _sel_cm
-            _cv_result = await db.execute(
-                _sel_cm(_CM.contract_family_id, _CM.version_number, _CM.parent_contract_id)
-                .where(_CM.id == contract_id)
-            )
-            _cv_row = _cv_result.fetchone()
-            _family_id = _cv_row.contract_family_id if _cv_row else None
-            _version_num = _cv_row.version_number if _cv_row else 1
+            _chunk_meta = {
+                "counterparty":  contract_meta.get("counterparty"),
+                "risk_level":    None,  # updated after scoring below
+                "contract_type": contract_meta.get("contract_type"),
+                "effective_date":contract_meta.get("effective_date"),
+                "expiry_date":   contract_meta.get("expiry_date"),
+            }
 
-            # If this is a new version, delete old vectors first
-            if _family_id and _version_num > 1:
-                await self.vector_store.delete_contract_family(org_id, _family_id)
-                logger.info("old_version_vectors_deleted",
-                           family_id=str(_family_id), new_version=_version_num)
-
-            await self.vector_store.upsert_contract(
-                org_id=org_id,
+            _hier_chunks = build_hierarchical_chunks(
+                full_text=parsed.full_text,
+                tables=parsed.tables,
                 contract_id=contract_id,
-                chunks=enriched_chunks,
-                family_id=_family_id or contract_id,
-                version_number=_version_num or 1,
+                org_id=org_id,
+                contract_meta=_chunk_meta,
+            )
+
+            # Enrich child chunks with risk scores after clause scoring
+            _risk_map = {c.get("clause_type","").lower(): float(c.get("risk_score",0))
+                        for c in scored_clauses if isinstance(c, dict)}
+            for _hc in _hier_chunks:
+                if not _hc.is_parent and _hc.heading:
+                    _h = (_hc.heading or "").lower()
+                    for _ct, _rs in _risk_map.items():
+                        if _ct in _h:
+                            _hc.risk_score = _rs
+                            break
+
+            await index_chunks(
+                chunks=_hier_chunks,
+                contract_id=contract_id,
+                org_id=org_id,
+                db=db,
+                vector_store=self.vector_store,
             )
 
             # ── Step 7: Save Results to DB ────────────────
@@ -690,7 +704,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                 clause_type=clause_data.get("clause_type", "other"),
                 title=clause_data.get("title", "")[:500],
                 summary=clause_data.get("summary"),
-                raw_text=clause_data.get("raw_text", "")[:5000],
+                raw_text=clause_data.get("raw_text", "")[:10000],
                 section_reference=clause_data.get("section_reference"),
                 risk_score=float(clause_data.get("risk_score", 30)),
                 risk_level=clause_data.get("risk_level", "low"),

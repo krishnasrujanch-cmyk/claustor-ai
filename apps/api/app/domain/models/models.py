@@ -4,6 +4,7 @@ All SQLAlchemy models for multi-tenant contract intelligence platform.
 """
 
 import uuid
+from typing import Optional
 from datetime import datetime, date
 from typing import Any
 
@@ -14,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID, ARRAY, TIMESTAMP as TIMESTAMPTZ
 PGUUID = UUID  # alias
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 
 from app.infrastructure.database.session import Base
 
@@ -239,6 +240,7 @@ class Contract(Base):
 
     organisation: Mapped["Organisation"] = relationship("Organisation", back_populates="contracts")
     clauses: Mapped[list["Clause"]] = relationship("Clause", back_populates="contract", cascade="all, delete-orphan")
+    chunks: Mapped[list["ContractChunk"]] = relationship("ContractChunk", back_populates="contract", cascade="all, delete-orphan")
     doc_metadata: Mapped["DocumentMetadata"] = relationship("DocumentMetadata", back_populates="contract", uselist=False)
     obligations: Mapped[list["Obligation"]] = relationship("Obligation", back_populates="contract", cascade="all, delete-orphan")
     conversations: Mapped[list["Conversation"]] = relationship("Conversation", back_populates="contract")
@@ -477,4 +479,32 @@ class AIObservability(Base):
     query_preview       = Column(String(200), nullable=True)
 
     created_at          = Column(TIMESTAMPTZ, server_default=func.now())
+
+
+class ContractChunk(Base):
+    """Hierarchical contract chunks for RAG — parent/child structure."""
+    __tablename__ = "contract_chunks"
+
+    id          : Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    contract_id : Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False)
+    org_id      : Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    parent_id   : Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("contract_chunks.id"), nullable=True)
+    is_parent   : Mapped[bool] = mapped_column(Boolean, default=False)
+    chunk_type  : Mapped[str]  = mapped_column(String(20), default="clause")
+    chunk_index : Mapped[int]  = mapped_column(Integer, nullable=False)
+    text        : Mapped[str]  = mapped_column(Text, nullable=False)
+    heading     : Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    section_ref : Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    page_number : Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    risk_score  : Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    importance  : Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    cross_refs  : Mapped[Optional[dict]] = mapped_column(JSONB, default=list)
+    table_json  : Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    pinecone_id : Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    created_at  : Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ, server_default=func.now())
+
+    contract : Mapped["Contract"] = relationship("Contract", back_populates="chunks")
+    children : Mapped[list["ContractChunk"]] = relationship(
+        "ContractChunk", backref=backref("parent", remote_side="ContractChunk.id")
+    )
 

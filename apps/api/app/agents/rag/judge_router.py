@@ -40,14 +40,17 @@ INTENT OPTIONS:
 - "missing"     → Find contracts WITHOUT a specific clause
 
 RULES:
-- "how many", "count", "total value", "average risk" → structured
+- "how many", "count", "total value", "average risk" → structured, needs_db=true, needs_vector=false
 - "list/show/which contracts" + filter (risk/party/type/date) → structured
 - "expiring in/next/this" + timeframe → structured
-- "what are the terms/clauses", "explain", "summarize" → semantic
+- "what are the terms/clauses", "explain", "summarize" → semantic, needs_db=false, needs_vector=true
+- "key dates", "important dates", "milestones", "deadlines", "obligations" → semantic, needs_db=false, needs_vector=true (dates are IN clause text)
+- "what are the payment terms", "liability", "indemnification", "termination" → semantic, needs_vector=true
 - "high risk contracts" (want list + why) → hybrid
 - "contracts with [party name]" (want list + content) → hybrid
-- "tell me more", "about this", short vague query with history → followup
+- "tell me more", "about this", short vague query with history → followup, needs_vector=true
 - "contracts without/missing X clause" → missing
+- IMPORTANT: when a specific contract is selected, clause content questions are ALWAYS semantic
 
 Return ONLY this JSON (no markdown):
 {{

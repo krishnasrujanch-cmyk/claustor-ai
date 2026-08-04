@@ -497,7 +497,7 @@ class ClauseEngine:
             result = ClauseResult(
                 clause_type=ct,
                 title=c.get("title", ""),
-                raw_text=c.get("raw_text", "")[:1000],
+                raw_text=c.get("raw_text", "")[:10000],
                 summary=c.get("summary", ""),
                 section_reference=c.get("section_reference", ""),
                 detected_language=language,
@@ -560,7 +560,7 @@ class ClauseEngine:
                 f"- clause_type: one of [{type_list}]\n"
                 f"- title: descriptive title\n"
                 f"- summary: 1-2 sentence summary\n"
-                f"- raw_text: key clause text (max 300 chars)\n"
+                f"- raw_text: the COMPLETE actual clause text verbatim from the contract (no truncation)\n"
                 f"- section_reference: the section ref shown above\n\n"
                 f"Return ONLY a JSON array of {len(batch)} objects."
             )
@@ -596,7 +596,7 @@ class ClauseEngine:
                         "clause_type":      "other",
                         "title":            s.heading,
                         "summary":          s.text[:200],
-                        "raw_text":         s.text[:500],
+                        "raw_text":         s.text[:5000],
                         "section_reference":s.section_ref,
                     })
 
@@ -605,47 +605,105 @@ class ClauseEngine:
     async def _extract_full_text(
         self, text: str, tables: list[dict], contract_type: str
     ) -> list[dict]:
-        """Fallback: full-text extraction when sections not detected."""
+        """
+        Iterative clause extraction — works for any document size.
+        Splits on structural boundaries (ARTICLE/SECTION), extracts per section,
+        merges and deduplicates. No hardcoded text limits.
+        """
+        import re as _re
+        import asyncio as _asyncio
+        from app.infrastructure.llm.base import AgentRole, LLMMessage
+
         type_list = ", ".join(CLAUSE_TYPES.keys())
-        table_summary = ""
-        if tables:
-            table_summary = f"\n\nTABLES ({len(tables)}):\n"
-            for t in tables[:3]:
-                table_summary += t.get("text", "")[:400] + "\n"
 
-        prompt = (
-            f"Extract all important clauses from this {contract_type} contract.\n\n"
-            f"CONTRACT TEXT:\n{text[:10000]}{table_summary}\n\n"
-            f"Return JSON array. Each clause:\n"
-            f"- clause_type: one of [{type_list}]\n"
-            f"- title: descriptive title\n"
-            f"- summary: 1-2 sentence summary\n"
-            f"- raw_text: actual clause text (max 400 chars)\n"
-            f"- section_reference: section number if visible\n\n"
-            f"Return ONLY valid JSON array."
+        # Split on structural boundaries
+        boundary_pattern = _re.compile(
+            r'(?=\n(?:ARTICLE|SECTION|SCHEDULE|EXHIBIT|ANNEX|APPENDIX|PART|CHAPTER)'
+            r'\s+[\dA-Z]+[.:]?)',
+            _re.IGNORECASE
         )
+        sections = boundary_pattern.split(text)
+        sections = [s.strip() for s in sections if s.strip() and len(s.strip()) > 100]
 
-        try:
-            from app.infrastructure.llm.base import AgentRole, LLMMessage
-            response = await self.llm.complete(
-                messages=[
-                    LLMMessage(role="system", content="Legal contract analyst. Return only valid JSON."),
-                    LLMMessage(role="user", content=prompt),
-                ],
-                role=AgentRole.EXTRACTOR,
-                json_mode=True,
+        # If no structural boundaries — sentence-aware sliding window
+        if len(sections) <= 1:
+            sentences = _re.split(r'(?<=[.!?])\s+', text)
+            current, current_len = [], 0
+            sections = []
+            target_chars = 6000  # ~1500 tokens — safe for any LLM
+            for sent in sentences:
+                if current_len + len(sent) > target_chars and current:
+                    sections.append(" ".join(current))
+                    current = current[-20:]  # 20-sentence overlap
+                    current_len = sum(len(s) for s in current)
+                current.append(sent)
+                current_len += len(sent)
+            if current:
+                sections.append(" ".join(current))
+
+        # Tables as separate sections
+        for t in (tables or []):
+            t_text = t if isinstance(t, str) else t.get("text", "")
+            if t_text.strip():
+                sections.append(f"TABLE CONTENT:\n{t_text}")
+
+        logger.info(f"clause_extraction_start: sections={len(sections)} type={contract_type}")
+
+        async def extract_section(section_text: str) -> list[dict]:
+            prompt = (
+                f"Extract all legal clauses from this {contract_type} contract section.\n\n"
+                f"SECTION TEXT:\n{section_text}\n\n"
+                f"Return JSON array. Each clause:\n"
+                f"- clause_type: one of [{type_list}]\n"
+                f"- title: short descriptive title\n"
+                f"- summary: 1-2 sentence summary\n"
+                f"- raw_text: exact verbatim clause text from the section above\n"
+                f"- section_reference: article/section number if visible\n\n"
+                f"Return empty [] if no significant clauses found.\n"
+                f"Return ONLY valid JSON array."
             )
-            parsed = json.loads(response.content.strip())
-            if isinstance(parsed, dict):
-                for key in ["clauses", "data", "results"]:
-                    if key in parsed:
-                        return parsed[key]
-            if isinstance(parsed, list):
-                return parsed
-            return []
-        except Exception as e:
-            logger.warning("full_text_extract_error", error=str(e))
-            return []
+            try:
+                response = await self.llm.complete(
+                    messages=[
+                        LLMMessage(role="system", content="Legal analyst. Return only valid JSON array."),
+                        LLMMessage(role="user", content=prompt),
+                    ],
+                    role=AgentRole.EXTRACTOR,
+                    json_mode=True,
+                )
+                parsed = json.loads(response.content.strip())
+                if isinstance(parsed, dict):
+                    for key in ["clauses", "data", "results"]:
+                        if key in parsed:
+                            return parsed[key]
+                return parsed if isinstance(parsed, list) else []
+            except Exception as e:
+                logger.warning(f"section_clause_error: {e}")
+                return []
+
+        # Process sections in batches of 5 concurrently
+        all_clauses = []
+        for i in range(0, len(sections), 5):
+            batch = sections[i:i+5]
+            results = await _asyncio.gather(
+                *[extract_section(s) for s in batch],
+                return_exceptions=True
+            )
+            for r in results:
+                if isinstance(r, list):
+                    all_clauses.extend(r)
+
+        # Deduplicate by clause_type + title
+        seen, deduped = set(), []
+        for clause in all_clauses:
+            key = (clause.get("clause_type",""), clause.get("title","")[:40].lower())
+            if key not in seen and clause.get("title"):
+                seen.add(key)
+                deduped.append(clause)
+
+        logger.info(f"clause_extraction_done: clauses={len(deduped)} sections={len(sections)}")
+        return deduped
+
 
     async def _score_risks_advanced(
         self,

@@ -11,6 +11,21 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+_cross_encoder = None
+
+def _load_reranker():
+    """Preload cross-encoder model — call once at startup."""
+    global _cross_encoder
+    if _cross_encoder is None:
+        try:
+            from sentence_transformers import CrossEncoder
+            _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
+            print("✅ Cross-encoder preloaded")
+        except Exception as e:
+            print(f"⚠️ Cross-encoder unavailable: {e}")
+    return _cross_encoder
+
+
 def rerank_chunks(query: str, chunks: list, top_k: int = 6) -> list:
     """
     Rerank chunks by relevance to query.

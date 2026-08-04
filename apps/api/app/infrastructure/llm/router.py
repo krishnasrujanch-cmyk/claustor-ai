@@ -117,9 +117,9 @@ class LLMRouter:
     # Role → preferred providers (first available in list wins)
     ROLE_PROVIDER_MAP: dict[AgentRole, list[LLMProvider]] = {
         AgentRole.SAFETY_GUARD: [LLMProvider.GROQ],
-        AgentRole.EXTRACTOR:    [LLMProvider.GROQ],
+        AgentRole.EXTRACTOR:    [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
         AgentRole.REASONER:     [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
-        AgentRole.JUDGE:        [LLMProvider.ANTHROPIC, LLMProvider.GROQ],
+        AgentRole.JUDGE:        [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
         AgentRole.ANSWERER:     [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
         AgentRole.VISION:       [LLMProvider.ANTHROPIC, LLMProvider.GROQ],   # Gemini only for vision
         AgentRole.NEGOTIATOR:   [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
@@ -188,6 +188,14 @@ class LLMRouter:
         preferred = self.ROLE_PROVIDER_MAP.get(role, list(self.providers.keys()))
         # Filter to only registered + non-open-circuit providers
         return [p for p in preferred if p in self.providers]
+
+    async def complete_for_plan(self, plan: str, role_name: str, **kwargs):
+        """Complete with plan-appropriate model selection."""
+        from app.core.plan_model_routing import get_plan_providers
+        from app.infrastructure.llm.base import AgentRole
+        providers = get_plan_providers(plan, role_name)
+        role = getattr(AgentRole, role_name.upper(), AgentRole.ANSWERER)
+        return await self.complete(role=role, **kwargs)
 
     async def complete(
         self,

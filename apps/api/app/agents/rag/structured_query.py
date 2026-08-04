@@ -4,7 +4,7 @@ Covers all 8 industries with full filter support.
 """
 
 from __future__ import annotations
-import logging
+import structlog
 from datetime import date, timedelta
 from typing import Optional
 from uuid import UUID
@@ -12,7 +12,36 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
+
+
+async def _single_contract_facts(org_id, db, contract_id) -> str:
+    """Fetch all key facts for a single contract — used when contract_id is scoped."""
+    r = await db.execute(text("""
+        SELECT title, expiry_date, effective_date, contract_value, contract_currency,
+               risk_level, risk_score, counterparty, contract_type, governing_law,
+               auto_renewal, renewal_notice_days, status
+        FROM contracts
+        WHERE org_id = :oid AND id = :cid AND is_active = TRUE
+    """), {"oid": str(org_id), "cid": str(contract_id)})
+    row = r.fetchone()
+    if not row:
+        return ""
+    val = _fmt_amount(float(row[3]), row[4]) if row[3] else "Not specified"
+    renew = f"Yes (notice: {row[11]} days)" if row[10] else "No"
+    return (
+        f"\n\n📊 Contract Facts:\n"
+        f"• Title: {row[0]}\n"
+        f"• Type: {row[8] or 'N/A'}\n"
+        f"• Counterparty: {row[7] or 'N/A'}\n"
+        f"• Value: {val}\n"
+        f"• Effective: {row[2] or 'N/A'}\n"
+        f"• Expiry: {row[1] or 'Not specified'}\n"
+        f"• Risk: {row[5]} ({row[6]})\n"
+        f"• Governing Law: {row[9] or 'N/A'}\n"
+        f"• Auto-renewal: {renew}\n"
+        f"• Status: {row[12]}"
+    )
 
 
 async def run_structured_query(
@@ -28,36 +57,45 @@ async def run_structured_query(
 ) -> str:
     filters = filters or {}
     try:
+        # When scoped to a single contract with no timeframe — use contract facts
+        if contract_id and not date_start and not date_end:
+            q_lower = query.lower()
+            # Only use facts for specific factual questions
+            fact_keywords = ["expir","when","value","worth","risk","counterparty",
+                           "party","govern","law","renewal","effective","status",
+                           "type","currency","notice"]
+            if any(k in q_lower for k in fact_keywords):
+                return await _single_contract_facts(org_id, db, contract_id)
         # Route by sub-type or timeframe
         if timeframe or _matches(intent_sub_type, ["expiry", "due", "matur", "renew", "overdue"]):
-            return await _expiry_query(org_id, db, date_start, date_end, timeframe, filters)
+            return await _expiry_query(org_id, db, date_start, date_end, timeframe, filters, contract_id=contract_id)
 
         if _matches(intent_sub_type, ["high_risk", "count_by_risk"]):
-            return await _risk_query(org_id, db, filters)
+            return await _risk_query(org_id, db, filters, contract_id=contract_id)
 
         if _matches(intent_sub_type, ["top_by_value", "high_value", "total_value"]):
-            return await _value_query(org_id, db, filters)
+            return await _value_query(org_id, db, filters, contract_id=contract_id)
 
         if _matches(intent_sub_type, ["avg_risk"]):
             return await _avg_risk_query(org_id, db)
 
         if _matches(intent_sub_type, ["renewal_list"]):
-            return await _renewal_query(org_id, db, filters)
+            return await _renewal_query(org_id, db, filters, contract_id=contract_id)
 
         if _matches(intent_sub_type, ["overdue_list"]):
             return await _overdue_query(org_id, db)
 
         if _matches(intent_sub_type, ["by_type"]):
-            return await _type_query(org_id, db, filters)
+            return await _type_query(org_id, db, filters, contract_id=contract_id)
 
         if _matches(intent_sub_type, ["by_counterparty"]):
-            return await _counterparty_query(org_id, db, filters, query)
+            return await _counterparty_query(org_id, db, filters, query, contract_id=contract_id)
 
         if _matches(intent_sub_type, ["by_status", "pending_review"]):
-            return await _status_query(org_id, db, filters)
+            return await _status_query(org_id, db, filters, contract_id=contract_id)
 
         if _matches(intent_sub_type, ["value_filter"]):
-            return await _value_filter_query(org_id, db, filters)
+            return await _value_filter_query(org_id, db, filters, contract_id=contract_id)
 
         if _matches(intent_sub_type, ["milestone_list"]):
             return await _milestone_query(org_id, db)
@@ -66,10 +104,10 @@ async def run_structured_query(
             return await _count_total_query(org_id, db)
 
         # Generic contract list with all filters
-        return await _smart_contract_list(org_id, db, filters, query)
+        return await _smart_contract_list(org_id, db, filters, query, contract_id=contract_id)
 
     except Exception as e:
-        logger.error("structured_query_failed", error=str(e))
+        logger.error(f"structured_query_failed: {e}")
         return ""
 
 
@@ -102,7 +140,7 @@ def _timeframe_label(timeframe: Optional[str], date_start, date_end) -> str:
     return ""
 
 
-async def _expiry_query(org_id, db, date_start, date_end, timeframe, filters) -> str:
+async def _expiry_query(org_id, db, date_start, date_end, timeframe, filters, contract_id=None) -> str:
     today = date.today()
     if not date_start: date_start = today
     if not date_end:   date_end = today + timedelta(days=90)
@@ -163,7 +201,7 @@ async def _expiry_query(org_id, db, date_start, date_end, timeframe, filters) ->
     return "\n".join(lines)
 
 
-async def _risk_query(org_id, db, filters) -> str:
+async def _risk_query(org_id, db, filters, contract_id=None) -> str:
     risk_where = ["org_id = :oid", "is_active = TRUE", "status = 'analyzed'"]
     params = {"oid": str(org_id)}
 
@@ -201,7 +239,7 @@ async def _risk_query(org_id, db, filters) -> str:
     return "\n".join(lines)
 
 
-async def _value_query(org_id, db, filters) -> str:
+async def _value_query(org_id, db, filters, contract_id=None) -> str:
     where = ["org_id = :oid", "is_active = TRUE", "contract_value IS NOT NULL"]
     params = {"oid": str(org_id)}
 
@@ -247,7 +285,7 @@ async def _value_query(org_id, db, filters) -> str:
     return "\n".join(lines)
 
 
-async def _avg_risk_query(org_id, db) -> str:
+async def _avg_risk_query(org_id, db, contract_id=None) -> str:
     r = await db.execute(text("""
         SELECT ROUND(AVG(risk_score)::numeric,1),
                COUNT(*),
@@ -269,7 +307,7 @@ async def _avg_risk_query(org_id, db) -> str:
     )
 
 
-async def _renewal_query(org_id, db, filters) -> str:
+async def _renewal_query(org_id, db, filters, contract_id=None) -> str:
     r = await db.execute(text("""
         SELECT title, expiry_date, risk_level, counterparty,
                renewal_notice_days
@@ -288,7 +326,7 @@ async def _renewal_query(org_id, db, filters) -> str:
     return "\n".join(lines)
 
 
-async def _overdue_query(org_id, db) -> str:
+async def _overdue_query(org_id, db, contract_id=None) -> str:
     today = date.today()
     r = await db.execute(text("""
         SELECT title, expiry_date, risk_level, counterparty,
@@ -305,7 +343,7 @@ async def _overdue_query(org_id, db) -> str:
     return "\n".join(lines)
 
 
-async def _type_query(org_id, db, filters) -> str:
+async def _type_query(org_id, db, filters, contract_id=None) -> str:
     ct = filters.get("contract_type", "")
     where = ["org_id = :oid", "is_active = TRUE"]
     params = {"oid": str(org_id)}
@@ -345,7 +383,7 @@ async def _type_query(org_id, db, filters) -> str:
     return "\n".join(lines)
 
 
-async def _counterparty_query(org_id, db, filters, query) -> str:
+async def _counterparty_query(org_id, db, filters, query, contract_id=None) -> str:
     party = filters.get("counterparty", "")
     if not party:
         # Extract from query
@@ -391,7 +429,7 @@ async def _counterparty_query(org_id, db, filters, query) -> str:
     return "\n".join(lines)
 
 
-async def _status_query(org_id, db, filters) -> str:
+async def _status_query(org_id, db, filters, contract_id=None) -> str:
     where = ["org_id = :oid", "is_active = TRUE"]
     params = {"oid": str(org_id)}
 
@@ -424,7 +462,7 @@ async def _status_query(org_id, db, filters) -> str:
     return "\n".join(lines)
 
 
-async def _value_filter_query(org_id, db, filters) -> str:
+async def _value_filter_query(org_id, db, filters, contract_id=None) -> str:
     where = ["org_id = :oid", "is_active = TRUE", "contract_value IS NOT NULL"]
     params = {"oid": str(org_id)}
 
@@ -464,7 +502,7 @@ async def _value_filter_query(org_id, db, filters) -> str:
     return "\n".join(lines)
 
 
-async def _milestone_query(org_id, db) -> str:
+async def _milestone_query(org_id, db, contract_id=None) -> str:
     r = await db.execute(text("""
         SELECT c.title, o.title as ob_title, o.due_date, o.obligation_type,
                o.description
@@ -487,7 +525,7 @@ async def _milestone_query(org_id, db) -> str:
     return "\n".join(lines)
 
 
-async def _count_total_query(org_id, db) -> str:
+async def _count_total_query(org_id, db, contract_id=None) -> str:
     r = await db.execute(text("""
         SELECT
             COUNT(*) as total,

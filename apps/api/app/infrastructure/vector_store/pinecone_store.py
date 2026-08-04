@@ -16,7 +16,8 @@ from app.core.config import settings
 logger = structlog.get_logger(__name__)
 
 # Embedding model — must match dimensions in Pinecone index
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
+_EMBEDDER_CACHE = None  # Module-level cache — survives across instances
 EMBEDDING_DIMENSIONS = 384
 
 
@@ -58,16 +59,20 @@ class VectorStore:
         return f"org_{str(org_id).replace('-', '')[:8]}"
 
     async def get_embedder(self):
-        """Lazy-load sentence transformer model."""
-        if self._embedder is None:
+        """Lazy-load sentence transformer model — module-level cache."""
+        global _EMBEDDER_CACHE
+        if _EMBEDDER_CACHE is None:
             from sentence_transformers import SentenceTransformer
-            # Run in thread pool — CPU-bound operation
             loop = asyncio.get_event_loop()
-            self._embedder = await loop.run_in_executor(
+            import os
+            cache_dir = os.getenv("SENTENCE_TRANSFORMERS_HOME", 
+                       os.path.expanduser("~/.cache/huggingface/sentence_transformers"))
+            _EMBEDDER_CACHE = await loop.run_in_executor(
                 None,
-                lambda: SentenceTransformer(EMBEDDING_MODEL)
+                lambda: SentenceTransformer(EMBEDDING_MODEL, cache_folder=cache_dir, local_files_only=True)
             )
             logger.info("embedder_loaded", model=EMBEDDING_MODEL)
+        self._embedder = _EMBEDDER_CACHE
         return self._embedder
 
     async def embed_text(self, text: str) -> list[float]:

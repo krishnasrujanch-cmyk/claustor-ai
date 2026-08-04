@@ -42,6 +42,23 @@ async def lifespan(app: FastAPI):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, DocumentProcessor.init_models)
 
+    # Pre-load embedding model at startup (bge-large ~1.3GB, load once)
+    try:
+        from app.infrastructure.vector_store.pinecone_store import get_vector_store
+        _store = get_vector_store()
+        await _store.get_embedder()
+        logger.info("embedding_model_preloaded")
+    except Exception as _e:
+        logger.warning(f"embedding_model_preload_failed: {_e}")
+
+    # Pre-load cross-encoder reranker at startup
+    try:
+        from app.agents.rag.reranker import _load_reranker
+        await loop.run_in_executor(None, _load_reranker)
+        logger.info("reranker_preloaded")
+    except Exception as _e:
+        logger.warning(f"reranker_preload_failed: {_e}")
+
     yield
 
     # ── Shutdown ──────────────────────────────────

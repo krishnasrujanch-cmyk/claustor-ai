@@ -1,4 +1,5 @@
 from app.domain.models.models import (
+    ContractChunk,
     Organisation,
     Department,
     User,

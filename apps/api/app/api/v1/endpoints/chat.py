@@ -110,7 +110,7 @@ async def chat(
                 )
                 await counter_db.commit()
     except Exception as e:
-        logger.warning("query_counter_failed", error=str(e))
+        logger.warning(f"query_counter_failed: {e}")
 
     return ChatOut(
         answer=response.answer,
@@ -328,7 +328,8 @@ async def chat_stream(
 
             # Use Judge's rewritten query for better vector retrieval
             retrieval_query = judge.rewritten_query or raw_query
-            if judge.is_followup and _last_assistant:
+            # Only prepend last assistant for truly vague followups (< 5 words)
+            if judge.is_followup and _last_assistant and len(raw_query.split()) < 5:
                 retrieval_query = _last_assistant[:200] + " " + raw_query
 
             # Extract date range from filters
@@ -499,7 +500,8 @@ async def chat_stream(
                 pass
 
         except Exception as e:
-            logger.error("stream_error", error=str(e))
+            import traceback
+            logger.error(f"stream_error: {e}\n{traceback.format_exc()}")
             yield "data: " + json.dumps({"type":"error","message":str(e)}) + "\n\n"
 
 
