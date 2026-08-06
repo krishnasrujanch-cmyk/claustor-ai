@@ -100,6 +100,26 @@ class HybridSearchEngine:
                                 chunk_id=pid, text=pd["text"],
                                 heading=pd.get("heading",""),
                                 is_parent=True, source="parent"))
+                # Phase 3: Cross-reference retrieval
+                try:
+                    from app.infrastructure.vector_store.chunk_indexer import fetch_cross_ref_chunks
+                    xref_chunks = await fetch_cross_ref_chunks(chunk_ids, db)
+                    existing = {_get(r,"chunk_id") or _get(r,"id") for r in fused}
+                    for xc in xref_chunks:
+                        if xc["id"] not in existing:
+                            fused.append(HybridSearchResult(
+                                chunk_id=xc["id"],
+                                text=xc["text"],
+                                heading=xc.get("heading",""),
+                                is_parent=True,
+                                rrf_score=0.0,
+                                source="cross_ref",
+                            ))
+                    if xref_chunks:
+                        logger.info(f"cross_ref_chunks_added: {len(xref_chunks)}")
+                except Exception as _xe:
+                    logger.warning(f"cross_ref_error: {_xe}")
+
             except Exception as e:
                 logger.warning(f"chunk_fetch_error: {e}")
 

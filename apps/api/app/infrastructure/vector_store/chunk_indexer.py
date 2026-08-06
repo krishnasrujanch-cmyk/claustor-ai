@@ -247,3 +247,67 @@ async def bm25_search(  # DEBUG VERSION
     except Exception as e:
         logger.warning(f"bm25_search_error: {e}")
         return []
+
+async def fetch_cross_ref_chunks(
+    chunk_ids: list[str],
+    db: AsyncSession,
+) -> list[dict]:
+    """
+    Fetch chunks referenced by cross_refs of given chunks.
+    Returns additional context chunks from cross-referenced sections.
+    """
+    if not chunk_ids:
+        return []
+    clean_ids = [cid.replace("chunk_","") if cid.startswith("chunk_") else cid
+                 for cid in chunk_ids]
+    placeholders = ",".join(f"\'{cid}\'" for cid in clean_ids)
+    try:
+        # Get cross_refs from retrieved chunks
+        r = await db.execute(text(f"""
+            SELECT cross_refs, contract_id::text, org_id::text
+            FROM contract_chunks
+            WHERE id::text IN ({placeholders})
+              AND cross_refs != '[]'
+              AND cross_refs IS NOT NULL
+        """))
+        rows = r.fetchall()
+        if not rows:
+            return []
+
+        # Extract section references and find matching chunks
+        all_refs = []
+        contract_id = rows[0][1]
+        org_id = rows[0][2]
+        for row in rows:
+            refs = row[0] or []
+            all_refs.extend(refs)
+
+        if not all_refs:
+            return []
+
+        # Search for chunks matching cross-references by heading/section_ref
+        ref_conditions = " OR ".join([
+            f"heading ILIKE '%{ref.split()[-1][:20]}%' OR section_ref ILIKE '%{ref.split()[-1][:20]}%'"
+            for ref in all_refs[:5]  # limit to 5 refs
+        ])
+
+        r2 = await db.execute(text(f"""
+            SELECT id::text, text, heading, section_ref, chunk_type
+            FROM contract_chunks
+            WHERE contract_id = '{contract_id}'
+              AND is_parent = TRUE
+              AND ({ref_conditions})
+            LIMIT 3
+        """))
+        return [
+            {
+                "id": row[0], "text": row[1],
+                "heading": row[2], "section_ref": row[3],
+                "chunk_type": row[4], "source": "cross_ref",
+            }
+            for row in r2.fetchall()
+        ]
+    except Exception as e:
+        logger.warning(f"cross_ref_fetch_error: {e}")
+        return []
+

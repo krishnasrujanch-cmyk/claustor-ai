@@ -35,9 +35,8 @@ def _preload_embedder():
     except Exception as e:
         print(f"⚠️ Embedder preload failed: {e}")
 
-# Preload in background thread at module load
-import threading
-threading.Thread(target=_preload_embedder, daemon=True).start()
+# Synchronous preload at module import — blocks until ready
+_preload_embedder()
 EMBEDDING_DIMENSIONS = 384
 
 

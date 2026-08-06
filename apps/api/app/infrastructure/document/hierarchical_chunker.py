@@ -86,9 +86,12 @@ HEADING_PATTERN = re.compile(
 )
 
 CROSS_REF_PATTERN = re.compile(
+    r'(?:'
     r'(?:pursuant to|as defined in|subject to|in accordance with|'
-    r'referred to in|set forth in|described in)\s+'
-    r'(?:Section|Article|Clause|Schedule|Exhibit)\s+[\d.]+',
+    r'referred to in|set forth in|described in|under|per|see|'
+    r'except as provided in|as specified in|as outlined in)\s+'
+    r')?'
+    r'(?:Section|Article|Clause|Schedule|Exhibit|Annex|Appendix)\s+[\d.A-Z]+(?:[.(][\d.A-Z]+[).]?)*',
     re.IGNORECASE
 )
 
