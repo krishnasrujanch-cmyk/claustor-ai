@@ -16,7 +16,7 @@ from app.core.config import settings
 logger = structlog.get_logger(__name__)
 
 # Embedding model — must match dimensions in Pinecone index
-EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
+EMBEDDING_MODEL = "BAAI/bge-m3"
 _EMBEDDER_CACHE = None  # Module-level cache — survives across instances
 
 def _preload_embedder():

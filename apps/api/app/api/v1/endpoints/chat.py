@@ -458,7 +458,7 @@ async def chat_stream(
 
             yield "data: " + json.dumps({"type":"citations","citations":citations}) + "\n\n"
 
-            yield "data: " + json.dumps({"type":"meta","groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6)}) + "\n\n"
+            yield "data: " + json.dumps({"type":"meta","groundedness":round(halluc.groundedness,3),"confidence":response.extra.get("confidence",None),"tokens":response.total_tokens,"cost":round(response.cost_usd,6),"chunks_retrieved":len(chunks),"context_chars":sum(len(c.text if hasattr(c,"text") else c.get("text","")) for c in chunks if c),"db_sourced":judge.needs_db}) + "\n\n"
 
             yield "data: " + json.dumps({"type":"done"}) + "\n\n"
 

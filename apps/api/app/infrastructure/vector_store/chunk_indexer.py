@@ -206,7 +206,7 @@ async def bm25_search(  # DEBUG VERSION
     conditions = [
         "org_id = :org_id",
         f"chunk_type NOT IN ({exclude_list})",
-        "to_tsvector('english', text) @@ plainto_tsquery('english', :query)",
+        "to_tsvector('simple', text) @@ plainto_tsquery('simple', :query)",
     ]
     params = {
         "org_id": str(org_id),
@@ -222,8 +222,8 @@ async def bm25_search(  # DEBUG VERSION
             SELECT
                 id::text, text, heading, section_ref, chunk_type,
                 parent_id::text, importance, risk_score,
-                ts_rank(to_tsvector('english', text),
-                        plainto_tsquery('english', :query)) AS score
+                ts_rank(to_tsvector('simple', text),
+                        plainto_tsquery('simple', :query)) AS score
             FROM contract_chunks
             WHERE {where}
             ORDER BY score DESC

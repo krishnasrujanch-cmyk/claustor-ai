@@ -321,6 +321,67 @@ class DocumentProcessor:
             logger.warning("image_extraction_failed", error=str(e))
         return images
 
+
+    def ocr_embedded_images(self, file_bytes: bytes) -> str:
+        """
+        OCR text embedded images within a PDF.
+        Handles mixed PDFs where some content is images not text.
+        Returns extracted text from all embedded images.
+        """
+        if not self._tesseract_ok:
+            return ""
+        try:
+            import fitz
+            import pytesseract
+            from PIL import Image
+            import io
+
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            image_texts = []
+
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                # Check if page has images
+                image_list = page.get_images(full=True)
+                if not image_list:
+                    continue
+
+                for img in image_list:
+                    xref = img[0]
+                    try:
+                        base_image = doc.extract_image(xref)
+                        img_bytes = base_image.get("image", b"")
+                        if not img_bytes:
+                            continue
+
+                        # Skip small images (logos, icons < 100x100)
+                        w = base_image.get("width", 0)
+                        h = base_image.get("height", 0)
+                        if w < 100 or h < 100:
+                            continue
+
+                        # OCR the image
+                        pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                        try:
+                            text = pytesseract.image_to_string(
+                                pil_img, lang="eng+hin+tam+tel+kan+ben")
+                        except Exception:
+                            text = pytesseract.image_to_string(pil_img, lang="eng")
+
+                        text = text.strip()
+                        if len(text) > 20:  # skip noise
+                            image_texts.append(f"[Image on page {page_num+1}]\n{text}")
+                            logger.info(f"image_ocr_extracted: page={page_num+1} chars={len(text)}")
+                    except Exception as _ie:
+                        logger.warning(f"image_ocr_failed: {_ie}")
+                        continue
+
+            doc.close()
+            return "\n\n".join(image_texts)
+        except Exception as e:
+            logger.warning(f"embedded_image_ocr_failed: {e}")
+            return ""
+
     def _ocr_pdf(self, file_bytes: bytes) -> str:
         """OCR scanned PDF using Tesseract."""
         try:
