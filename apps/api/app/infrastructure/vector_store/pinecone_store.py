@@ -18,6 +18,26 @@ logger = structlog.get_logger(__name__)
 # Embedding model — must match dimensions in Pinecone index
 EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
 _EMBEDDER_CACHE = None  # Module-level cache — survives across instances
+
+def _preload_embedder():
+    """Load embedding model at import time — runs once per process."""
+    global _EMBEDDER_CACHE
+    if _EMBEDDER_CACHE is not None:
+        return
+    try:
+        import os
+        from sentence_transformers import SentenceTransformer
+        cache_dir = os.getenv("SENTENCE_TRANSFORMERS_HOME",
+                   os.path.expanduser("~/.cache/huggingface/sentence_transformers"))
+        _EMBEDDER_CACHE = SentenceTransformer(
+            EMBEDDING_MODEL, cache_folder=cache_dir, local_files_only=True)
+        print(f"✅ Embedder preloaded at import: {EMBEDDING_MODEL}")
+    except Exception as e:
+        print(f"⚠️ Embedder preload failed: {e}")
+
+# Preload in background thread at module load
+import threading
+threading.Thread(target=_preload_embedder, daemon=True).start()
 EMBEDDING_DIMENSIONS = 384
 
 
