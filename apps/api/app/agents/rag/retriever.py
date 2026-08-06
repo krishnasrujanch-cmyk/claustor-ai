@@ -69,6 +69,7 @@ class RAGRetriever:
         plan: str = "starter",
         contract_id: UUID | None = None,
         clause_type: str | None = None,
+        raw_query: str | None = None,
     ) -> RetrievedContext:
         """
         Retrieve relevant context for a query.
@@ -95,6 +96,7 @@ class RAGRetriever:
             contract_id=contract_id,
             top_k=top_k,
             clause_type=clause_type,
+            raw_query=raw_query,
         )
 
         if not chunks:

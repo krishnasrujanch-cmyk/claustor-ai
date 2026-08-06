@@ -363,6 +363,7 @@ async def chat_stream(
                     db=db,
                     plan=user.plan,
                     contract_id=_scoped_contract_id,
+                    raw_query=raw_query,
                 )
                 try:
                     from app.agents.rag.reranker import rerank_chunks

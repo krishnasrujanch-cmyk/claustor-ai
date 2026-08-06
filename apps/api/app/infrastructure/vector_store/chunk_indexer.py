@@ -143,7 +143,6 @@ async def fetch_chunk_texts(
     # Strip "chunk_" prefix if present (Pinecone IDs use this prefix)
     clean_ids = [cid.replace("chunk_", "") if cid.startswith("chunk_") else cid
                  for cid in chunk_ids]
-    print(f"DEBUG fetch_chunk_texts: input={chunk_ids[:3]} clean={clean_ids[:3]}")
     placeholders = ",".join(f"'{cid}'" for cid in clean_ids)
     r = await db.execute(text(f"""
         SELECT id::text, text, parent_id::text, heading, section_ref
@@ -188,7 +187,8 @@ async def fetch_parent_texts(
     }
 
 
-async def bm25_search(
+async def bm25_search(  # DEBUG VERSION
+
     query: str,
     org_id: UUID,
     db: AsyncSession,
@@ -201,16 +201,16 @@ async def bm25_search(
     Returns chunk dicts with text and metadata.
     """
     exclude_types = exclude_types or ["signature"]
+    # Build exclude clause — use NOT IN with literals to avoid array param issues
+    exclude_list = ",".join(f"'{t}'" for t in (exclude_types or ["signature"]))
     conditions = [
         "org_id = :org_id",
-        "is_parent = FALSE",
-        "chunk_type != ALL(:exclude_types)",
+        f"chunk_type NOT IN ({exclude_list})",
         "to_tsvector('english', text) @@ plainto_tsquery('english', :query)",
     ]
     params = {
         "org_id": str(org_id),
         "query": query,
-        "exclude_types": exclude_types,
     }
     if contract_id:
         conditions.append("contract_id = :contract_id")
