@@ -33,24 +33,30 @@ USER QUERY: "{query}"
 Classify and extract:
 
 INTENT OPTIONS:
-- "structured"  → Pure DB query (counts, lists, aggregations, expiry dates, values)
-- "semantic"    → Pure vector search (clause content, terms, explanations, summaries)
-- "hybrid"      → Both DB + vector (filter by attribute AND need clause details)
-- "followup"    → Continue previous conversation (vague references: "this", "it", "tell me more")
-- "missing"     → Find contracts WITHOUT a specific clause
+ROUTING RULES:
 
-RULES:
-- "how many", "count", "total value", "average risk" → structured, needs_db=true, needs_vector=false
-- "list/show/which contracts" + filter (risk/party/type/date) → structured
-- "expiring in/next/this" + timeframe → structured
-- "what are the terms/clauses", "explain", "summarize" → semantic, needs_db=false, needs_vector=true
-- "key dates", "important dates", "milestones", "deadlines", "obligations" → semantic, needs_db=false, needs_vector=true (dates are IN clause text)
-- "what are the payment terms", "liability", "indemnification", "termination" → semantic, needs_vector=true
-- "high risk contracts" (want list + why) → hybrid
-- "contracts with [party name]" (want list + content) → hybrid
-- "tell me more", "about this", short vague query with history → followup, needs_vector=true
-- "contracts without/missing X clause" → missing
-- IMPORTANT: when a specific contract is selected, clause content questions are ALWAYS semantic
+ALWAYS needs_vector=true (semantic search in contract text):
+- ANY question about clause content: payment, termination, liability, IP,
+  confidentiality, indemnification, warranty, audit, force majeure, governing law,
+  dispute resolution, representations, obligations, rights, restrictions
+- ANY schedule/table/annexure: payment schedule, milestone, royalty rate,
+  sales commitments, fee schedule, SLA, KPI, deliverables, penalties, patent schedule
+- ANY vague/short query about contract data: "sales data", "payment info",
+  "share X", "tell me about X", "what about X", "details on X", "show me X"
+- ANY question with "what does it say", "what are the terms", "explain"
+- ANY followup: "tell me more", "explain that", "what does that mean"
+- Multilingual queries about contract content
+
+ONLY needs_db=true (pure structured query — NO contract text needed):
+- Contract metadata ONLY: expiry date, contract value, counterparty name,
+  contract type, risk level, risk score, auto-renewal flag, contract status
+- Cross-contract aggregations: count, list, filter, "show contracts where..."
+- "how many", "which contracts", "list all contracts", "contracts expiring"
+
+KEY RULE: If a specific contract_id is selected AND the query asks about
+content/data/clauses/schedules → ALWAYS needs_vector=true, needs_db=false
+Only use needs_db=true when the answer comes from contract metadata fields,
+NOT from the contract text itself.
 
 Return ONLY this JSON (no markdown):
 {{
