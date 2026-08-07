@@ -71,6 +71,11 @@ asyncio.run(main())
             capture_output=True, text=True,
             timeout=540, env=env, cwd=api_dir,
         )
+        # Log subprocess stdout for debugging
+        if result.stdout:
+            for line in result.stdout.strip().split("\n"):
+                if line.strip():
+                    logger.info(f"subprocess_out: {line.strip()}")
         if result.returncode != 0:
             error = result.stderr[-2000:] if result.stderr else "Unknown"
             logger.error("contract_subprocess_failed", contract_id=contract_id, error=error)

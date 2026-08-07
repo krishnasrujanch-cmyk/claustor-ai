@@ -297,6 +297,82 @@ class DocumentProcessor:
     # ── OCR ───────────────────────────────────────────────
 
 
+
+    async def analyze_images_with_vision(
+        self, images: list, plan: str = "free"
+    ) -> str:
+        """
+        Option D: Use vision LLM to understand images in contracts.
+        Extracts tables, text, diagrams from embedded images.
+        Plan gating: professional+ only.
+        """
+        if plan not in ("professional", "enterprise"):
+            return ""
+        if not images:
+            return ""
+
+        results = []
+        for i, img in enumerate(images[:5]):  # max 5 images
+            img_bytes = img.get("bytes", b"")
+            if not img_bytes:
+                continue
+            # Skip small images (logos, icons)
+            w = img.get("width", 0)
+            h = img.get("height", 0)
+            if w < 150 or h < 150:
+                continue
+            try:
+                import base64
+                from app.infrastructure.llm.base import LLMMessage
+                from app.infrastructure.llm.router import get_llm_router
+
+                img_b64 = base64.standard_b64encode(img_bytes).decode("utf-8")
+                ext = img.get("ext", "png")
+                media_type = f"image/{ext}" if ext != "jpg" else "image/jpeg"
+
+                llm = get_llm_router()
+                # Use Anthropic directly for vision (Groq doesn't support vision)
+                import anthropic
+                from app.core.config import settings as _s
+                client = anthropic.AsyncAnthropic(api_key=_s.ANTHROPIC_API_KEY)
+                response = await client.messages.create(
+                    model="claude-haiku-4-5",
+                    max_tokens=1000,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": img_b64,
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": (
+                                    "This image is from a legal contract. "
+                                    "Extract ALL text, tables, numbers, dates, and key terms visible. "
+                                    "If it is a table, reproduce it in markdown format. "
+                                    "If it is a diagram, describe what it shows. "
+                                    "Be precise and complete."
+                                )
+                            }
+                        ]
+                    }]
+                )
+                text = response.content[0].text.strip()
+                if text:
+                    page = img.get("page", i+1)
+                    results.append(f"[Image on page {page}]\n{text}")
+                    logger.info(f"vision_image_analyzed: page={page} chars={len(text)}")
+            except Exception as e:
+                logger.warning(f"vision_image_failed: {e}")
+                continue
+
+        return "\n\n".join(results)
+
     def extract_images_from_pdf(self, file_bytes: bytes) -> list:
         """Extract images from PDF for vision analysis."""
         images = []

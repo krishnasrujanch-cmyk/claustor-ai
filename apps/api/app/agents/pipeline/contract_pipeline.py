@@ -143,7 +143,9 @@ class ContractPipeline:
 
             # ── Vision analysis for embedded images (Pro+) ──────
             if _org_plan in ("professional", "enterprise"):
-                _raw_images = _parsed_doc.get("_raw_images", [])
+                _raw_images = _parsed_doc.get("_raw_images") or _merged.get("_raw_images", [])
+                logger.info(f"vision_check: plan={_org_plan} images={len(_raw_images)}")
+                print(f"VISION_CHECK: plan={_org_plan} images={len(_raw_images)} raw_images_keys={list(_parsed_doc.keys())[:5]}", flush=True)
                 if _raw_images:
                     try:
                         vision_text = await _doc_processor.analyze_images_with_vision(
