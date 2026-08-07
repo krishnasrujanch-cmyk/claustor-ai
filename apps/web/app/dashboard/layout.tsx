@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { CommandPalette } from "@/components/layout/CommandPalette";
 import {
   LayoutDashboard, FileText, Sparkles, CheckSquare,
   GitCompare, BookOpen, Clock, BarChart2, UploadCloud,
@@ -570,12 +571,93 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Main content area with top header */}
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
         {/* Top header bar */}
-        <header style={{height:56,background:"white",borderBottom:"1px solid #E5E7EB",
-          display:"flex",alignItems:"center",justifyContent:"flex-end",
-          padding:"0 24px",gap:8,flexShrink:0}}>
-          <NotificationBell />
-          
-        </header>
+{/* Top header bar */}
+<header style={{
+  height: 56,
+  background: "white",
+  borderBottom: "1px solid #E5E7EB",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "0 20px",
+  gap: 12,
+  flexShrink: 0,
+  position: "sticky",
+  top: 0,
+  zIndex: 40,
+}}>
+
+  {/* Left: Breadcrumb */}
+  <div style={{
+    display: "flex", alignItems: "center", gap: 6,
+    fontSize: 12, color: "#94A3B8", minWidth: "max-content",
+  }}>
+    <span style={{ color: "#6B7280" }}>Dashboard</span>
+    {pathname !== "/dashboard" && (
+      <>
+        <span style={{ color: "#D1D5DB" }}>/</span>
+        <span style={{ fontWeight: 600, color: "#111827" }}>
+          {(() => {
+            const parts = pathname.split("/").filter(Boolean);
+            // Skip UUIDs (contain dashes and are long)
+            const label = parts.filter(p => 
+              !p.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) &&
+              !p.match(/^[0-9a-f]{32}$/i)
+            ).pop();
+            return label?.replace(/-/g," ").replace(/\w/g, c => c.toUpperCase()) || "";
+          })()}
+        </span>
+      </>
+    )}
+  </div>
+
+  {/* Center: Command Palette trigger */}
+  <div style={{ flex: 1, maxWidth: 420, margin: "0 auto" }}>
+    <CommandPalette />
+  </div>
+
+  {/* Right: Upload + Notifications + Profile */}
+  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: "max-content" }}>
+
+    {/* Upload contract button */}
+    <button
+      onClick={() => router.push("/dashboard/contracts")}
+      style={{
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "7px 14px", borderRadius: 10,
+        background: "#0066FF", color: "white",
+        border: "none", fontSize: 12, fontWeight: 600,
+        cursor: "pointer", transition: "background 0.15s",
+        boxShadow: "0 1px 3px rgba(0,102,255,0.3)",
+      }}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#0052CC"}
+      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#0066FF"}
+    >
+      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+      </svg>
+      Upload contract
+    </button>
+
+    <div style={{ width: 1, height: 20, background: "#E5E7EB" }} />
+
+    {/* Notifications */}
+    <NotificationBell />
+
+    {/* Profile avatar */}
+    <div style={{
+      width: 30, height: 30, borderRadius: "50%",
+      background: "linear-gradient(135deg,#5B4BFF,#06B6D4)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer",
+      boxShadow: "0 0 0 2px white, 0 0 0 3px #E2E8F0",
+    }}>
+      {user?.email?.charAt(0)?.toUpperCase() || "U"}
+    </div>
+  </div>
+</header>
+
         <main style={{flex:1,overflowY:"auto",background:C.bg}}>
           {children}
         </main>

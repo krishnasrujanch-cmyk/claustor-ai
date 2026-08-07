@@ -310,6 +310,106 @@ async def list_contracts(
     )
 
 
+@router.get("/search-suggestions")
+async def search_suggestions(
+    q: str = Query("", max_length=100),
+    limit: int = Query(5, le=10),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Smart search suggestions for ⌘K command palette.
+    Returns categorized results: contracts, counterparties, risks.
+    """
+    from sqlalchemy import text
+
+    org_id = str(user.org_id)
+    q_clean = q.strip()[:50]
+
+    contracts = []
+    counterparties = []
+    risks = []
+
+    if q_clean:
+        # Contracts — title/counterparty match
+        r = await db.execute(text("""
+            SELECT id::text, title, counterparty, contract_type, risk_level
+            FROM contracts
+            WHERE org_id = :org_id
+              AND status != 'deleted'
+              AND (
+                title ILIKE :q OR
+                counterparty ILIKE :q OR
+                contract_type ILIKE :q
+              )
+            ORDER BY
+              CASE WHEN title ILIKE :exact THEN 0
+                   WHEN counterparty ILIKE :exact THEN 1
+                   ELSE 2 END,
+              updated_at DESC
+            LIMIT :limit
+        """), {
+            "org_id": org_id,
+            "q": f"%{q_clean}%",
+            "exact": f"{q_clean}%",
+            "limit": limit,
+        })
+        for row in r.fetchall():
+            contracts.append({
+                "id": row[0], "title": row[1],
+                "counterparty": row[2], "contract_type": row[3],
+            })
+
+        # Counterparties — distinct names
+        r2 = await db.execute(text("""
+            SELECT DISTINCT counterparty
+            FROM contracts
+            WHERE org_id = :org_id
+              AND status != 'deleted'
+              AND counterparty ILIKE :q
+              AND counterparty IS NOT NULL
+            ORDER BY counterparty
+            LIMIT 4
+        """), {"org_id": org_id, "q": f"%{q_clean}%"})
+        counterparties = [row[0] for row in r2.fetchall() if row[0]]
+
+        # High-risk contracts matching query
+        r3 = await db.execute(text("""
+            SELECT c.id::text, c.title, c.risk_level
+            FROM contracts c
+            WHERE c.org_id = :org_id
+              AND c.status = 'analyzed'
+              AND c.risk_level = 'high'
+              AND (c.title ILIKE :q OR c.counterparty ILIKE :q)
+            ORDER BY c.updated_at DESC
+            LIMIT 3
+        """), {"org_id": org_id, "q": f"%{q_clean}%"})
+        for row in r3.fetchall():
+            risks.append({
+                "label": f"⚠ High Risk: {row[1][:40]}",
+                "contract": row[1],
+                "href": f"/dashboard/contracts/{row[0]}",
+            })
+    else:
+        # Empty query — return recent contracts
+        r = await db.execute(text("""
+            SELECT id::text, title, counterparty, contract_type
+            FROM contracts
+            WHERE org_id = :org_id AND status != 'deleted'
+            ORDER BY updated_at DESC
+            LIMIT :limit
+        """), {"org_id": org_id, "limit": limit})
+        for row in r.fetchall():
+            contracts.append({
+                "id": row[0], "title": row[1],
+                "counterparty": row[2], "contract_type": row[3],
+            })
+
+    return {
+        "contracts": contracts,
+        "counterparties": counterparties,
+        "risks": risks,
+    }
 @router.get("/{contract_id}", response_model=ContractDetailOut)
 async def get_contract(
     contract_id: uuid.UUID,
@@ -536,3 +636,6 @@ async def reprocess_contract(
         "contract_id": str(contract_id),
         "message":     "Reprocessing started. Check notifications when complete.",
     }
+# Add this to app/api/v1/endpoints/contracts.py
+# GET /api/v1/contracts/search-suggestions
+

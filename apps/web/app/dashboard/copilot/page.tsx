@@ -1,4 +1,5 @@
 "use client";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { contracts as contractsAPI, getToken } from "@/lib/api";
 import { Contract } from "@/lib/api";
@@ -348,6 +349,21 @@ export default function CopilotPage() {
     })();
   },[]);
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages]);
+
+  // Auto-submit query from ⌘K command palette (?q= param)
+  const searchParams = useSearchParams();
+  const lastAutoQueryRef = useRef("");
+  useEffect(()=>{
+    const q = searchParams?.get("q");
+    if (!q || q === lastAutoQueryRef.current) return;
+    lastAutoQueryRef.current = q;
+    // Clear param from URL without reload
+    const url = new URL(window.location.href);
+    url.searchParams.delete("q");
+    window.history.replaceState({}, "", url.toString());
+    // Send after short delay
+    setTimeout(()=>{ send(q); }, 400);
+  }, [searchParams]);
 
   useEffect(()=>{
     setPromptsLoading(true);

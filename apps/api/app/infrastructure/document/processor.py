@@ -312,7 +312,8 @@ class DocumentProcessor:
             return ""
 
         results = []
-        for i, img in enumerate(images[:5]):  # max 5 images
+        max_img = 20 if plan == "enterprise" else 5
+        for i, img in enumerate(images[:max_img]):
             img_bytes = img.get("bytes", b"")
             if not img_bytes:
                 continue
@@ -335,9 +336,12 @@ class DocumentProcessor:
                 import anthropic
                 from app.core.config import settings as _s
                 client = anthropic.AsyncAnthropic(api_key=_s.ANTHROPIC_API_KEY)
+                # Enterprise gets Sonnet (better accuracy), Pro gets Haiku (cost-efficient)
+                vision_model = "claude-sonnet-4-5" if plan == "enterprise" else "claude-haiku-4-5"
+                max_img = 20 if plan == "enterprise" else 5
                 response = await client.messages.create(
-                    model="claude-haiku-4-5",
-                    max_tokens=1000,
+                    model=vision_model,
+                    max_tokens=2000 if plan == "enterprise" else 1000,
                     messages=[{
                         "role": "user",
                         "content": [
