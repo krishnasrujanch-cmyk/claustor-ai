@@ -8,7 +8,7 @@ import { X, UploadCloud, FileText, CheckCircle, AlertCircle, Loader } from "luci
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type ModalState = "dropzone" | "processing" | "complete" | "error";
+type ModalState = "dropzone" | "processing" | "complete" | "error" | "minimized";
 
 interface ProcessingStep {
   id: string;
@@ -142,7 +142,14 @@ export function UploadModal({ onClose, onBackground }: UploadModalProps) {
           clearInterval(pollRef.current);
           setProgress(100);
           setSteps(INITIAL_STEPS.map(s => ({ ...s, status: "done" })));
-          setResult(data);
+          // Fetch full contract details for summary
+          try {
+            const detailRes = await fetch(`${API}/api/v1/contracts/${cid}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const detail = detailRes.ok ? await detailRes.json() : data;
+            setResult(detail);
+          } catch { setResult(data); }
           setTimeout(() => setState("complete"), 600);
         } else if (st === "error" || st === "failed") {
           clearInterval(pollRef.current);
@@ -184,15 +191,16 @@ export function UploadModal({ onClose, onBackground }: UploadModalProps) {
 
   return (
     <>
-      {/* Backdrop */}
-      <div onClick={onClose} style={{
+      {/* Backdrop — hidden when minimized */}
+      {state !== "minimized" && state !== "complete" && <div onClick={() => setState("minimized")} style={{
         position: "fixed", inset: 0, zIndex: 998,
         background: "rgba(15,23,42,0.65)",
         backdropFilter: "blur(6px)",
         animation: "fadeIn 0.15s ease",
-      }} />
+      }} />}
 
-      {/* Modal */}
+      {/* Modal — hidden when minimized */}
+      {state !== "minimized" &&
       <div style={{
         position: "fixed", top: "50%", left: "50%",
         transform: "translate(-50%, -50%)",
@@ -515,13 +523,7 @@ export function UploadModal({ onClose, onBackground }: UploadModalProps) {
             <button
               onClick={() => {
                 const cid = contractIdRef.current || contractId;
-                if (cid && file && onBackground) {
-                  onBackground(cid, file.name);
-                } else if (!cid && onBackground) {
-                  // Upload still in progress — set pending flag
-                  pendingBgRef.current = true;
-                }
-                onClose();
+                setState("minimized");
               }}
               style={{
                 padding: "6px 16px", borderRadius: 8,
@@ -530,7 +532,7 @@ export function UploadModal({ onClose, onBackground }: UploadModalProps) {
                 cursor: "pointer", fontWeight: 500,
               }}
             >
-              Run in background
+              Minimize
             </button>
             <button
               onClick={() => {
@@ -544,6 +546,113 @@ export function UploadModal({ onClose, onBackground }: UploadModalProps) {
           </div>
         )}
       </div>
+
+      }
+
+      {/* Minimized floating card */}
+      {state === "minimized" && file && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24,
+          width: 300, background: "white", borderRadius: 14,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)",
+          zIndex: 999, overflow: "hidden",
+          animation: "slideUp 0.18s ease",
+        }}>
+          {/* Header */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "10px 12px",
+            background: "#0B0F19",
+          }}>
+            <FileText size={14} color="#94A3B8" style={{ flexShrink: 0 }} />
+            <div style={{
+              flex: 1, fontSize: 11, color: "white", fontWeight: 600,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{file.name}</div>
+            <button
+              onClick={() => setState("processing")}
+              style={{ background: "none", border: "none", cursor: "pointer",
+                color: "#94A3B8", padding: 2, fontSize: 14 }}
+              title="Expand"
+            >↑</button>
+            <button
+              onClick={onClose}
+              style={{ background: "none", border: "none", cursor: "pointer",
+                color: "#94A3B8", padding: 2 }}
+              title="Dismiss"
+            ><X size={12} /></button>
+          </div>
+          {/* Progress */}
+          <div style={{ padding: "10px 12px" }}>
+            <div style={{
+              display: "flex", justifyContent: "space-between",
+              fontSize: 11, color: "#64748B", marginBottom: 6,
+            }}>
+              <span>{steps.find(s => s.status === "active")?.label || "Processing..."}</span>
+              <span style={{ fontWeight: 700, color: "#0066FF" }}>{progress}%</span>
+            </div>
+            <div style={{
+              height: 4, background: "#F1F5F9", borderRadius: 99, overflow: "hidden",
+            }}>
+              <div style={{
+                height: "100%", borderRadius: 99,
+                background: "linear-gradient(90deg,#0066FF,#06B6D4)",
+                width: `${progress}%`, transition: "width 0.5s ease",
+              }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Minimized complete card */}
+      {state === "complete" && result && contractId && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24,
+          width: 300, background: "white", borderRadius: 14,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)",
+          zIndex: 999, overflow: "hidden",
+          animation: "slideUp 0.18s ease",
+        }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "12px 14px",
+            background: "#F0FDF4", borderBottom: "1px solid #BBF7D0",
+          }}>
+            <CheckCircle size={16} color="#16A34A" />
+            <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: "#15803D" }}>
+              Analysis Complete!
+            </div>
+            <button onClick={onClose}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "#94A3B8" }}>
+              <X size={13} />
+            </button>
+          </div>
+          <div style={{ padding: "10px 14px" }}>
+            <div style={{
+              fontSize: 11, color: "#64748B", marginBottom: 8,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{file?.name}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => { onClose(); router.push(`/dashboard/contracts/${contractId}`); }}
+                style={{
+                  flex: 2, padding: "7px", borderRadius: 8,
+                  background: "#0066FF", color: "white", border: "none",
+                  fontSize: 11, fontWeight: 700, cursor: "pointer",
+                }}
+              >View Contract →</button>
+              <button
+                onClick={() => setState("dropzone")}
+                style={{
+                  flex: 1, padding: "7px", borderRadius: 8,
+                  background: "#F8FAFC", color: "#64748B",
+                  border: "1px solid #E2E8F0", fontSize: 11, cursor: "pointer",
+                }}
+              >Upload More</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
