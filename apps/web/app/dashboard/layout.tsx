@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { UploadModal } from "@/components/layout/UploadModal";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import {
   LayoutDashboard, FileText, Sparkles, CheckSquare,
@@ -236,6 +237,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [collapsed, setCollapsed] = useState(false);
   const [upgradeModal, setUpgradeModal] = useState<{feature:string;plan:string}|null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [bgJob, setBgJob] = useState<{contractId:string; fileName:string; done:boolean}|null>(null);
+
+  // Poll background job until done
+  useEffect(()=>{
+    if (!bgJob || bgJob.done) return;
+    const t = localStorage.getItem("claustor-auth");
+    const tok = t ? (() => { try { return JSON.parse(t)?.state?.token||""; } catch { return ""; } })() : "";
+    const poll = setInterval(async ()=>{
+      try {
+        const r = await fetch(`http://localhost:8000/api/v1/contracts/${bgJob.contractId}/status`,
+          { headers: { Authorization: `Bearer ${tok}` } });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d.status === "analyzed" || d.status === "error") {
+          clearInterval(poll);
+          setBgJob(prev => prev ? {...prev, done: true} : null);
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(poll);
+  }, [bgJob?.contractId, bgJob?.done]);
   const [navBadges, setNavBadges] = useState<Record<string,number>>({});
 
   useEffect(()=>{
@@ -621,7 +644,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     {/* Upload contract button */}
     <button
-      onClick={() => router.push("/dashboard/contracts")}
+     onClick={() => setShowUpload(true)}
       style={{
         display: "flex", alignItems: "center", gap: 6,
         padding: "7px 14px", borderRadius: 10,
@@ -642,6 +665,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     <div style={{ width: 1, height: 20, background: "#E5E7EB" }} />
 
+    {/* Background processing indicator */}
+    {bgJob && !bgJob.done && (
+      <div
+        onClick={() => setShowUpload(true)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          padding: "5px 10px", borderRadius: 8,
+          background: "#EFF6FF", border: "1px solid #DBEAFE",
+          cursor: "pointer", fontSize: 11, color: "#0066FF",
+          fontWeight: 600,
+        }}
+      >
+        <div style={{
+          width: 8, height: 8, borderRadius: "50%",
+          border: "2px solid #0066FF", borderTopColor: "transparent",
+          animation: "spin 0.6s linear infinite",
+        }} />
+        Analyzing...
+      </div>
+    )}
+    {bgJob && bgJob.done && (
+      <div
+        onClick={() => { router.push(`/dashboard/contracts/${bgJob.contractId}`); setBgJob(null); }}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          padding: "5px 10px", borderRadius: 8,
+          background: "#F0FDF4", border: "1px solid #BBF7D0",
+          cursor: "pointer", fontSize: 11, color: "#16A34A",
+          fontWeight: 600,
+        }}
+      >
+        ✓ Analysis complete — View
+      </div>
+    )}
     {/* Notifications */}
     <NotificationBell />
 
@@ -662,6 +719,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+
+      {showUpload && <UploadModal onClose={() => setShowUpload(false)} onBackground={(cid, name) => { console.log("BG JOB:", cid, name); setBgJob({contractId:cid, fileName:name, done:false}); }} />}
     </div>
   );
 }
