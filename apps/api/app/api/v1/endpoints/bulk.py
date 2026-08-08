@@ -219,3 +219,36 @@ async def get_job_status(
         "completed_at":job.completed_at.isoformat() if job.completed_at else None,
         "progress_pct":round((job.processed or 0) / max(job.total_files or 1, 1) * 100),
     }
+
+
+@router.get("/jobs")
+async def list_bulk_jobs(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all bulk import jobs for the org."""
+    from sqlalchemy import select, desc
+    from app.domain.models import models as _m
+    r = await db.execute(
+        select(_m.BulkImportJob)
+        .where(_m.BulkImportJob.org_id == user.org_id)
+        .order_by(desc(_m.BulkImportJob.created_at))
+        .limit(20)
+    )
+    jobs = r.scalars().all()
+    return {
+        "jobs": [
+            {
+                "job_id":     str(j.id),
+                "status":     j.status,
+                "total":      j.total_files or 0,
+                "processed":  j.processed or 0,
+                "succeeded":  j.succeeded or 0,
+                "failed":     j.failed or 0,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+                "completed_at": j.completed_at.isoformat() if j.completed_at else None,
+                "results":    j.results or [],
+            }
+            for j in jobs
+        ]
+    }

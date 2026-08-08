@@ -11,6 +11,44 @@ export default function BulkImportPage() {
   const [job, setJob] = useState<any>(null);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+
+  // Load past bulk import jobs
+  useEffect(() => {
+    const token = getToken();
+    if (!token) { setLoadingJobs(false); return; }
+    fetch(`${API}/api/v1/bulk/jobs`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : { jobs: [] })
+      .then(d => { setJobs(d.jobs || []); })
+      .catch(() => {})
+      .finally(() => setLoadingJobs(false));
+  }, []);
+
+  // Poll active job status
+  useEffect(() => {
+    if (!job || job.status === "completed" || job.status === "failed") return;
+    const interval = setInterval(async () => {
+      const token = getToken();
+      const r = await fetch(`${API}/api/v1/bulk/${job.job_id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setJob(d);
+        if (d.status === "completed" || d.status === "failed") {
+          clearInterval(interval);
+          // Refresh jobs list
+          fetch(`${API}/api/v1/bulk/jobs`, {
+            headers: { Authorization: `Bearer ${token}` }
+          }).then(r => r.json()).then(d => setJobs(d.jobs || []));
+        }
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [job]);
 
   const handleUpload = async (file: File) => {
     if (!file.name.endsWith(".zip")) {
@@ -177,6 +215,64 @@ export default function BulkImportPage() {
       )}
 
       <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`}</style>
+
+      {/* Past Import Jobs */}
+      {(jobs.length > 0 || loadingJobs) && (
+        <div style={{marginTop:32}}>
+          <h2 style={{fontSize:16,fontWeight:700,color:C.heading,marginBottom:16}}>
+            Import History
+          </h2>
+          {loadingJobs ? (
+            <div style={{padding:32}}><ClauStorLoader text="LOADING" /></div>
+          ) : (
+            <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+              {/* Header */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 80px 80px 80px 100px 120px",
+                padding:"10px 20px",background:C.bg,borderBottom:`1px solid ${C.border}`,
+                fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                {["Date","Total","Done","Failed","Status","Duration"].map(h=>(
+                  <div key={h}>{h}</div>
+                ))}
+              </div>
+              {jobs.map((j,i)=>{
+                const created = new Date(j.created_at||Date.now());
+                const completed = j.completed_at ? new Date(j.completed_at) : null;
+                const duration = completed
+                  ? `${Math.round((completed.getTime()-created.getTime())/1000)}s`
+                  : j.status === "processing" ? "Running..." : "—";
+                const statusColor = j.status==="completed" ? "#22C55E"
+                  : j.status==="failed" ? "#EF4444"
+                  : j.status==="partial" ? "#F59E0B" : "#0066FF";
+                return (
+                  <div key={i} style={{display:"grid",
+                    gridTemplateColumns:"1fr 80px 80px 80px 100px 120px",
+                    padding:"12px 20px",borderBottom:i<jobs.length-1?`1px solid ${C.border}`:"none",
+                    alignItems:"center",fontSize:13}}>
+                    <div style={{fontWeight:600,color:C.heading}}>
+                      {created.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}
+                      <div style={{fontSize:11,color:C.muted,fontWeight:400}}>
+                        {created.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}
+                      </div>
+                    </div>
+                    <div style={{fontWeight:600}}>{j.total}</div>
+                    <div style={{color:"#22C55E",fontWeight:600}}>{j.succeeded}</div>
+                    <div style={{color:j.failed>0?"#EF4444":C.muted,fontWeight:j.failed>0?700:400}}>
+                      {j.failed}
+                    </div>
+                    <div>
+                      <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",
+                        borderRadius:20,background:`${statusColor}15`,color:statusColor}}>
+                        {j.status.charAt(0).toUpperCase()+j.status.slice(1)}
+                      </span>
+                    </div>
+                    <div style={{fontSize:12,color:C.muted}}>{duration}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
