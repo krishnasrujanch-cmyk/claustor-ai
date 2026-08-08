@@ -1,6 +1,5 @@
 "use client";
 import Link from "next/link";
-import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
 import { Pagination } from "@/components/shared/Pagination";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { getToken } from "@/lib/api";
@@ -15,13 +14,6 @@ const RISK_META: Record<string,{bg:string,text:string,dot:string}> = {
   medium: {bg:"#FFFBEB",text:"#D97706",dot:"#F59E0B"},
   low:    {bg:"#F0FDF4",text:"#16A34A",dot:"#22C55E"},
 };
-function formatValue(v: number | null | undefined): string {
-  if (!v) return "—";
-  if (v >= 10000000) return `$${(v/1000000).toFixed(1)}M`;
-  if (v >= 100000)   return `$${(v/1000).toFixed(0)}K`;
-  return `$${v.toLocaleString()}`;
-}
-
 const REVIEW_META: Record<string,{bg:string,text:string,label:string}> = {
   approved:        {bg:"#F0FDF4",text:"#16A34A",label:"✅ Approved"},
   rejected:        {bg:"#FEF2F2",text:"#DC2626",label:"❌ Rejected"},
@@ -142,23 +134,12 @@ export default function ContractsPage() {
   const [risk, setRisk]           = useState("");
   const [status, setStatus]       = useState("");
   const [quickTab, setQuickTab]   = useState("all");
-  const [showFilters, setShowFilters] = useState(false);
-  const [uploadedBy, setUploadedBy]   = useState("");
-  const [contractType, setContractType] = useState("");
-  const [counterpartyFilter, setCounterpartyFilter] = useState("");
-  const [dateFrom, setDateFrom]       = useState("");
-  const [dateTo, setDateTo]           = useState("");
-  const [valueMin, setValueMin]       = useState("");
-  const [valueMax, setValueMax]       = useState("");
-  const [expiryDays, setExpiryDays]   = useState("");
-  const [orgUsers, setOrgUsers]       = useState<any[]>([]);
   const [loading, setLoading]     = useState(true);
   const [uploads, setUploads]     = useState<UploadState[]>([]);
   const [toast, setToast]         = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded]   = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
-  const [pageSize, setPageSize] = useState(20);
+  const PAGE_SIZE = 20;
 
   // Quick tab counts
   const tabCounts = useMemo(()=>({
@@ -173,18 +154,10 @@ export default function ContractsPage() {
     setLoading(true);
     const token = getToken();
     const params = new URLSearchParams({
-      page:String(page), page_size:String(pageSize),
+      page:String(page), page_size:String(PAGE_SIZE),
       ...(search && {search}),
       ...(risk && {risk_level:risk}),
       ...(status && {status}),
-      ...(uploadedBy && {uploaded_by:uploadedBy}),
-      ...(contractType && {contract_type:contractType}),
-      ...(counterpartyFilter && {counterparty:counterpartyFilter}),
-      ...(dateFrom && {date_from:dateFrom}),
-      ...(dateTo && {date_to:dateTo}),
-      ...(valueMin && {value_min:valueMin}),
-      ...(valueMax && {value_max:valueMax}),
-      ...(expiryDays && {expiry_days:expiryDays}),
     });
     try {
       const r = await fetch(`${API}/api/v1/contracts/grouped?${params}`,
@@ -194,21 +167,9 @@ export default function ContractsPage() {
       setTotal(d.total||0);
     } catch(e) { console.error(e); }
     finally { setLoading(false); }
-  }, [page, pageSize, search, risk, status, uploadedBy, contractType, counterpartyFilter, dateFrom, dateTo, valueMin, valueMax, expiryDays]);
+  }, [page, search, risk, status]);
 
   useEffect(()=>{ load(); },[load]);
-
-  const activeFilterCount = [uploadedBy, contractType, counterpartyFilter,
-    dateFrom, dateTo, valueMin, valueMax, expiryDays].filter(Boolean).length;
-
-
-  // Load org users for "Uploaded by" filter
-  useEffect(()=>{
-    const token = getToken();
-    if(!token) return;
-    fetch(`${API}/api/v1/users/`,{headers:{Authorization:`Bearer ${token}`}})
-      .then(r=>r.json()).then(d=>setOrgUsers(d.users||[])).catch(()=>{});
-  },[]);
 
   // Apply quick tab filter locally
   const displayContracts = useMemo(()=>{
@@ -321,326 +282,147 @@ export default function ContractsPage() {
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div style={{display:"flex",justifyContent:"space-between",
-        alignItems:"center",marginBottom:20,gap:10}}>
+        alignItems:"center",marginBottom:20}}>
         <div>
           <h1 style={{fontSize:22,fontWeight:800,color:C.heading,marginBottom:2}}>
             Contracts
           </h1>
           <p style={{fontSize:13,color:C.muted}}>{total} contract families</p>
         </div>
+        {can(role,"contract.upload") && (
+          <>
+            <button onClick={()=>fileRef.current?.click()}
+              style={{background:C.primary,color:"white",border:"none",
+                borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:600,
+                cursor:"pointer",display:"flex",alignItems:"center",gap:6,
+                boxShadow:"0 2px 8px rgba(91,75,255,0.3)"}}>
+              ⬆ Upload contract
+            </button>
+            <input ref={fileRef} type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.xml"
+              style={{display:"none"}}
+              onChange={e=>e.target.files?.[0]&&handleUpload(e.target.files[0])}/>
+          </>
+        )}
+      </div>
 
-        {/* Right actions */}
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {/* Refresh */}
-          <button
-            onClick={()=>{ setPage(1); load(); }}
-            title="Refresh"
-            style={{
-              width:34, height:34, borderRadius:8,
-              border:"1px solid #E2E8F0", background:"white",
-              cursor:"pointer", display:"flex",
-              alignItems:"center", justifyContent:"center",
-              color:"#64748B", fontSize:18, fontWeight:300,
-              transition:"all 0.15s",
-            }}
-            onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background="#F8FAFC"}
-            onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="white"}
-          >↻</button>
+      {/* ── Upload Progress ─────────────────────────────────────────────── */}
+      {uploads.filter(u=>!u.done).map(u=>(
+        <div key={u._id} style={{background:C.surface,
+          border:`1.5px solid ${u.error?C.error:C.primary}`,
+          borderRadius:12,padding:20,marginBottom:16,
+          boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",
+            alignItems:"center",marginBottom:12}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:C.heading}}>
+                {u.file.name}
+                {u.parentId&&<span style={{fontSize:11,color:C.primary,marginLeft:8,
+                  background:C.primaryLight,padding:"1px 6px",borderRadius:20}}>
+                  new version
+                </span>}
+              </div>
+              <div style={{fontSize:12,color:u.error?C.error:C.primary,marginTop:2}}>
+                {u.error||u.step}
+              </div>
+            </div>
+            <div style={{fontSize:13,fontWeight:700,color:u.error?C.error:C.primary}}>
+              {u.error?"Failed":u.status==="uploading"?`${u.uploadPct}%`:`${u.analysisPct}%`}
+            </div>
+          </div>
+          {u.status==="uploading"&&(
+            <div style={{height:6,background:C.border,borderRadius:3,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${u.uploadPct}%`,
+                background:C.primary,borderRadius:3,transition:"width 0.3s"}}/>
+            </div>
+          )}
+          {u.status!=="uploading"&&!u.error&&(
+            <div>
+              <div style={{display:"flex",gap:4,marginBottom:8}}>
+                {STEPS.map(step=>{
+                  const done=STEPS.indexOf(u.status)>=STEPS.indexOf(step);
+                  return(
+                    <div key={step} style={{flex:1,textAlign:"center"}}>
+                      <div style={{height:4,borderRadius:2,
+                        background:done?C.primary:C.border,marginBottom:4,
+                        transition:"background 0.3s"}}/>
+                      <div style={{fontSize:9,color:done?C.primary:C.muted,
+                        fontWeight:done?600:400,textTransform:"capitalize"}}>
+                        {step}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${u.analysisPct}%`,
+                  background:`linear-gradient(90deg,${C.primary},#06B6D4)`,
+                  borderRadius:4,transition:"width 0.5s ease"}}/>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
 
-          {/* Page size */}
-          <select
-            value={pageSize}
-            onChange={e=>{ setPageSize(Number(e.target.value)); setPage(1); }}
-            style={{
-              padding:"6px 8px", borderRadius:8,
-              border:"1px solid #E2E8F0", fontSize:12,
-              color:"#374151", background:"white", cursor:"pointer",
-              height:34,
-            }}>
-            <option value={10}>10 / page</option>
-            <option value={20}>20 / page</option>
-            <option value={50}>50 / page</option>
-            <option value={100}>100 / page</option>
+      {/* ── Search + Filters ────────────────────────────────────────────── */}
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,
+        borderRadius:12,padding:"14px 16px",marginBottom:16,
+        boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+        <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:220,position:"relative"}}>
+            <span style={{position:"absolute",left:10,top:"50%",
+              transform:"translateY(-50%)",color:C.muted,fontSize:14}}>🔍</span>
+            <input value={search}
+              onChange={e=>{setSearch(e.target.value);setPage(1);setQuickTab("all");}}
+              placeholder="Search contracts, counterparties..."
+              style={{width:"100%",padding:"8px 12px 8px 32px",
+                border:`1.5px solid ${C.border}`,borderRadius:8,
+                fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <select value={risk} onChange={e=>{setRisk(e.target.value);setPage(1);}}
+            style={{padding:"8px 12px",border:`1.5px solid ${C.border}`,
+              borderRadius:8,fontSize:13,background:C.surface,cursor:"pointer"}}>
+            <option value="">All Risk Levels</option>
+            <option value="high">🔴 High Risk</option>
+            <option value="medium">🟡 Medium Risk</option>
+            <option value="low">🟢 Low Risk</option>
           </select>
-
-          {/* Upload — last */}
-          {can(role,"contract.upload") && (
-            <>
-              <button
-                onClick={()=>fileRef.current?.click()}
-                title="Upload contract"
-                style={{
-                  width:34, height:34, borderRadius:8,
-                  background:"#0066FF", color:"white",
-                  border:"none", cursor:"pointer",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  boxShadow:"0 1px 3px rgba(0,102,255,0.3)",
-                }}
-                onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background="#0052CC"}
-                onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="#0066FF"}
-              >
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-                </svg>
-              </button>
-              <input ref={fileRef} type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.xml"
-                style={{display:"none"}}
-                onChange={e=>e.target.files?.[0]&&handleUpload(e.target.files[0])}/>
-            </>
+          <select value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}
+            style={{padding:"8px 12px",border:`1.5px solid ${C.border}`,
+              borderRadius:8,fontSize:13,background:C.surface,cursor:"pointer"}}>
+            <option value="">All Statuses</option>
+            <option value="analyzed">Analyzed</option>
+            <option value="queued">Processing</option>
+            <option value="failed">Failed</option>
+          </select>
+          {(search||risk||status) && (
+            <button onClick={()=>{setSearch("");setRisk("");setStatus("");setPage(1);}}
+              style={{padding:"8px 14px",background:C.errorLight,border:"none",
+                borderRadius:8,fontSize:12,color:C.error,cursor:"pointer",fontWeight:600}}>
+              ✕ Clear
+            </button>
           )}
         </div>
-      </div>
 
-
-      {/* ── Filter bar ──────────────────────────────────────────────────── */}
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-        {/* Filters toggle */}
-        <button
-          onClick={()=>setShowFilters(f=>!f)}
-          style={{
-            display:"flex",alignItems:"center",gap:6,
-            padding:"6px 12px",borderRadius:8,fontSize:12,fontWeight:600,
-            border:"1px solid #E2E8F0",cursor:"pointer",
-            background:showFilters?"#EFF6FF":"white",
-            color:showFilters?"#0066FF":"#374151",
-            transition:"all 0.15s",
-          }}>
-          <span>⚙</span>
-          Filters
-          {activeFilterCount > 0 && (
-            <span style={{
-              background:"#0066FF",color:"white",
-              borderRadius:"50%",width:16,height:16,
-              fontSize:9,fontWeight:800,
-              display:"flex",alignItems:"center",justifyContent:"center",
-            }}>{activeFilterCount}</span>
-          )}
-          <span style={{fontSize:10}}>{showFilters?"▲":"▼"}</span>
-        </button>
-
-        {/* Active filter chips */}
-        {uploadedBy && (
-          <span style={{fontSize:11,padding:"3px 8px",borderRadius:20,
-            background:"#EFF6FF",color:"#0066FF",border:"1px solid #DBEAFE",
-            display:"flex",alignItems:"center",gap:4}}>
-            👤 {orgUsers.find(u=>u.id===uploadedBy)?.full_name||"User"}
-            <button onClick={()=>setUploadedBy("")}
-              style={{background:"none",border:"none",cursor:"pointer",
-                color:"#0066FF",fontSize:12,padding:0}}>×</button>
-          </span>
-        )}
-        {contractType && (
-          <span style={{fontSize:11,padding:"3px 8px",borderRadius:20,
-            background:"#EFF6FF",color:"#0066FF",border:"1px solid #DBEAFE",
-            display:"flex",alignItems:"center",gap:4}}>
-            📂 {contractType}
-            <button onClick={()=>setContractType("")}
-              style={{background:"none",border:"none",cursor:"pointer",
-                color:"#0066FF",fontSize:12,padding:0}}>×</button>
-          </span>
-        )}
-        {expiryDays && (
-          <span style={{fontSize:11,padding:"3px 8px",borderRadius:20,
-            background:"#FFF7ED",color:"#D97706",border:"1px solid #FDE68A",
-            display:"flex",alignItems:"center",gap:4}}>
-            ⏰ Expiring in {expiryDays}d
-            <button onClick={()=>setExpiryDays("")}
-              style={{background:"none",border:"none",cursor:"pointer",
-                color:"#D97706",fontSize:12,padding:0}}>×</button>
-          </span>
-        )}
-        {activeFilterCount > 0 && (
-          <button
-            onClick={()=>{
-              setUploadedBy(""); setContractType(""); setCounterpartyFilter("");
-              setDateFrom(""); setDateTo(""); setValueMin("");
-              setValueMax(""); setExpiryDays("");
-            }}
-            style={{fontSize:11,color:"#EF4444",background:"none",
-              border:"none",cursor:"pointer",fontWeight:600}}>
-            Clear all ×
-          </button>
-        )}
-      </div>
-
-      {/* ── Advanced filter panel ────────────────────────────────────────── */}
-      {showFilters && (
-        <div style={{
-          background:"white",border:"1px solid #E2E8F0",
-          borderRadius:12,padding:"16px 20px",marginBottom:16,
-          boxShadow:"0 4px 12px rgba(0,0,0,0.06)",
-          display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,
-        }}>
-          {/* Uploaded by */}
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",
-              display:"block",marginBottom:4}}>👤 Uploaded By</label>
-            <select value={uploadedBy} onChange={e=>setUploadedBy(e.target.value)}
-              style={{width:"100%",padding:"7px 8px",borderRadius:8,
-                border:"1px solid #E2E8F0",fontSize:12,color:"#374151",background:"white"}}>
-              <option value="">All users</option>
-              {orgUsers.map(u=>(
-                <option key={u.id} value={u.id}>{u.full_name||u.email}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Contract type */}
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",
-              display:"block",marginBottom:4}}>📂 Contract Type</label>
-            <select value={contractType} onChange={e=>setContractType(e.target.value)}
-              style={{width:"100%",padding:"7px 8px",borderRadius:8,
-                border:"1px solid #E2E8F0",fontSize:12,color:"#374151",background:"white"}}>
-              <option value="">All types</option>
-              {["MSA","NDA","License","Vendor","SaaS","Employment","Lease","Service","Other"]
-                .map(t=><option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-
-          {/* Counterparty */}
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",
-              display:"block",marginBottom:4}}>🏢 Counterparty</label>
-            <input value={counterpartyFilter}
-              onChange={e=>setCounterpartyFilter(e.target.value)}
-              placeholder="Type company name..."
-              style={{width:"100%",padding:"7px 8px",borderRadius:8,
-                border:"1px solid #E2E8F0",fontSize:12,boxSizing:"border-box"}}/>
-          </div>
-
-          {/* Expiry */}
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",
-              display:"block",marginBottom:4}}>⏰ Expiring Within</label>
-            <select value={expiryDays} onChange={e=>setExpiryDays(e.target.value)}
-              style={{width:"100%",padding:"7px 8px",borderRadius:8,
-                border:"1px solid #E2E8F0",fontSize:12,color:"#374151",background:"white"}}>
-              <option value="">Any time</option>
-              <option value="30">Next 30 days</option>
-              <option value="60">Next 60 days</option>
-              <option value="90">Next 90 days</option>
-              <option value="180">Next 6 months</option>
-            </select>
-          </div>
-
-          {/* Date from */}
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",
-              display:"block",marginBottom:4}}>📅 Uploaded From</label>
-            <input type="date" value={dateFrom}
-              onChange={e=>setDateFrom(e.target.value)}
-              style={{width:"100%",padding:"7px 8px",borderRadius:8,
-                border:"1px solid #E2E8F0",fontSize:12,boxSizing:"border-box"}}/>
-          </div>
-
-          {/* Date to */}
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",
-              display:"block",marginBottom:4}}>📅 Uploaded To</label>
-            <input type="date" value={dateTo}
-              onChange={e=>setDateTo(e.target.value)}
-              style={{width:"100%",padding:"7px 8px",borderRadius:8,
-                border:"1px solid #E2E8F0",fontSize:12,boxSizing:"border-box"}}/>
-          </div>
-
-          {/* Value min */}
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",
-              display:"block",marginBottom:4}}>💰 Min Value</label>
-            <input type="number" value={valueMin}
-              onChange={e=>setValueMin(e.target.value)}
-              placeholder="e.g. 100000"
-              style={{width:"100%",padding:"7px 8px",borderRadius:8,
-                border:"1px solid #E2E8F0",fontSize:12,boxSizing:"border-box"}}/>
-          </div>
-
-          {/* Value max */}
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:"#6B7280",
-              display:"block",marginBottom:4}}>💰 Max Value</label>
-            <input type="number" value={valueMax}
-              onChange={e=>setValueMax(e.target.value)}
-              placeholder="e.g. 10000000"
-              style={{width:"100%",padding:"7px 8px",borderRadius:8,
-                border:"1px solid #E2E8F0",fontSize:12,boxSizing:"border-box"}}/>
-          </div>
+        {/* Quick Tabs */}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {[
+            {key:"all",    label:`All`,           count:total},
+            {key:"high",   label:`🔴 High Risk`,  count:tabCounts.high},
+            {key:"medium", label:`🟡 Medium`,      count:tabCounts.medium},
+            {key:"low",    label:`🟢 Low Risk`,   count:tabCounts.low},
+            {key:"pending",label:`⏳ Pending Review`,count:tabCounts.pending},
+          ].map(tab=>(
+            <button key={tab.key}
+              onClick={()=>{setQuickTab(tab.key);}}
+              style={{padding:"5px 14px",borderRadius:20,border:"none",cursor:"pointer",
+                fontSize:12,fontWeight:600,transition:"all 0.15s",
+                background:quickTab===tab.key?C.primary:C.bg,
+                color:quickTab===tab.key?"white":C.muted}}>
+              {tab.label} ({tab.count})
+            </button>
+          ))}
         </div>
-      )}
-      {/* Batch action bar */}
-      {selected.size > 0 && (
-        <div style={{
-          display:"flex", alignItems:"center", gap:10,
-          padding:"10px 16px",
-          background:"#EFF6FF", border:"1px solid #DBEAFE",
-          borderRadius:10, marginBottom:12,
-          animation:"fadeIn 0.15s ease",
-        }}>
-          <span style={{fontSize:12,fontWeight:700,color:"#0066FF"}}>
-            {selected.size} selected
-          </span>
-          <div style={{width:1,height:16,background:"#DBEAFE"}}/>
-          <button
-            onClick={()=>{
-              const rows = displayContracts.filter(c=>selected.has(c.id));
-              const csv = [
-                ["Title","Counterparty","Type","Risk","Value","Expiry","Status"].join(","),
-                ...rows.map(c=>[
-                  `"${c.title||""}"`,
-                  `"${c.counterparty||""}"`,
-                  `"${c.contract_type||""}"`,
-                  c.risk_level||"",
-                  c.contract_value||"",
-                  c.expiry_date||"",
-                  c.status||""
-                ].join(","))
-              ].join("\n");
-              const blob = new Blob([csv],{type:"text/csv"});
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href=url; a.download="contracts.csv"; a.click();
-              URL.revokeObjectURL(url);
-            }}
-            style={{fontSize:12,fontWeight:600,color:"#374151",
-              background:"white",border:"1px solid #E2E8F0",
-              borderRadius:7,padding:"5px 10px",cursor:"pointer"}}>
-            📥 Export
-          </button>
-          <button
-            onClick={()=>{
-              const firstId = Array.from(selected)[0];
-              if(firstId) router.push(`/dashboard/contracts/${firstId}`);
-            }}
-            style={{fontSize:12,fontWeight:600,color:"#374151",
-              background:"white",border:"1px solid #E2E8F0",
-              borderRadius:7,padding:"5px 10px",cursor:"pointer"}}>
-            📋 Assign Review
-          </button>
-          <button
-            onClick={async()=>{
-              const token = getToken();
-              for(const id of selected){
-                await fetch(`${API}/api/v1/contracts/${id}`,
-                  {method:"DELETE",headers:{Authorization:`Bearer ${token}`}});
-              }
-              setContracts(prev=>prev.filter(c=>!selected.has(c.id)));
-              setTotal(prev=>prev-selected.size);
-              setSelected(new Set());
-            }}
-            style={{fontSize:12,fontWeight:600,color:"#EF4444",
-              background:"#FEF2F2",border:"1px solid #FCA5A5",
-              borderRadius:7,padding:"5px 10px",cursor:"pointer"}}>
-            🗑 Delete
-          </button>
-          <button
-            onClick={()=>setSelected(new Set())}
-            style={{marginLeft:"auto",fontSize:12,color:"#94A3B8",
-              background:"none",border:"none",cursor:"pointer",fontWeight:600}}>
-            Clear ×
-          </button>
-        </div>
-      )}
+      </div>
 
       {/* ── Table ───────────────────────────────────────────────────────── */}
       <div style={{background:C.surface,border:`1px solid ${C.border}`,
@@ -648,7 +430,10 @@ export default function ContractsPage() {
         boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
 
         {loading ? (
-<div style={{padding:60}}><ClauStorLoader size={44} text="LOADING" /></div>
+          <div style={{padding:60,textAlign:"center",color:C.muted}}>
+            <div style={{fontSize:24,marginBottom:8}}>⏳</div>
+            Loading contracts...
+          </div>
         ) : displayContracts.length===0 ? (
           <div style={{padding:60,textAlign:"center"}}>
             <div style={{fontSize:48,marginBottom:12}}>📄</div>
@@ -663,14 +448,9 @@ export default function ContractsPage() {
           <>
             {/* Table Header */}
             <div style={{display:"grid",
-              gridTemplateColumns:"36px minmax(180px,2fr) minmax(120px,1.5fr) 120px 100px 130px 80px",
+              gridTemplateColumns:"minmax(180px,2fr) minmax(120px,1.5fr) 150px 110px 145px 90px",
               padding:"10px 20px",background:"#F8F9FF",
               borderBottom:`2px solid ${C.border}`}}>
-              <input type="checkbox"
-                  style={{cursor:"pointer",accentColor:"#0066FF"}}
-                  checked={selected.size===displayContracts.length && displayContracts.length>0}
-                  onChange={e=>setSelected(e.target.checked ? new Set(displayContracts.map(c=>c.id)) : new Set())}
-                />
               {["CONTRACT & TYPE","COUNTERPARTY","VALUE","RISK","REVIEW STATUS","ACTION"].map((h,i)=>(
                 <div key={i} style={{fontSize:11,fontWeight:700,color:C.muted,
                   textTransform:"uppercase",letterSpacing:"0.06em",
@@ -691,41 +471,13 @@ export default function ContractsPage() {
 
                   {/* Main Row */}
                   <div style={{display:"grid",
-                    gridTemplateColumns:"36px minmax(180px,2fr) minmax(120px,1.5fr) 120px 100px 130px 80px",
+                    gridTemplateColumns:"minmax(180px,2fr) minmax(120px,1.5fr) 150px 110px 145px 90px",
                     padding:"14px 20px",alignItems:"center",
-                    background:isExpanded ? C.primaryLight
-                      : c.risk_level==="high" ? "#FFF9F9"
-                      : c.risk_level==="medium" ? "#FFFDF5"
-                      : C.surface,
-                    borderLeft: c.risk_level==="high" ? "3px solid #EF4444"
-                      : c.risk_level==="medium" ? "3px solid #F59E0B"
-                      : "3px solid transparent",
+                    background:isExpanded?C.primaryLight:C.surface,
                     transition:"background 0.15s"}}
-                    onMouseEnter={e=>{
-                      if(!isExpanded) e.currentTarget.style.background=
-                        c.risk_level==="high"?"#FEF2F2":
-                        c.risk_level==="medium"?"#FFFBEB":"#F8FAFC";
-                    }}
-                    onMouseLeave={e=>{
-                      if(!isExpanded) e.currentTarget.style.background=
-                        c.risk_level==="high"?"#FFF9F9":
-                        c.risk_level==="medium"?"#FFFDF5":C.surface;
-                    }}>
+                    onMouseEnter={e=>{if(!isExpanded)e.currentTarget.style.background=C.bg;}}
+                    onMouseLeave={e=>{if(!isExpanded)e.currentTarget.style.background=C.surface;}}>
 
-                    {/* Checkbox */}
-                    <input type="checkbox"
-                      style={{cursor:"pointer",accentColor:"#0066FF"}}
-                      checked={selected.has(c.id)}
-                      onChange={e=>{
-                        e.stopPropagation();
-                        setSelected(prev=>{
-                          const s=new Set(prev);
-                          e.target.checked?s.add(c.id):s.delete(c.id);
-                          return s;
-                        });
-                      }}
-                      onClick={e=>e.stopPropagation()}
-                    />
                     {/* Contract & Type */}
                     <div style={{display:"flex",alignItems:"center",gap:10}}>
                       {/* Risk dot */}
@@ -792,28 +544,17 @@ export default function ContractsPage() {
                     <div>
                       {c.review_status
                         ? <ReviewBadge status={c.review_status} riskLevel={c.risk_level}/>
-                        : <span style={{fontSize:10,padding:"2px 8px",borderRadius:20,
-                            background:"#FFFBEB",color:"#D97706",border:"1px solid #FDE68A",
-                            fontWeight:600, whiteSpace:"nowrap"}}>Needs Review</span>}
+                        : <span style={{color:C.muted,fontSize:12}}>—</span>}
                     </div>
 
-                    {/* Action icons */}
-                    <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"flex-end"}}>
+                    {/* Action — Primary + Menu */}
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <button
-                        title="View contract"
                         onClick={()=>router.push(`/dashboard/contracts/${c.id}`)}
-                        style={{width:28,height:28,borderRadius:7,border:"1px solid #E2E8F0",
-                          background:"white",cursor:"pointer",fontSize:13,
-                          display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        🔍
-                      </button>
-                      <button
-                        title="Open in Copilot"
-                        onClick={()=>router.push(`/dashboard/copilot?contract=${c.id}`)}
-                        style={{width:28,height:28,borderRadius:7,border:"1px solid #E2E8F0",
-                          background:"white",cursor:"pointer",fontSize:13,
-                          display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        ⚡
+                        style={{padding:"5px 12px",background:C.primary,color:"white",
+                          border:"none",borderRadius:7,fontSize:12,fontWeight:600,
+                          cursor:"pointer",whiteSpace:"nowrap"}}>
+                        View
                       </button>
                       <ActionMenu
                         contract={c} role={role}
@@ -881,9 +622,9 @@ export default function ContractsPage() {
               );
             })}
 
-            {Math.ceil(total/pageSize)>1 && (
-              <Pagination page={page} totalPages={Math.ceil(total/pageSize)}
-                total={total} pageSize={pageSize} onPage={setPage}/>
+            {Math.ceil(total/PAGE_SIZE)>1 && (
+              <Pagination page={page} totalPages={Math.ceil(total/PAGE_SIZE)}
+                total={total} pageSize={PAGE_SIZE} onPage={setPage}/>
             )}
           </>
         )}

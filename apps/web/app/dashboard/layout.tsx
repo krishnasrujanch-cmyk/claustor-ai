@@ -1,10 +1,12 @@
 "use client";
+import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { ProfilePopup } from "@/components/layout/ProfilePopup";
 import { UploadModal } from "@/components/layout/UploadModal";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import {
@@ -238,6 +240,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [collapsed, setCollapsed] = useState(false);
   const [upgradeModal, setUpgradeModal] = useState<{feature:string;plan:string}|null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [bgJob, setBgJob] = useState<{contractId:string; fileName:string; done:boolean}|null>(null);
 
   // Poll background job until done
@@ -284,7 +287,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
       <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.bg}}>
         <div style={{textAlign:"center"}}>
-          <div style={{width:40,height:40,borderRadius:"50%",border:`3px solid ${C.primary}`,borderTopColor:"transparent",animation:"spin 0.8s linear infinite",margin:"0 auto 16px"}}/>
+          <div style={{position:"relative",width:44,height:44,margin:"0 auto 16px"}}>
+            <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"3px solid #EFF6FF",borderTopColor:"#0066FF",animation:"spin 1s linear infinite"}}/>
+            <div style={{position:"absolute",inset:6,borderRadius:"50%",border:"2px solid #DBEAFE",borderBottomColor:"#60A5FA",animation:"spin 0.7s linear infinite reverse"}}/>
+            <div style={{position:"absolute",inset:16,borderRadius:"50%",background:"#0066FF"}}/>
+          </div>
           <p style={{color:C.muted,fontSize:14}}>Loading...</p>
         </div>
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -615,7 +622,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     display: "flex", alignItems: "center", gap: 6,
     fontSize: 12, color: "#94A3B8", minWidth: "max-content",
   }}>
-    <span style={{ color: "#6B7280" }}>Dashboard</span>
+    <span
+      onClick={() => router.push("/dashboard")}
+      style={{ color: "#94A3B8", cursor: "pointer" }}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#0066FF"}
+      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#94A3B8"}
+    >Dashboard</span>
     {pathname !== "/dashboard" && (
       <>
         <span style={{ color: "#D1D5DB" }}>/</span>
@@ -627,7 +639,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               !p.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) &&
               !p.match(/^[0-9a-f]{32}$/i)
             ).pop();
-            return label?.replace(/-/g," ").replace(/\w/g, c => c.toUpperCase()) || "";
+            const map: Record<string,string> = {
+              contracts:"Contracts", copilot:"AI Copilot", analytics:"Analytics",
+              settings:"Settings", reviews:"Reviews", obligations:"Obligations",
+              compare:"Compare", bulk:"Bulk Import", admin:"Admin", playbook:"Playbook",
+            };
+            return map[label||""] || label?.replace(/-/g," ").replace(/\b\w/g, c => c.toUpperCase()) || "";
           })()}
         </span>
       </>
@@ -644,23 +661,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     {/* Upload contract button */}
     <button
-     onClick={() => setShowUpload(true)}
+      onClick={() => setShowUpload(true)}
+      title="Upload contract"
       style={{
-        display: "flex", alignItems: "center", gap: 6,
-        padding: "7px 14px", borderRadius: 10,
+        width: 36, height: 36, borderRadius: 10,
         background: "#0066FF", color: "white",
-        border: "none", fontSize: 12, fontWeight: 600,
-        cursor: "pointer", transition: "background 0.15s",
+        border: "none", cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
         boxShadow: "0 1px 3px rgba(0,102,255,0.3)",
+        flexShrink: 0,
       }}
       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#0052CC"}
       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#0066FF"}
     >
-      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
           d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
       </svg>
-      Upload contract
     </button>
 
     <div style={{ width: 1, height: 20, background: "#E5E7EB" }} />
@@ -703,15 +720,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <NotificationBell />
 
     {/* Profile avatar */}
-    <div style={{
-      width: 30, height: 30, borderRadius: "50%",
-      background: "linear-gradient(135deg,#5B4BFF,#06B6D4)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer",
-      boxShadow: "0 0 0 2px white, 0 0 0 3px #E2E8F0",
-    }}>
+    <div
+      onClick={() => setShowProfile(p => !p)}
+      style={{
+        width: 30, height: 30, borderRadius: "50%",
+        background: "linear-gradient(135deg,#5B4BFF,#06B6D4)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer",
+        boxShadow: "0 0 0 2px white, 0 0 0 3px #E2E8F0",
+        position: "relative",
+      }}>
       {user?.email?.charAt(0)?.toUpperCase() || "U"}
     </div>
+    {showProfile && <ProfilePopup onClose={() => setShowProfile(false)} />}
   </div>
 </header>
 
