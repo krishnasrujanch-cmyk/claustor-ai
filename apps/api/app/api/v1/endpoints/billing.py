@@ -247,21 +247,9 @@ async def billing_summary(
     from app.domain.models import Organisation
 
     result = await db.execute(
-        select(
-            Organisation.plan,
-            Organisation.plan_started_at,
-            Organisation.plan_expires_at,
-            Organisation.stripe_customer_id,
-            Organisation.stripe_subscription_id,
-            Organisation.contracts_used,
-            Organisation.queries_used,
-            Organisation.max_contracts,
-            Organisation.max_queries_mo,
-            Organisation.max_users,
-            Organisation.extra_users_purchased,
-        ).where(Organisation.id == user.org_id)
+        select(Organisation).where(Organisation.id == user.org_id)
     )
-    org = result.first()
+    org = result.scalar_one_or_none()
     if not org:
         raise HTTPException(status_code=404, detail="Organisation not found")
 
@@ -280,6 +268,10 @@ async def billing_summary(
         "features": plan_info.get("features", []),
         "extra_users_purchased": org.extra_users_purchased or 0,
         "upgrade_available": org.plan != "enterprise",
+        "org_name": org.name if hasattr(org, "name") else "",
+        "org_gstin": getattr(org, "gstin", "") or "",
+        "org_address": getattr(org, "address", "") or "",
+        "org_phone": getattr(org, "phone", "") or "",
         **(await _fetch_billing_extra(db, user.org_id)),
     }
 
@@ -344,53 +336,126 @@ async def download_invoice_pdf(
             select(Organisation).where(Organisation.id == user.org_id)
         )
         org = org_result.scalar_one_or_none()
+        if org: await db.refresh(org)
+        # Fetch actual payment amount for this specific invoice
+        _actual_payment = 0
+        _actual_billing_pd = org.billing_period if org else "monthly"
+        try:
+            _svc = BillingService(db)
+            _invs = await _svc.get_invoices(user.org_id)
+            if invoice_index < len(_invs):
+                _actual_payment = _invs[invoice_index]["amount"]
+        except Exception:
+            pass
         plan = org.plan if org else "professional"
-        plan_prices = {"free":0,"starter":3999,"professional":16499,"enterprise":0}
-        base = plan_prices.get(plan, 0)
-        gst = round(base * 0.18)
-        total = base + gst
+        plan_prices = {"free":0,"starter":7999,"professional":29999,"enterprise":99999}
+        # Use actual last_payment_amount from org if available
+        last_paid = _actual_payment if _actual_payment > 0 else (org.last_payment_amount if org and org.last_payment_amount else 0)
+        billing_pd = _actual_billing_pd if _actual_billing_pd else (org.billing_period if org and org.billing_period else "monthly")
+        period_months = {"monthly":1,"6months":5,"12months":10}.get(billing_pd, 1)
+        plan_monthly = plan_prices.get(plan, 0)
+        base = plan_monthly * period_months
+        # Use actual paid amount for total
+        total = last_paid if last_paid > 0 else round(base * 1.18)
+        subtotal_raw = round(total / 1.18)
+        gst = total - subtotal_raw
         now = datetime.now()
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm,
                                leftMargin=2*cm, rightMargin=2*cm)
         styles = getSampleStyleSheet()
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+        from reportlab.platypus import HRFlowable
+        BLUE = rl_colors.HexColor("#0066FF")
         story = []
 
-        story.append(Paragraph("<b>CLAUSTOR AI</b>", styles["Heading1"]))
-        story.append(Paragraph("DKU Technologies Pvt. Ltd.", styles["Normal"]))
-        story.append(Paragraph("Hyderabad, India | hello@claustor.ai", styles["Normal"]))
-        story.append(Spacer(1, 0.5*cm))
-        story.append(Paragraph(f"<b>TAX INVOICE</b>", styles["Heading2"]))
-        story.append(Paragraph(f"Invoice #{invoice_index+1:04d} | {now.strftime('%d %b %Y')}", styles["Normal"]))
-        story.append(Spacer(1, 0.5*cm))
+        # Header: Claustor + Invoice details
+        hdr = [[
+            Paragraph(
+                "<b><font size=18 color='#0066FF'>Claustor AI</font></b><br/>"
+                "<font size=8 color='#6B7280'>DKU Technologies Pvt. Ltd.<br/>"
+                "Hyderabad, Telangana - 500032<br/>"
+                "GSTIN: 36AATFD9569L1ZC<br/>"
+                "billing@claustor.ai</font>",
+                styles["Normal"]),
+            Paragraph(
+                f"<b><font size=14>TAX INVOICE</font></b><br/>"
+                f"<font size=8 color='#6B7280'>"
+                f"Invoice: INV-{now.strftime('%Y%m')}-{invoice_index+1:04d}<br/>"
+                f"Date: {now.strftime('%d %b %Y')}<br/>"
+                f"<font color='#22C55E'><b>PAID</b></font></font>",
+                ParagraphStyle('r', alignment=TA_RIGHT, fontSize=9)),
+        ]]
+        ht = Table(hdr, colWidths=[9*cm, 8*cm])
+        ht.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),0)]))
+        story.append(ht)
+        story.append(Spacer(1, 0.2*cm))
+        story.append(HRFlowable(width="100%", thickness=2, color=BLUE, spaceAfter=6))
 
-        data = [
-            ["Description", "Amount (INR)"],
-            [f"{plan.title()} Plan - {now.strftime('%B %Y')}", f"₹{base:,}"],
-            ["GST @ 18%", f"₹{gst:,}"],
-            ["Total", f"₹{total:,}"],
-        ]
-        t = Table(data, colWidths=[12*cm, 5*cm])
+        # Bill To with org GSTIN
+        bill_lines = ["<b>Bill To:</b>"]
+        bill_lines.append(f"<b>{org.name}</b>" if org and org.name else "<b>Organisation</b>")
+        if org and getattr(org, "address", None):
+            bill_lines.append(org.address)
+        if org and getattr(org, "phone", None):
+            bill_lines.append(f"Phone: {org.phone}")
+        if org and getattr(org, "gstin", None):
+            bill_lines.append(f"<b>GSTIN: {org.gstin}</b>")
+        story.append(Paragraph("<br/>".join(bill_lines),
+            ParagraphStyle("bt", fontSize=9, leading=14,
+                backColor=rl_colors.HexColor("#F8FAFC"), borderPadding=8)))
+        story.append(Spacer(1, 0.3*cm))
+
+        # Invoice table
+        period_labels = {"monthly":"Monthly","6months":"6 Months","12months":"12 Months"}
+        period_label = period_labels.get(billing_pd, "Monthly")
+        period_months = {"monthly":1,"6months":5,"12months":10}.get(billing_pd, 1)
+        idata = [["#","Description","Period","Amount (INR)"]]
+        idata.append(["1", f"{plan.title()} Plan × {period_months} months", period_label, f"\u20b9{base:,}"])
+        if total < base and (base - subtotal_raw) > 0:
+            credit = base - subtotal_raw
+            idata.append(["","Pro-rata Credit (Starter balance)","",f"-\u20b9{credit:,}"])
+            idata.append(["","Net Payable","",f"\u20b9{subtotal_raw:,}"])
+        idata.append(["","GST @ 18% (IGST)","",f"\u20b9{gst:,}"])
+        idata.append(["","Total Charged","",f"\u20b9{total:,}"])
+        t = Table(idata, colWidths=[1*cm, 9*cm, 3.5*cm, 3.5*cm])
         t.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), rl_colors.HexColor("#0066FF")),
-            ("TEXTCOLOR",  (0,0), (-1,0), rl_colors.white),
-            ("FONTNAME",   (0,0), (-1,0), "Helvetica-Bold"),
-            ("ALIGN",      (1,0), (1,-1), "RIGHT"),
-            ("GRID",       (0,0), (-1,-1), 0.5, rl_colors.HexColor("#E5E7EB")),
-            ("FONTNAME",   (0,-1), (-1,-1), "Helvetica-Bold"),
-            ("BACKGROUND", (0,-1), (-1,-1), rl_colors.HexColor("#F0F7FF")),
+            ("BACKGROUND",(0,0),(-1,0), BLUE),
+            ("TEXTCOLOR",(0,0),(-1,0), rl_colors.white),
+            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+            ("FONTSIZE",(0,0),(-1,-1), 9),
+            ("ALIGN",(3,0),(3,-1),"RIGHT"),
+            ("GRID",(0,0),(-1,-1), 0.4, rl_colors.HexColor("#E5E7EB")),
+            ("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),
+            ("BACKGROUND",(0,-1),(-1,-1), rl_colors.HexColor("#EFF6FF")),
+            ("ROWBACKGROUNDS",(0,1),(-1,-2),[rl_colors.white, rl_colors.HexColor("#F8FAFC")]),
+            ("PADDING",(0,0),(-1,-1), 5),
         ]))
         story.append(t)
-        story.append(Spacer(1, 0.5*cm))
-        story.append(Paragraph("Thank you for using Claustor AI.", styles["Normal"]))
+        story.append(Spacer(1, 0.3*cm))
+        story.append(Paragraph(
+            f"<font size=8 color='#6B7280'>Amount in words: <b>Rupees {total:,} only</b></font>",
+            styles["Normal"]))
+        story.append(Spacer(1, 0.3*cm))
+        story.append(HRFlowable(width="100%", thickness=0.5,
+            color=rl_colors.HexColor("#E5E7EB"), spaceAfter=4))
+        story.append(Paragraph(
+            "<font size=7 color='#6B7280'>"
+            "Computer-generated invoice. Queries: billing@claustor.ai | "
+            "DKU Technologies Pvt. Ltd., Hyderabad.</font>", styles["Normal"]))
+        story.append(Paragraph(
+            "<font size=9 color='#0066FF'><b>Thank you for using Claustor AI!</b></font>",
+            ParagraphStyle("ty", alignment=TA_CENTER)))
         doc.build(story)
         buffer.seek(0)
         return StreamingResponse(buffer, media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=claustor-invoice-{invoice_index+1:04d}.pdf"})
 
-    except ImportError:
-        # Fallback text invoice
+    except Exception as _inv_err:
+        print(f"INVOICE ERROR: {_inv_err}", flush=True)
+        import traceback; traceback.print_exc()
         import io as _io
         text = f"""CLAUSTOR AI - TAX INVOICE
 DKU Technologies Pvt. Ltd.

@@ -574,11 +574,11 @@ export default function BillingPage() {
     const inv = invoices[idx];
     if (!inv) return;
     const COMPANY = {name:"DKU Technologies Pvt. Ltd.",brand:"Claustor AI",email:"info@claustor.com",website:"claustor.ai",gstin:"36AATFD9569L1ZC",address:"Hyderabad, Telangana, India"};
-    const base   = (()=>{const b=inv.base_amount||0;return b>100000?Math.round(b/100):b;})();
-    const addon  = (()=>{const a=inv.addon_amount||0;return a>100000?Math.round(a/100):a;})();
+    const base   = inv.base_amount||0;
+    const addon  = inv.addon_amount||0;
     const credit = inv.credit_applied||0;
     const gst    = inv.gst_amount||Math.round((base+addon-credit)*0.18);
-    const total  = (()=>{const t=inv.total_amount||inv.amount||0;return t>100000?Math.round(t/100):t;})();
+    const total  = inv.total_amount||inv.amount||0;
     const planLabel=inv.plan?inv.plan.charAt(0).toUpperCase()+inv.plan.slice(1):"Plan";
     const period=inv.period==="12months"?"12 Months (10 charged, 2 free)":inv.period==="6months"?"6 Months (5 charged, 1 free)":"Monthly";
     const date=new Date(inv.created_at||Date.now());
@@ -658,7 +658,7 @@ tbody td:last-child{text-align:right;font-weight:600}
 </table>
 <table><tbody><tr class="total-row"><td>Total Amount Paid</td><td></td><td>₹${total.toLocaleString("en-IN")}</td></tr></tbody></table>
 <div class="grid2">
-  <div class="info-box"><div class="info-title">Billed To</div><div class="info-val">${summary?.org_name||"Organisation"}<br>${summary?.email||""}</div></div>
+  <div class="info-box"><div class="info-title">Billed To</div><div class="info-val"><b>${summary?.org_name||"Organisation"}</b><br>${summary?.org_address||""}<br>${summary?.org_phone?`Phone: ${summary.org_phone}<br>`:""} ${summary?.org_gstin?`<b>GSTIN: ${summary.org_gstin}</b>`:""}</div></div>
   <div class="info-box"><div class="info-title">Payment Info</div><div class="info-val">Provider: Razorpay<br>Method: Card / UPI / Netbanking<br>Status: <strong style="color:#16A34A">Paid</strong></div></div>
 </div>
 <div class="footer">
@@ -964,10 +964,10 @@ tbody td:last-child{text-align:right;font-weight:600}
               {new Date(inv.period_start||inv.date||Date.now())
                 .toLocaleDateString("en-IN",{month:"short",year:"numeric"})}
             </div>
-            <div>₹{(()=>{const b=inv.base_amount||0; return b>100000?Math.round(b/100):b;})(). toLocaleString()}</div>
+            <div>₹{(inv.base_amount||0).toLocaleString()}</div>
             <div>{inv.addon_amount>0?`₹${inv.addon_amount.toLocaleString()}`:<span style={{color:C.muted}}>—</span>}</div>
             <div style={{fontWeight:700,color:C.heading}}>
-              ₹{(()=>{const t=inv.total_amount||inv.amount||0; return t>100000?Math.round(t/100):t;})(). toLocaleString()}
+              ₹{(inv.total_amount||inv.amount||0).toLocaleString()}
             </div>
             <div>
               <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,
