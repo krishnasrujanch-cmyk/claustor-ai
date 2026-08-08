@@ -6,13 +6,13 @@ All amounts in INR (not paise).
 
 PLAN_PRICING = {
     "starter": {
-        "base_monthly":  3999,
+        "base_monthly":  7999,
         "addon_monthly": 1000,
         "label":         "Starter",
         "currency":      "INR",
     },
     "professional": {
-        "base_monthly":  16499,
+        "base_monthly":  29999,
         "addon_monthly": 2500,
         "label":         "Professional",
         "currency":      "INR",

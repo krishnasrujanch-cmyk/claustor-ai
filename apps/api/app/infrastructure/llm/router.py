@@ -208,6 +208,8 @@ class LLMRouter:
         frequency_penalty: float | None = None,
         logprobs: bool | None = None,
         seed: int | None = None,
+        preferred_provider: str | None = None,
+        preferred_model: str | None = None,
     ) -> LLMResponse:
         """
         Route completion request through provider chain.
@@ -215,6 +217,15 @@ class LLMRouter:
         """
         chain = self._get_chain(role)
         use_fast = role in self.FAST_MODEL_ROLES
+        # Reorder chain if preferred_provider specified
+        if preferred_provider:
+            from app.infrastructure.llm.base import LLMProvider
+            try:
+                pref = LLMProvider(preferred_provider)
+                if pref in chain:
+                    chain = [pref] + [p for p in chain if p != pref]
+            except ValueError:
+                pass
         last_error: Exception | None = None
 
         # Apply role-specific params (caller override takes priority)

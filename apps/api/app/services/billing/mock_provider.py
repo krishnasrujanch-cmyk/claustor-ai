@@ -20,8 +20,8 @@ logger = structlog.get_logger(__name__)
 # Mock plan pricing (INR)
 MOCK_PLANS = {
     "free":         {"amount": 0,     "currency": "INR"},
-    "starter":      {"amount": 3999,  "currency": "INR"},
-    "professional": {"amount": 16499, "currency": "INR"},
+    "starter":      {"amount": 7999,  "currency": "INR"},
+    "professional": {"amount": 29999, "currency": "INR"},
     "enterprise":   {"amount": 150000,"currency": "INR"},
 }
 
@@ -117,7 +117,7 @@ class MockBillingProvider(BaseBillingProvider):
             plan="professional",
             status=SubscriptionStatus.ACTIVE,
             interval=BillingInterval.MONTHLY,
-            amount=16499,
+            amount=29999,
             currency="INR",
             current_period_start=now - timedelta(days=15),
             current_period_end=now + timedelta(days=15),
@@ -134,7 +134,7 @@ class MockBillingProvider(BaseBillingProvider):
             month_start = now - timedelta(days=30 * (i + 1))
             invoices.append(InvoiceInfo(
                 provider_invoice_id=f"mock_inv_{str(uuid.uuid4())[:8]}",
-                amount=16499 * 1.18,  # with GST
+                amount=29999 * 1.18,  # with GST
                 currency="INR",
                 status="paid",
                 period_start=month_start,

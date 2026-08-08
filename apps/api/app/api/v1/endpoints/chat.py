@@ -401,10 +401,19 @@ async def chat_stream(
             full_answer = ""
             # Use non-streaming for now, emit word by word for UX
             # (True streaming requires AsyncIterator support in provider)
+            # Complexity-based model routing
+            from app.core.plan_model_routing import get_answerer_for_complexity
+            _complexity = getattr(judge, "complexity", "simple") if judge else "simple"
+            _answerer_cfg = get_answerer_for_complexity(user.plan, _complexity)
+            logger.info("stream_answerer_routing",
+                        plan=user.plan, complexity=_complexity,
+                        provider=_answerer_cfg["provider"], model=_answerer_cfg["model"])
             response = await router_llm.complete(
                 messages=messages,
                 role=AgentRole.ANSWERER,
                 json_mode=False,
+                preferred_provider=_answerer_cfg["provider"],
+                preferred_model=_answerer_cfg["model"],
             )
             full_answer = response.content
 

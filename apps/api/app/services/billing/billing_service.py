@@ -26,12 +26,12 @@ PLANS = {
         "features": ["basic_extraction"],
     },
     "starter": {
-        "users": 10, "contracts": 100, "queries": 5000,
+        "users": 5, "contracts": 100, "queries": 5000,
         "storage_mb": 10240, "extra_users": 10,
         "features": ["basic_extraction", "ocr", "tables", "alerts"],
     },
     "professional": {
-        "users": 50, "contracts": 1000, "queries": 50000,
+        "users": 25, "contracts": 500, "queries": 25000,
         "storage_mb": 102400, "extra_users": 50,
         "features": ["basic_extraction", "ocr", "tables", "vision",
                      "api_access", "webhooks", "comparison", "playbook"],
@@ -45,8 +45,8 @@ PLANS = {
 
 # Extra user pricing (per user per month)
 EXTRA_USER_PRICE = {
-    "starter":      299,   # ₹299/user/month
-    "professional": 399,   # ₹399/user/month
+    "starter":      800,   # ₹800/user/month
+    "professional": 1500,  # ₹1500/user/month
 }
 
 

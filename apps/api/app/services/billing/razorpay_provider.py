@@ -21,8 +21,8 @@ RAZORPAY_PLANS = {
 
 # INR amounts in paise (1 INR = 100 paise)
 PLAN_AMOUNTS_PAISE = {
-    "starter":      399900,   # ₹3,999
-    "professional": 1649900,  # ₹16,499
+    "starter":      799900,   # ₹7,999
+    "professional": 2999900,  # ₹29,999
 }
 
 

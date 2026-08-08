@@ -86,6 +86,7 @@ const PLAN_FEATURES: Record<string, {
     { title:"Core", Icon:Zap, items:[
       {label:"100 contracts/month",         included:true},
       {label:"5,000 AI queries/month",      included:true},
+      {label:"5 users included",              included:true},
       {label:"5 users",                     included:true},
       {label:"PDF/DOCX/Excel/XML support",  included:true},
       {label:"OCR for scanned PDFs",        included:true},
@@ -121,8 +122,9 @@ const PLAN_FEATURES: Record<string, {
   ]},
   professional: { sections: [
     { title:"Core", Icon:Zap, items:[
-      {label:"1,000 contracts/month",       included:true},
-      {label:"50,000 AI queries/month",     included:true},
+      {label:"500 contracts/month",         included:true},
+      {label:"25,000 AI queries/month",     included:true},
+      {label:"25 users included",             included:true},
       {label:"25 users",                    included:true},
       {label:"All file formats + OCR",      included:true},
       {label:"Bulk import",                 included:true},
@@ -164,6 +166,10 @@ const PLAN_FEATURES: Record<string, {
       {label:"Unlimited AI queries",        included:true},
       {label:"Unlimited users",             included:true},
       {label:"All Professional features",   included:true},
+      {label:"Unlimited contracts & queries", included:true},
+      {label:"Sonnet AI (30% of queries)",   included:true},
+      {label:"Dedicated queue + SLA 99.9%",  included:true},
+      {label:"SSO/SAML + Audit log",         included:true},
       {label:"Custom contract volume SLA",  included:true},
       {label:"White-label option",          included:true},
     ]},
@@ -191,8 +197,8 @@ const PLAN_FEATURES: Record<string, {
 
 const PLANS = [
   {id:"free",         label:"Free",         base:0,     addon:0,    tagline:"Get started"},
-  {id:"starter",      label:"Starter",      base:3999,  addon:1000, tagline:"For small teams",        addonLabel:"Industry Pack"},
-  {id:"professional", label:"Professional", base:16499, addon:2500, tagline:"For growing businesses", addonLabel:"Pro Industry Add-on", popular:true},
+  {id:"starter",      label:"Starter",      base:7999,  addon:1000, tagline:"For small teams",        addonLabel:"Industry Pack"},
+  {id:"professional", label:"Professional", base:29999, addon:2500, tagline:"For growing businesses", addonLabel:"Pro Industry Add-on", popular:true},
   {id:"enterprise",   label:"Enterprise",   base:-1,    addon:0,    tagline:"For large organisations"},
 ];
 const PLAN_ORDER = ["free","starter","professional","enterprise"];

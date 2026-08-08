@@ -450,7 +450,7 @@ export default function DashboardPage() {
   );
 
   const kpis = [
-    {Icon:FileText,     label:"Total Contracts", value:stats.total,           sub:`${allContracts.filter(c=>c.status==="analyzed").length} analyzed`,  color:C.primary, bg:C.primaryLight, usageKey:"contracts_used", limit:usage?.contracts_limit||1000},
+    {Icon:FileText,     label:"Total Contracts", value:stats.total,           sub:`${allContracts.filter(c=>c.status==="analyzed").length} analyzed · of ${(usage?.contracts_limit||100).toLocaleString()} limit`,  color:C.primary, bg:C.primaryLight, usageKey:"contracts_used", limit:usage?.contracts_limit||100},
     {Icon:AlertTriangle,label:"High Risk",        value:stats.high,            sub:"Requires action",   color:C.error,   bg:"#FEF2F2",    usageKey:null, limit:0},
     {Icon:ClipboardList,label:"Pending Reviews",  value:stats.pending,         sub:"Awaiting decision", color:"#9333EA", bg:"#FAF5FF",    usageKey:null, limit:0},
     {Icon:Clock,        label:"Due Obligations",  value:stats.due,             sub:"Within 30 days",    color:C.warning, bg:"#FFFBEB",    usageKey:null, limit:0},

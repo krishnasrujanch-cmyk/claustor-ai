@@ -63,6 +63,7 @@ Return ONLY this JSON (no markdown):
   "intent": "structured|semantic|hybrid|followup|missing",
   "needs_db": true/false,
   "needs_vector": true/false,
+  "complexity": "simple|medium|complex",
   "is_followup": true/false,
   "db_query_type": "expiry_list|count_total|value_query|risk_query|type_filter|party_filter|milestone|renewal_list|overdue_list|value_filter|avg_risk|count_by_risk|null",
   "filters": {{
@@ -82,12 +83,23 @@ Return ONLY this JSON (no markdown):
   }},
   "rewritten_query": "Rewrite the query for better vector search. Expand abbreviations, add related legal terms. Keep it under 100 words.",
   "reasoning": "One line why you chose this intent"
+
+COMPLEXITY RULES:
+- "simple":  single fact, single clause, direct lookup, metadata query
+  e.g. "when does this expire", "what is the value", "list payment terms"
+- "medium":  multi-clause, comparison, summary, explanation needed
+  e.g. "explain the termination conditions", "what are the key risks"
+- "complex": multi-contract reasoning, legal analysis, cross-reference chains,
+  ambiguous language, risk assessment, "what happens if X AND Y", 
+  comparative legal opinion
+  e.g. "is this indemnification clause fair", "what if we breach payment AND miss milestone"
 }}"""
 
 
 @dataclass
 class JudgeResult:
     intent:         str             = "semantic"
+    complexity:     str             = "simple"  # simple | medium | complex
     needs_db:       bool            = False
     needs_vector:   bool            = True
     is_followup:    bool            = False
@@ -178,6 +190,7 @@ async def judge_classify(
             rewritten_query = data.get("rewritten_query", query) or query,
             reasoning       = data.get("reasoning", ""),
             fallback_used   = False,
+            complexity      = data.get("complexity", "simple"),
         )
 
         # Fix null db_query_type
