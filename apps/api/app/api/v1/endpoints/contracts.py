@@ -155,6 +155,14 @@ async def list_contracts_grouped(
     search: str | None = Query(None),
     risk_level: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
+    uploaded_by: str | None = Query(None),
+    contract_type: str | None = Query(None),
+    counterparty: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    value_min: float | None = Query(None),
+    value_max: float | None = Query(None),
+    expiry_days: int | None = Query(None),
 ):
     """List contracts grouped by family — one row per contract family."""
     from app.domain.models import Contract as _CM
@@ -189,6 +197,36 @@ async def list_contracts_grouped(
         query = query.where(_CM.risk_level == risk_level)
     if status_filter:
         query = query.where(_CM.status == status_filter)
+    if uploaded_by:
+        try:
+            query = query.where(_CM.uploaded_by == uuid.UUID(uploaded_by))
+        except Exception:
+            pass
+    if contract_type:
+        query = query.where(_CM.contract_type.ilike(f"%{contract_type}%"))
+    if counterparty:
+        query = query.where(_CM.counterparty.ilike(f"%{counterparty}%"))
+    if date_from:
+        try:
+            from datetime import datetime
+            query = query.where(_CM.created_at >= datetime.fromisoformat(date_from))
+        except Exception:
+            pass
+    if date_to:
+        try:
+            from datetime import datetime
+            query = query.where(_CM.created_at <= datetime.fromisoformat(date_to))
+        except Exception:
+            pass
+    if value_min is not None:
+        query = query.where(_CM.contract_value >= value_min)
+    if value_max is not None:
+        query = query.where(_CM.contract_value <= value_max)
+    if expiry_days is not None:
+        from datetime import datetime, timedelta
+        cutoff = datetime.utcnow() + timedelta(days=expiry_days)
+        query = query.where(_CM.expiry_date <= cutoff.date())
+        query = query.where(_CM.expiry_date >= datetime.utcnow().date())
 
     # Count total
     count_q = _sel(_func.count()).select_from(query.subquery())
@@ -272,6 +310,14 @@ async def list_contracts(
     status_filter: str | None = Query(None, alias="status"),
     risk_level: str | None = Query(None),
     search: str | None = Query(None),
+    uploaded_by: str | None = Query(None),
+    contract_type: str | None = Query(None),
+    counterparty: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    value_min: float | None = Query(None),
+    value_max: float | None = Query(None),
+    expiry_days: int | None = Query(None),
 ):
     """List contracts for the organisation."""
     service = ContractService(db)
@@ -300,8 +346,11 @@ async def list_contracts(
     contracts, total = await service.list_contracts(
         org_id=user.org_id, page=page, page_size=page_size,
         status_filter=status_filter, risk_level=risk_level, search=search,
+        uploaded_by=uploaded_by or uploader_only_id,
+        contract_type=contract_type,
+        counterparty=counterparty, date_from=date_from, date_to=date_to,
+        value_min=value_min, value_max=value_max, expiry_days=expiry_days,
         contract_ids=reviewer_only_id,
-        uploaded_by=uploader_only_id,
     )
     return ContractListOut(
         contracts=[ContractOut.model_validate(c) for c in contracts],

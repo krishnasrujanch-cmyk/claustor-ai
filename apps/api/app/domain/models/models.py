@@ -74,6 +74,11 @@ class Organisation(Base):
     pinecone_namespace: Mapped[str | None] = mapped_column(String(100))
     gcs_prefix: Mapped[str | None] = mapped_column(String(255))
 
+    # Organisation profile
+    gstin: Mapped[str | None] = mapped_column(String(20))
+    address: Mapped[str | None] = mapped_column(String(500))
+    phone: Mapped[str | None] = mapped_column(String(20))
+    website: Mapped[str | None] = mapped_column(String(255))
     # SSO (Enterprise)
     sso_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     sso_provider: Mapped[str | None] = mapped_column(String(50))

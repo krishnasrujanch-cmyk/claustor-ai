@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -262,6 +262,72 @@ async def accept_invite(
     }
 
 
+@router.get("/me")
+async def get_my_profile(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current user profile + org details."""
+    from sqlalchemy import select
+    from app.domain.models import Organisation, User as UserModel
+    org = await db.scalar(select(Organisation).where(Organisation.id == user.org_id))
+    db_user = await db.scalar(select(UserModel).where(UserModel.email == user.email))
+    return {
+        "user": {
+            "id": str(db_user.id) if db_user else "",
+            "email": user.email,
+            "full_name": db_user.full_name if db_user else "",
+            "role": user.role,
+        },
+        "org": {
+            "id": str(org.id) if org else None,
+            "name": org.name if org else None,
+            "gstin": org.gstin if org else None,
+            "address": org.address if org else None,
+            "phone": org.phone if org else None,
+            "website": org.website if org else None,
+            "plan": org.plan if org else None,
+            "industry": org.industry if org else None,
+        }
+    }
+
+
+@router.patch("/me")
+async def update_my_profile(
+    payload: dict = Body(...),
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update current user name."""
+    from sqlalchemy import update as _update, select as _sel
+    from app.domain.models import User as UserModel
+    db_user = await db.scalar(_sel(UserModel).where(UserModel.email == user.email))
+    allowed = {k: v for k, v in payload.items() if k in ("full_name",)}
+    if allowed and db_user:
+        await db.execute(_update(UserModel).where(UserModel.id == db_user.id).values(**allowed))
+        await db.commit()
+    return {"message": "Profile updated"}
+
+
+@router.patch("/me/org")
+async def update_my_org(
+    payload: dict = Body(...),
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update org profile — admin/contract_manager only."""
+    if user.role not in ("super_admin",):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Only super admins can update organisation details")
+    from sqlalchemy import update as _update
+    from app.domain.models import Organisation
+    allowed_fields = ("name", "gstin", "address", "phone", "website")
+    updates = {k: v for k, v in payload.items() if k in allowed_fields}
+    if updates:
+        await db.execute(_update(Organisation).where(Organisation.id == user.org_id).values(**updates))
+        await db.commit()
+    return {"message": "Organisation updated"}
+
 @router.patch("/{user_id}")
 async def update_user(
     user_id: uuid.UUID,
@@ -390,3 +456,4 @@ async def _send_invite_email(
     except Exception as e:
         logger.warning("invite_email_failed", error=str(e), invite_url=invite_url)
         # Email failure is non-critical — invite_url is always in API response
+

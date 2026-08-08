@@ -310,6 +310,12 @@ class ContractService:
         search: str | None = None,
         contract_ids: list | None = None,
         uploaded_by: UUID | None = None,
+        counterparty: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        value_min: float | None = None,
+        value_max: float | None = None,
+        expiry_days: int | None = None,
     ) -> tuple[list[Contract], int]:
         """List contracts with filtering and pagination."""
         query = select(Contract).where(
@@ -331,6 +337,30 @@ class ContractService:
             query = query.where(Contract.risk_level == risk_level)
         if contract_type:
             query = query.where(Contract.contract_type == contract_type)
+        if counterparty:
+            query = query.where(Contract.counterparty.ilike(f"%{counterparty}%"))
+        if date_from:
+            try:
+                from datetime import datetime
+                query = query.where(Contract.created_at >= datetime.fromisoformat(date_from))
+            except Exception:
+                pass
+        if date_to:
+            try:
+                from datetime import datetime
+                query = query.where(Contract.created_at <= datetime.fromisoformat(date_to))
+            except Exception:
+                pass
+        if value_min is not None:
+            query = query.where(Contract.contract_value >= value_min)
+        if value_max is not None:
+            query = query.where(Contract.contract_value <= value_max)
+        if expiry_days is not None:
+            from datetime import datetime, timedelta
+            now = datetime.utcnow().date()
+            cutoff = (datetime.utcnow() + timedelta(days=int(expiry_days))).date()
+            query = query.where(Contract.expiry_date >= now)
+            query = query.where(Contract.expiry_date <= cutoff)
         if search:
             search_term = f"%{search}%"
             query = query.where(
