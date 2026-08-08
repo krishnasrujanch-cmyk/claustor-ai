@@ -155,12 +155,21 @@ async def toggle_addon(
 
     pricing = get_plan_price(actual_plan, req.addon_enabled)
     action  = "enabled" if req.addon_enabled else "disabled"
+    # Get next billing date for message
+    from sqlalchemy import select as _sel2
+    _nb_row = await db.scalar(_sel2(Organisation.next_billing_date).where(Organisation.id == user.org_id))
+    next_date = _nb_row.strftime("%d %b %Y") if _nb_row else "your next renewal"
+    addon_monthly = {"starter":1000,"professional":2500}.get(actual_plan, 1000)
+    if req.addon_enabled:
+        _msg = f"Industry Pack enabled. You will be charged ₹{addon_monthly:,}/month from {next_date}."
+    else:
+        _msg = f"Industry Pack disabled. Changes take effect from {next_date}."
     logger.info("addon_toggled", org_id=str(user.org_id),
                addon_enabled=req.addon_enabled, plan=actual_plan)
 
     return {
         "addon_enabled": req.addon_enabled,
-        "message":       f"Add-on {action}. New monthly total: {pricing['display']}",
+        "message":       _msg,
         "pricing":       pricing,
         "active_industries": pricing["active_industries"],
     }
