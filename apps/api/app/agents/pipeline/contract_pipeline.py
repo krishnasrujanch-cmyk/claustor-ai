@@ -699,7 +699,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
         )
 
         # Save clauses
-        for clause_data in scored_clauses:
+        for _ci, clause_data in enumerate(scored_clauses):
             clause = Clause(
                 contract_id=contract_id,
                 org_id=org_id,
