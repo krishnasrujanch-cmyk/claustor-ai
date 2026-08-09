@@ -67,9 +67,12 @@ class ExtractionResult:
         lines = ["\n=== REGISTRATION & TAX IDENTIFIERS ==="]
         # Party-mapped first
         for party, ids in self.party_map.items():
+            # Clean party name — take only first line, strip junk
+            import re as _re
+            clean_party = _re.split(r'[\n\r]', party)[0].strip()[:60]
             for id_match in ids:
                 conf_str = f"(confidence: {id_match.confidence:.0%})" if id_match.confidence < 0.95 else ""
-                lines.append(f"{party[:60]} {id_match.label}: {id_match.value} {conf_str}".strip())
+                lines.append(f"{clean_party} {id_match.label}: {id_match.value} {conf_str}".strip())
         # Unmapped
         unmapped = [i for i in self.identifiers if not i.party]
         for id_match in unmapped:
@@ -92,19 +95,20 @@ def _find_companies(text: str) -> list[dict]:
     companies = []
     seen = set()
     for m in COMPANY_PATTERN.finditer(text):
-        name = m.group(1).strip()
-        name_key = re.sub(r'\s+', ' ', name).lower()
-        if name_key not in seen and len(name) > 8:
+        # Take only first line of match — remove newline contamination
+        name = m.group(1).split("\n")[0].split("\r")[0].strip()
+        name_key = re.sub(r"\s+", " ", name).lower()
+        if name_key not in seen and len(name) > 8 and not name[0].isdigit():
             seen.add(name_key)
-            companies.append({"name": name, "pos": m.start()})
+            companies.append({"name": name.strip(), "pos": m.start()})
     return companies
 
 
-def _map_to_party(id_pos: int, companies: list[dict], window: int = 800) -> Optional[str]:
+def _map_to_party(id_pos: int, companies: list[dict], window: int = 400) -> Optional[str]:
     """
     Map identifier to nearest company using scoring:
     - Distance (closer = higher score)
-    - Same paragraph (bonus)
+    - Before identifier gets priority (company name usually precedes ID)
     """
     if not companies:
         return None
@@ -114,15 +118,17 @@ def _map_to_party(id_pos: int, companies: list[dict], window: int = 800) -> Opti
         dist = abs(id_pos - co["pos"])
         if dist > window:
             continue
-        # Distance score: 1.0 at distance 0, 0.0 at window
+        # Distance score
         distance_score = 1.0 - (dist / window)
-        # Paragraph bonus: if within 200 chars
-        paragraph_bonus = 0.3 if dist < 200 else 0.0
-        score = distance_score + paragraph_bonus
+        # Bonus: company appears BEFORE the identifier (natural order)
+        position_bonus = 0.4 if co["pos"] < id_pos else 0.0
+        # Bonus: very close (within 100 chars)
+        proximity_bonus = 0.3 if dist < 100 else 0.0
+        score = distance_score + position_bonus + proximity_bonus
         if score > best_score:
             best_score   = score
             best_company = co["name"]
-    return best_company if best_score > 0.3 else None
+    return best_company if best_score > 0.5 else None
 
 
 # ── Main Engine ───────────────────────────────────────────────────────────────
@@ -165,16 +171,23 @@ class IdentifierEngine:
         # Step 3: Find companies for mapping
         companies = _find_companies(text)
 
-        # Step 4: Extract all identifiers
-        seen_values = set()
+        # Step 4: Extract all identifiers (high priority first)
+        seen_values: set[str] = set()
+        all_found_values: list[str] = []
         raw_matches = []
         for pattern in patterns:
             for match in pattern.findall(text):
-                # Deduplicate by value+type
-                key = f"{match['type']}:{match['value']}"
+                val = match["value"]
+                key = f"{match['type']}:{val}"
                 if key in seen_values:
                     continue
+                # Skip if this value is a substring of an already-found value
+                if any(val in found for found in all_found_values):
+                    continue
+                # Also remove previously found values that are substrings of this one
+                all_found_values = [v for v in all_found_values if v not in val]
                 seen_values.add(key)
+                all_found_values.append(val)
                 raw_matches.append((pattern, match))
 
         # Step 5: Validate + normalize + map
