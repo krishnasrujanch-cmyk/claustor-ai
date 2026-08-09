@@ -847,6 +847,45 @@ export default function LandingPage() {
       </section>
 
 
+      {/* ── COMPARISON TABLE ────────────────────────────────────── */}
+      <section style={{ padding: "100px 5vw", background: C.bg }}>
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.primary, letterSpacing: "1.5px", textTransform: "uppercase" }}>Why Claustor</span>
+            <h2 style={{ fontSize: "clamp(26px, 3.5vw, 40px)", fontWeight: 900, color: C.heading, letterSpacing: "-1px", margin: "12px 0" }}>
+              Claustor vs Manual Review vs Traditional CLM
+            </h2>
+          </div>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 1.2fr 1.2fr", background: "#111827" }}>
+              {["Capability", "Manual", "Traditional CLM", "Claustor AI"].map((h, i) => (
+                <div key={h} style={{ padding: "14px 20px", fontSize: 12, fontWeight: 700,
+                  color: i === 3 ? "#06B6D4" : "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</div>
+              ))}
+            </div>
+            {[
+              ["AI-Powered Search", "❌", "⚠️ Limited", "✅ BM25 + Vector + RRF"],
+              ["Natural Language Q&A", "❌", "❌", "✅ Citation-verified"],
+              ["Risk Detection", "⚠️ Manual", "⚠️ Basic rules", "✅ 25 clause types"],
+              ["Clause Comparison", "❌", "❌", "✅ Cross-contract"],
+              ["Multi-language Support", "❌", "⚠️ Limited", "✅ Multilingual embeddings"],
+              ["Party ID Extraction", "❌", "❌", "✅ 8 countries"],
+              ["Vision AI (Scanned Docs)", "❌", "❌", "✅ OCR + Tables"],
+              ["Obligation Tracking", "⚠️ Spreadsheet", "✅ Basic", "✅ AI alerts"],
+              ["Setup Time", "Immediate", "Weeks", "✅ Under 5 mins"],
+            ].map(([cap, manual, clm, claustor], i) => (
+              <div key={cap} style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 1.2fr 1.2fr",
+                background: i % 2 === 0 ? C.surface : C.bg, borderTop: `1px solid ${C.border}` }}>
+                <div style={{ padding: "13px 20px", fontSize: 13, fontWeight: 600, color: C.heading }}>{cap}</div>
+                <div style={{ padding: "13px 20px", fontSize: 13, color: manual.includes("❌") ? C.error : C.muted }}>{manual}</div>
+                <div style={{ padding: "13px 20px", fontSize: 13, color: clm.includes("❌") ? C.error : clm.includes("⚠️") ? C.warning : C.muted }}>{clm}</div>
+                <div style={{ padding: "13px 20px", fontSize: 13, fontWeight: 700, color: C.success }}>{claustor}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── ENTERPRISE AI PLATFORM ─────────────────────────────── */}
       <section style={{ padding: "100px 5vw", background: "#070B19" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
@@ -961,45 +1000,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── COMPARISON TABLE ────────────────────────────────────── */}
-      <section style={{ padding: "100px 5vw", background: C.bg }}>
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.primary, letterSpacing: "1.5px", textTransform: "uppercase" }}>Why Claustor</span>
-            <h2 style={{ fontSize: "clamp(26px, 3.5vw, 40px)", fontWeight: 900, color: C.heading, letterSpacing: "-1px", margin: "12px 0" }}>
-              Claustor vs Manual Review vs Traditional CLM
-            </h2>
-          </div>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, overflow: "hidden" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 1.2fr 1.2fr", background: "#111827" }}>
-              {["Capability", "Manual", "Traditional CLM", "Claustor AI"].map((h, i) => (
-                <div key={h} style={{ padding: "14px 20px", fontSize: 12, fontWeight: 700,
-                  color: i === 3 ? "#06B6D4" : "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</div>
-              ))}
-            </div>
-            {[
-              ["AI-Powered Search", "❌", "⚠️ Limited", "✅ BM25 + Vector + RRF"],
-              ["Natural Language Q&A", "❌", "❌", "✅ Citation-verified"],
-              ["Risk Detection", "⚠️ Manual", "⚠️ Basic rules", "✅ 25 clause types"],
-              ["Clause Comparison", "❌", "❌", "✅ Cross-contract"],
-              ["Multi-language Support", "❌", "⚠️ Limited", "✅ Multilingual embeddings"],
-              ["Party ID Extraction", "❌", "❌", "✅ 8 countries"],
-              ["Vision AI (Scanned Docs)", "❌", "❌", "✅ OCR + Tables"],
-              ["Obligation Tracking", "⚠️ Spreadsheet", "✅ Basic", "✅ AI alerts"],
-              ["Setup Time", "Immediate", "Weeks", "✅ Under 5 mins"],
-            ].map(([cap, manual, clm, claustor], i) => (
-              <div key={cap} style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 1.2fr 1.2fr",
-                background: i % 2 === 0 ? C.surface : C.bg, borderTop: `1px solid ${C.border}` }}>
-                <div style={{ padding: "13px 20px", fontSize: 13, fontWeight: 600, color: C.heading }}>{cap}</div>
-                <div style={{ padding: "13px 20px", fontSize: 13, color: manual.includes("❌") ? C.error : C.muted }}>{manual}</div>
-                <div style={{ padding: "13px 20px", fontSize: 13, color: clm.includes("❌") ? C.error : clm.includes("⚠️") ? C.warning : C.muted }}>{clm}</div>
-                <div style={{ padding: "13px 20px", fontSize: 13, fontWeight: 700, color: C.success }}>{claustor}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ── ROADMAP ─────────────────────────────────────────────── */}
       <section style={{ padding: "80px 5vw", background: C.surface, borderTop: `1px solid ${C.border}` }}>
         <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
@@ -1026,6 +1026,38 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ── SECURITY ────────────────────────────────────────────── */}
+      <section id="security" style={{ padding: "80px 5vw", background: C.surface, borderTop: `1px solid ${C.border}` }}>
+        <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.primary, letterSpacing: "1.5px", textTransform: "uppercase" }}>Security & Privacy</span>
+          <h2 style={{ fontSize: "clamp(26px, 3.5vw, 40px)", fontWeight: 900, color: C.heading, letterSpacing: "-1px", margin: "12px 0 16px" }}>
+            Enterprise Security by Design
+          </h2>
+          <p style={{ fontSize: 16, color: C.muted, marginBottom: 48, lineHeight: 1.6 }}>
+            Your contracts are sensitive. We built Claustor with an 8-layer defence architecture from day one.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+            {[
+              { icon: "🔐", title: "Encryption at Rest", desc: "AES-256 for all stored data" },
+              { icon: "🔒", title: "Encryption in Transit", desc: "TLS 1.3 for all connections" },
+              { icon: "👥", title: "Role-Based Access", desc: "Granular RBAC per user" },
+              { icon: "📋", title: "Audit Logs", desc: "Full activity trail (Enterprise)" },
+              { icon: "🌏", title: "Regional Deployment", desc: "Data stays in your region" },
+              { icon: "🤖", title: "Private AI Option", desc: "Your data never trains models" },
+            ].map(({ icon, title, desc }) => (
+              <div key={title} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, textAlign: "left" }}>
+                <div style={{ fontSize: 24, marginBottom: 10 }}>{icon}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.heading, marginBottom: 4 }}>{title}</div>
+                <div style={{ fontSize: 12, color: C.muted }}>{desc}</div>
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 12, color: C.muted, marginTop: 20 }}>
+            SOC 2 Ready architecture · GDPR compliant design · ISO 27001 aligned
+          </p>
         </div>
       </section>
 
@@ -1184,38 +1216,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── SECURITY ────────────────────────────────────────────── */}
-      <section id="security" style={{ padding: "80px 5vw", background: C.surface, borderTop: `1px solid ${C.border}` }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: C.primary, letterSpacing: "1.5px", textTransform: "uppercase" }}>Security & Privacy</span>
-          <h2 style={{ fontSize: "clamp(26px, 3.5vw, 40px)", fontWeight: 900, color: C.heading, letterSpacing: "-1px", margin: "12px 0 16px" }}>
-            Enterprise Security by Design
-          </h2>
-          <p style={{ fontSize: 16, color: C.muted, marginBottom: 48, lineHeight: 1.6 }}>
-            Your contracts are sensitive. We built Claustor with an 8-layer defence architecture from day one.
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-            {[
-              { icon: "🔐", title: "Encryption at Rest", desc: "AES-256 for all stored data" },
-              { icon: "🔒", title: "Encryption in Transit", desc: "TLS 1.3 for all connections" },
-              { icon: "👥", title: "Role-Based Access", desc: "Granular RBAC per user" },
-              { icon: "📋", title: "Audit Logs", desc: "Full activity trail (Enterprise)" },
-              { icon: "🌏", title: "Regional Deployment", desc: "Data stays in your region" },
-              { icon: "🤖", title: "Private AI Option", desc: "Your data never trains models" },
-            ].map(({ icon, title, desc }) => (
-              <div key={title} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, textAlign: "left" }}>
-                <div style={{ fontSize: 24, marginBottom: 10 }}>{icon}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.heading, marginBottom: 4 }}>{title}</div>
-                <div style={{ fontSize: 12, color: C.muted }}>{desc}</div>
-              </div>
-            ))}
-          </div>
-          <p style={{ fontSize: 12, color: C.muted, marginTop: 20 }}>
-            SOC 2 Ready architecture · GDPR compliant design · ISO 27001 aligned
-          </p>
-        </div>
-      </section>
-
       {/* ── FINAL CTA ────────────────────────────────────────────── */}
       <section style={{
         padding: "100px 5vw",
@@ -1238,14 +1238,14 @@ export default function LandingPage() {
             }}>
               Start Free — No credit card →
             </Link>
-            <a href="mailto:sales@claustor.ai" style={{
+            <button onClick={() => setShowEnterprise(true)} style={{
               display: "inline-flex", alignItems: "center", gap: 8,
               background: "rgba(255,255,255,0.08)", color: "white", fontWeight: 600, fontSize: 16,
-              padding: "16px 32px", borderRadius: 10, textDecoration: "none",
+              padding: "16px 32px", borderRadius: 10, cursor: "pointer",
               border: "1px solid rgba(255,255,255,0.15)",
             }}>
               Talk to Sales
-            </a>
+            </button>
           </div>
         </div>
       </section>
