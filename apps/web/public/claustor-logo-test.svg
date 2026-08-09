@@ -1,0 +1,26 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Blue background -->
+  <rect width="120" height="120" rx="24" fill="#0066FF"/>
+  
+  <!-- Bold C letter -->
+  <path d="M85 32C77 25 66.5 21 55 21C33.5 21 16 38.5 16 60C16 81.5 33.5 99 55 99C66.5 99 77 95 85 88"
+    stroke="white" strokeWidth="11" strokeLinecap="round" fill="none"/>
+  
+  <!-- Top circuit node on C endpoint -->
+  <circle cx="85" cy="32" r="6" fill="white"/>
+  <!-- Top horizontal wire -->
+  <line x1="85" y1="32" x2="103" y2="32" stroke="white" strokeWidth="4" strokeLinecap="round"/>
+  <!-- Top vertical wire -->
+  <line x1="103" y1="32" x2="103" y2="14" stroke="white" strokeWidth="4" strokeLinecap="round"/>
+  <!-- Top dot (cyan accent) -->
+  <circle cx="103" cy="14" r="5" fill="#38BDF8"/>
+  
+  <!-- Bottom circuit node on C endpoint -->
+  <circle cx="85" cy="88" r="6" fill="white"/>
+  <!-- Bottom horizontal wire -->
+  <line x1="85" y1="88" x2="103" y2="88" stroke="white" strokeWidth="4" strokeLinecap="round"/>
+  <!-- Bottom vertical wire -->
+  <line x1="103" y1="88" x2="103" y2="106" stroke="white" strokeWidth="4" strokeLinecap="round"/>
+  <!-- Bottom dot (cyan accent) -->
+  <circle cx="103" cy="106" r="5" fill="#38BDF8"/>
+</svg>
