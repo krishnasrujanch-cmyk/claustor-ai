@@ -865,7 +865,7 @@ export default function LandingPage() {
             <div style={{ background: "#0D152F", border: "1px solid #1E2D4A", borderRadius: 16, padding: 28 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#60A5FA", letterSpacing: "1px", marginBottom: 16, textTransform: "uppercase" }}>⚡ Intelligence Engine</div>
               {[
-                ["Hybrid Search", "BM25 + Vector + Semantic + RRF fusion"],
+                ["Hybrid Search (BM25 + Vector + RRF)", "Keyword + semantic fusion with reciprocal rank reranking"],
                 ["Multi-level Retrieval", "Parent → child → cross-reference chains"],
                 ["Judge LLM Routing", "Groq → Haiku → Sonnet by complexity"],
                 ["Groundedness Guard", "Citation-verified answers only"],
@@ -943,7 +943,7 @@ export default function LandingPage() {
               null,
               { icon: "⚖️", label: "Judge Routes", sub: "Groq LLM" },
               null,
-              { icon: "🔎", label: "Hybrid Search", sub: "BM25 + Vector" },
+              { icon: "🔎", label: "Hybrid Search", sub: "BM25 + Vector + RRF" },
               null,
               { icon: "✨", label: "Answer", sub: "Cited + Grounded" },
             ].map((step, i) =>
@@ -978,7 +978,7 @@ export default function LandingPage() {
               ))}
             </div>
             {[
-              ["AI-Powered Search", "❌", "⚠️ Limited", "✅ Hybrid BM25+Vector"],
+              ["AI-Powered Search", "❌", "⚠️ Limited", "✅ BM25 + Vector + RRF"],
               ["Natural Language Q&A", "❌", "❌", "✅ Citation-verified"],
               ["Risk Detection", "⚠️ Manual", "⚠️ Basic rules", "✅ 25 clause types"],
               ["Clause Comparison", "❌", "❌", "✅ Cross-contract"],
@@ -1009,14 +1009,15 @@ export default function LandingPage() {
           </h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
             {[
-              { status: "✅ Live", label: "Contract Analysis", desc: "Upload, extract, risk-score", color: C.success },
-              { status: "✅ Live", label: "AI Copilot", desc: "Natural language Q&A", color: C.success },
-              { status: "✅ Live", label: "Global Identifiers", desc: "8 countries, 25+ ID types", color: C.success },
-              { status: "🔜 Soon", label: "Contract Comparison", desc: "Side-by-side redline AI", color: C.warning },
-              { status: "🔜 Soon", label: "Multi-tenant SaaS", desc: "Auth0, isolated namespaces", color: C.warning },
-              { status: "🔮 V2", label: "AI Agents", desc: "Autonomous contract workflows", color: C.primary },
-              { status: "🔮 V2", label: "Graph Intelligence", desc: "Entity relationship mapping", color: C.primary },
-              { status: "🔮 V2", label: "Workflow Automation", desc: "Approval, signing, alerts", color: C.primary },
+              { status: "✅ Live", label: "Contract Analysis", desc: "Upload, extract, risk-score 25 clause types", color: C.success },
+              { status: "✅ Live", label: "AI Copilot", desc: "Natural language Q&A with citations", color: C.success },
+              { status: "✅ Live", label: "Global Identifiers", desc: "8 countries, 25+ ID types auto-extracted", color: C.success },
+              { status: "✅ Live", label: "AI Agents + Bulk Import", desc: "Celery pipeline, bulk ZIP processing", color: C.success },
+              { status: "✅ Live", label: "Contract Comparison", desc: "Side-by-side clause-level comparison", color: C.success },
+              { status: "✅ Live", label: "Workflow Automation", desc: "Obligation alerts, renewal tracking, bulk actions", color: C.success },
+              { status: "✅ Live", label: "Multi-tenant SaaS", desc: "Auth0 SSO, per-org Pinecone namespace", color: C.success },
+              { status: "🔜 Soon", label: "Enterprise MFA + Dedicated Pod", desc: "Auth0 MFA policy + per-org Pinecone pod", color: C.warning },
+              { status: "🔮 V2", label: "Graph Intelligence", desc: "Entity relationship mapping across contracts", color: C.primary },
             ].map(({ status, label, desc, color }) => (
               <div key={label} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, textAlign: "left" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 8 }}>{status}</div>
