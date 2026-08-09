@@ -888,7 +888,7 @@ export default function LandingPage() {
               {[
                 ["25 Clause Types", "Auto-extracted, risk-scored, playbook-matched"],
                 ["Vision AI", "Scanned docs, images, payment tables via OCR"],
-                ["100+ Languages", "bge-m3 multilingual embeddings"],
+                ["Multilingual Support", "bge-m3 embeddings — search contracts in any language"],
                 ["Hierarchical Chunking", "Article → clause → cross-reference aware"],
                 ["Industry Risk Scoring", "Weighted by sector (pharma, banking, IT)"],
                 ["Missing Clause Detection", "Flags absent protections automatically"],
@@ -982,7 +982,7 @@ export default function LandingPage() {
               ["Natural Language Q&A", "❌", "❌", "✅ Citation-verified"],
               ["Risk Detection", "⚠️ Manual", "⚠️ Basic rules", "✅ 25 clause types"],
               ["Clause Comparison", "❌", "❌", "✅ Cross-contract"],
-              ["Multi-language Support", "❌", "⚠️ Limited", "✅ 100+ languages"],
+              ["Multi-language Support", "❌", "⚠️ Limited", "✅ Multilingual embeddings"],
               ["Party ID Extraction", "❌", "❌", "✅ 8 countries"],
               ["Vision AI (Scanned Docs)", "❌", "❌", "✅ OCR + Tables"],
               ["Obligation Tracking", "⚠️ Spreadsheet", "✅ Basic", "✅ AI alerts"],
@@ -1042,7 +1042,7 @@ export default function LandingPage() {
             { q: "Is my contract data secure?", a: "Yes. All contracts are encrypted at rest (AES-256) and in transit (TLS 1.3). Your data never trains any AI model. Enterprise plans get dedicated data namespaces and regional deployment." },
             { q: "What file formats are supported?", a: "PDF, DOCX, XLS on Starter and above. Scanned PDFs and image-based contracts via Vision AI on Professional and Enterprise plans." },
             { q: "How long does analysis take?", a: "Most contracts are fully analysed in under 60 seconds. A 20-page contract typically takes 30-45 seconds including clause extraction, risk scoring, and vector indexing." },
-            { q: "Can I use it for non-Indian contracts?", a: "Absolutely. Claustor supports contracts from 8 countries — India, UK, US, EU, Singapore, Australia, UAE, and global. Multi-language support covers 100+ languages." },
+            { q: "Can I use it for non-Indian contracts?", a: "Absolutely. Claustor supports contracts from 8 countries — India, UK, US, EU, Singapore, Australia, UAE, and global. Multi-language support covers Multilingual (bge-m3)." },
             { q: "What AI models power Claustor?", a: "We use a multi-model approach: Groq (llama-3.3-70b) for simple queries, Anthropic Haiku for medium complexity, and Anthropic Sonnet for complex legal analysis. Model selection is automatic based on query complexity." },
             { q: "Do you offer a free trial?", a: "Yes — the Free plan gives you 5 contracts and 100 AI queries at no cost, no credit card required. Starter and Professional plans include a 14-day trial." },
           ].map(({ q, a }, i) => (
