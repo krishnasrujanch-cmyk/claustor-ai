@@ -481,8 +481,8 @@ function EnterprisePopup({ onClose }: { onClose: () => void }) {
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#111827", marginBottom: 4 }}>Enterprise Plan</div>
-                <div style={{ fontSize: 13, color: "#6B7280" }}>Custom pricing · Unlimited usage · Dedicated SLA</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#111827", marginBottom: 4 }}>Talk to Sales</div>
+                <div style={{ fontSize: 13, color: "#6B7280" }}>Tell us about your team — we'll get back within 4 hours</div>
               </div>
               <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9CA3AF" }}>✕</button>
             </div>
@@ -556,7 +556,7 @@ function EnterprisePopup({ onClose }: { onClose: () => void }) {
               style={{ width: "100%", padding: "13px", background: "#0066FF", color: "white",
                 border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer",
                 opacity: (!form.name || !form.email || !form.company) ? 0.5 : 1 }}>
-              Request Enterprise Quote →
+              Send Message →
             </button>
             <div style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", marginTop: 10 }}>
               Goes to sales@claustor.ai · Response within 4 business hours
@@ -865,14 +865,20 @@ export default function LandingPage() {
             </div>
             {[
               ["AI-Powered Search", "❌", "⚠️ Limited", "✅ BM25 + Vector + RRF"],
-              ["Natural Language Q&A", "❌", "❌", "✅ Citation-verified"],
+              ["Natural Language Q&A", "❌", "❌", "✅ Citation-verified answers"],
               ["Risk Detection", "⚠️ Manual", "⚠️ Basic rules", "✅ 25 clause types"],
-              ["Clause Comparison", "❌", "❌", "✅ Cross-contract"],
-              ["Multi-language Support", "❌", "⚠️ Limited", "✅ Multilingual embeddings"],
-              ["Party ID Extraction", "❌", "❌", "✅ 8 countries"],
-              ["Vision AI (Scanned Docs)", "❌", "❌", "✅ OCR + Tables"],
-              ["Obligation Tracking", "⚠️ Spreadsheet", "✅ Basic", "✅ AI alerts"],
-              ["Setup Time", "Immediate", "Weeks", "✅ Under 5 mins"],
+              ["Clause Comparison", "❌", "❌", "✅ Cross-contract analysis"],
+              ["Multi-language Support", "❌", "⚠️ Limited", "✅ Multilingual (bge-m3)"],
+              ["Party ID Extraction", "❌", "❌", "✅ 8 countries, 25+ ID types"],
+              ["Vision AI (Scanned Docs)", "❌", "❌", "✅ OCR + image tables"],
+              ["Bulk Import", "❌", "⚠️ Limited", "✅ ZIP batch upload"],
+              ["Industry Risk Scoring", "❌", "❌", "✅ 8 industry playbooks"],
+              ["Missing Clause Detection", "❌", "❌", "✅ Auto-flagged per type"],
+              ["Obligation Tracking", "⚠️ Spreadsheet", "✅ Basic", "✅ AI-powered alerts"],
+              ["Audit Logs", "❌", "⚠️ Basic", "✅ Full trail (Enterprise)"],
+              ["API Access", "❌", "⚠️ Limited", "✅ REST API (Enterprise)"],
+              ["Setup Time", "Immediate", "3–6 weeks", "✅ Under 5 minutes"],
+              ["Starting Price (India)", "₹0", "₹2L+/year", "✅ ₹7,999/month"],
             ].map(([cap, manual, clm, claustor], i) => (
               <div key={cap} style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 1.2fr 1.2fr",
                 background: i % 2 === 0 ? C.surface : C.bg, borderTop: `1px solid ${C.border}` }}>
