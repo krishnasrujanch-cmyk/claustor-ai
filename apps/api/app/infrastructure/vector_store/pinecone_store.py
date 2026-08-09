@@ -77,6 +77,82 @@ class VectorStore:
         """
         return f"org_{str(org_id).replace('-', '')[:8]}"
 
+
+    async def get_index_for_org(self, org_id: UUID, db=None) -> any:
+        """
+        Get Pinecone index for org.
+        - Default: shared index (all plans)
+        - Enterprise with pinecone_index set: dedicated index
+        - If dedicated index doesn't exist: auto-create it
+        """
+        # Check if org has dedicated index
+        dedicated_index_name = None
+        if db:
+            from sqlalchemy import select, text
+            try:
+                result = await db.execute(text(
+                    "SELECT pinecone_index FROM organisations WHERE id = :org_id"
+                ), {"org_id": str(org_id)})
+                row = result.fetchone()
+                if row and row[0]:
+                    dedicated_index_name = row[0]
+            except Exception:
+                pass
+
+        if not dedicated_index_name:
+            return self.index  # shared index
+
+        # Use or create dedicated index
+        try:
+            existing = [idx.name for idx in self.pc.list_indexes()]
+            if dedicated_index_name not in existing:
+                # Auto-create dedicated index with same spec as shared
+                from pinecone import ServerlessSpec
+                self.pc.create_index(
+                    name=dedicated_index_name,
+                    dimension=1024,  # bge-m3 dimension
+                    metric="cosine",
+                    spec=ServerlessSpec(cloud="aws", region="us-east-1"),
+                )
+                import asyncio
+                await asyncio.sleep(30)  # wait for index to be ready
+            return self.pc.Index(name=dedicated_index_name)
+        except Exception as e:
+            import structlog
+            structlog.get_logger().warning(
+                "dedicated_index_fallback",
+                org_id=str(org_id), error=str(e)
+            )
+            return self.index  # fallback to shared
+
+    async def provision_enterprise_index(self, org_id: UUID, org_name: str, db) -> str:
+        """
+        Provision dedicated Pinecone index for Enterprise org.
+        Called when org is upgraded to Enterprise.
+        Returns the new index name.
+        """
+        import re
+        from sqlalchemy import text
+        # Generate clean index name from org name
+        clean = re.sub(r'[^a-z0-9]', '-', org_name.lower())[:20].strip('-')
+        index_name = f"claustor-ent-{clean}"
+
+        # Create the index
+        await self.get_index_for_org(org_id, db)  # triggers creation
+
+        # Save to DB
+        await db.execute(text(
+            "UPDATE organisations SET pinecone_index = :idx WHERE id = :org_id"
+        ), {"idx": index_name, "org_id": str(org_id)})
+        await db.commit()
+
+        import structlog
+        structlog.get_logger().info(
+            "enterprise_index_provisioned",
+            org_id=str(org_id), index=index_name
+        )
+        return index_name
+
     async def get_embedder(self):
         """Lazy-load sentence transformer model — module-level cache."""
         global _EMBEDDER_CACHE
