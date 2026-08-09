@@ -363,32 +363,7 @@ export default function ContractsPage() {
             <option value={100}>100 / page</option>
           </select>
 
-          {/* Upload — last */}
-          {can(role,"contract.upload") && (
-            <>
-              <button
-                onClick={()=>fileRef.current?.click()}
-                title="Upload contract"
-                style={{
-                  width:34, height:34, borderRadius:8,
-                  background:"#0066FF", color:"white",
-                  border:"none", cursor:"pointer",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  boxShadow:"0 1px 3px rgba(0,102,255,0.3)",
-                }}
-                onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background="#0052CC"}
-                onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background="#0066FF"}
-              >
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-                </svg>
-              </button>
-              <input ref={fileRef} type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.xml"
-                style={{display:"none"}}
-                onChange={e=>e.target.files?.[0]&&handleUpload(e.target.files[0])}/>
-            </>
-          )}
+
         </div>
       </div>
 
