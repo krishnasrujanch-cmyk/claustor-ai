@@ -1,4 +1,5 @@
 "use client";
+import ReactMarkdown from "react-markdown";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { contracts as contractsAPI, getToken } from "@/lib/api";
@@ -85,10 +86,63 @@ function getFollowUps(query: string): string[] {
 }
 
 function RichText({ text, citations }: { text: string; citations?: any[] }) {
-  const lines = text.split("\n");
+  // Pre-process: extract and render markdown tables
+  const tableRegex = new RegExp("(\\|.+\\|\\n)(\\|[-: |]+\\|\\n)((?:\\|.+\\|(?:\\n)?)*)", "g");
+  const parts: Array<{type:"text"|"table"; content:string}> = [];
+  let lastIdx = 0;
+  let match;
+  while ((match = tableRegex.exec(text)) !== null) {
+    if (match.index > lastIdx) parts.push({type:"text", content:text.slice(lastIdx, match.index)});
+    parts.push({type:"table", content:match[0]});
+    lastIdx = match.index + match[0].length;
+  }
+  if (lastIdx < text.length) parts.push({type:"text", content:text.slice(lastIdx)});
+
   return (
     <div>
-      {lines.map((line, li) => {
+      {parts.map((part, pi) => {
+        if (part.type === "table") {
+          const rows = part.content.trim().split("\n").filter(r => r.trim() && !r.match(/^\|[-:| ]+\|$/));
+          const headers = rows[0].split("|").filter(c => c.trim()).map(c => c.trim());
+          const dataRows = rows.slice(1);
+          return (
+            <div key={pi} style={{overflowX:"auto",marginBottom:12,marginTop:8}}>
+              <table style={{borderCollapse:"collapse",width:"100%",fontSize:12}}>
+                <thead>
+                  <tr>
+                    {headers.map((h,i) => (
+                      <th key={i} style={{
+                        padding:"8px 12px",background:"#0066FF",color:"white",
+                        fontWeight:700,textAlign:"left",whiteSpace:"nowrap",
+                        border:"1px solid #DBEAFE",
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dataRows.map((row,ri) => {
+                    const cells = row.split("|").filter(c => c.trim()).map(c => c.trim());
+                    return (
+                      <tr key={ri} style={{background:ri%2===0?"white":"#F8FAFC"}}>
+                        {cells.map((cell,ci) => (
+                          <td key={ci} style={{
+                            padding:"7px 12px",border:"1px solid #E5E7EB",
+                            color:"#374151",verticalAlign:"top",
+                          }}>{inlineParse(cell, citations)}</td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+        // Render text part
+        const lines = part.content.split("\n");
+        return (
+          <div key={pi}>
+          {lines.map((line, li) => {
         if (!line.trim()) return <div key={li} style={{height:6}}/>;
         const numMatch = line.match(/^(\d+)\.\s+(.+)$/);
         if (numMatch) {
@@ -127,6 +181,9 @@ function RichText({ text, citations }: { text: string; citations?: any[] }) {
         const hMatch = line.match(/^#{1,3}\s+(.+)/);
         if (hMatch) return <div key={li} style={{fontSize:14,fontWeight:700,color:C.heading,margin:"10px 0 5px"}}>{hMatch[1]}</div>;
         return <p key={li} style={{margin:"0 0 5px",fontSize:13,color:C.body,lineHeight:1.7}}>{inlineParse(line,citations)}</p>;
+      })}
+          </div>
+        );
       })}
     </div>
   );
