@@ -242,6 +242,20 @@ class ContractPipeline:
             logger.info(f"pipeline_step: step=indexing contract_id={contract_id}")
 
             # ── Hierarchical chunking — parent/child with rich metadata ──
+            # ── Step 6b: Extract Party Identifiers (Option B) ────
+            _party_ids = []
+            try:
+                from app.infrastructure.identifiers.party_extractor import (
+                    extract_party_identifiers, build_identifier_summary
+                )
+                _party_ids = await extract_party_identifiers(
+                    parsed.full_text, plan=_org_plan
+                )
+                if _party_ids:
+                    parsed.full_text += build_identifier_summary(_party_ids)
+                    logger.info("party_identifiers_extracted", parties=len(_party_ids))
+            except Exception as _pe:
+                logger.warning(f"party_extraction_failed: {_pe}")
             from app.infrastructure.document.hierarchical_chunker import build_hierarchical_chunks
             from app.infrastructure.vector_store.chunk_indexer import index_chunks
 
@@ -289,6 +303,7 @@ class ContractPipeline:
                 obligations_data=obligations_data,
                 contract_meta=contract_meta,
                 parsed=parsed,
+                party_ids=_party_ids,
             )
 
             await self._update_status(db, contract_id, "analyzed")
@@ -656,6 +671,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
         obligations_data: list[dict],
         contract_meta: dict,
         parsed,
+        party_ids: list = None,
     ) -> None:
         """Save all extracted data to database."""
         from datetime import date as date_type
@@ -712,6 +728,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                 status="analyzed",
                 missing_clauses=_missing_clauses if "_missing_clauses" in dir() else [],
                 detected_language=_detected_lang if "_detected_lang" in dir() else "en",
+                party_identifiers=party_ids or [],
             )
         )
 

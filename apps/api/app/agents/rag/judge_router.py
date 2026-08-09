@@ -48,6 +48,9 @@ ALWAYS needs_vector=true (semantic search in contract text):
 - Multilingual queries about contract content
 
 ONLY needs_db=true (pure structured query — NO contract text needed):
+- Party registration/tax identifiers: GSTIN, CIN, PAN, TAN, VAT, EIN, DUNS, UEN, ABN, ACN, TRN, IBAN, SWIFT, Company No, registration number, tax ID
+  → needs_db=true, needs_vector=false, db_query_type="party_identifier"
+  Examples: "supplier GSTIN", "what is the CIN", "party registration number", "company VAT number"
 - Contract metadata ONLY: expiry date, contract value, counterparty name,
   contract type, risk level, risk score, auto-renewal flag, contract status
 - Cross-contract aggregations: count, list, filter, "show contracts where..."
@@ -65,7 +68,7 @@ Return ONLY this JSON (no markdown):
   "needs_vector": true/false,
   "complexity": "simple|medium|complex",
   "is_followup": true/false,
-  "db_query_type": "expiry_list|count_total|value_query|risk_query|type_filter|party_filter|milestone|renewal_list|overdue_list|value_filter|avg_risk|count_by_risk|null",
+  "db_query_type": "expiry_list|count_total|value_query|risk_query|type_filter|party_filter|milestone|renewal_list|overdue_list|value_filter|avg_risk|count_by_risk|party_identifier|null",
   "filters": {{
     "counterparty": "exact company name or null",
     "contract_type": "NDA|MSA|SLA|Employment|Vendor|License|Lease|Loan|Franchise|PPA|Retainer|null",
@@ -86,7 +89,8 @@ Return ONLY this JSON (no markdown):
 
 COMPLEXITY RULES:
 - "simple":  single fact, single clause, direct lookup, metadata query
-  e.g. "when does this expire", "what is the value", "list payment terms"
+  e.g. "GSTIN", "CIN", "PAN", "VAT number", "company registration", "tax ID", "EIN", "UEN", "ABN" → needs_db=true, needs_vector=false, db_query_type="party_identifier"
+- "when does this expire", "what is the value", "list payment terms"
 - "medium":  multi-clause, comparison, summary, explanation needed
   e.g. "explain the termination conditions", "what are the key risks"
 - "complex": multi-contract reasoning, legal analysis, cross-reference chains,

@@ -74,8 +74,6 @@ class Organisation(Base):
     pinecone_namespace: Mapped[str | None] = mapped_column(String(100))
     gcs_prefix: Mapped[str | None] = mapped_column(String(255))
 
-    # Party identifiers (extracted via LLM)
-    party_identifiers: Mapped[list] = mapped_column(JSONB, default=list)
     # Organisation profile
     gstin: Mapped[str | None] = mapped_column(String(20))
     address: Mapped[str | None] = mapped_column(String(500))
@@ -228,7 +226,7 @@ class Contract(Base):
     version_number: Mapped[int] = mapped_column(Integer, default=1)
     is_latest: Mapped[bool] = mapped_column(Boolean, default=True)
     version_note: Mapped[str | None] = mapped_column(String(500))
-    party_identifiers: Mapped[list] = mapped_column(JSONB, default=list)
+    party_identifiers: Mapped[list | None] = mapped_column(JSONB, default=list)
     missing_clauses: Mapped[list | None] = mapped_column(JSONB, default=list)
     detected_language: Mapped[str | None] = mapped_column(String(10), default="en")
     review_status: Mapped[str | None] = mapped_column(String(50))
@@ -292,7 +290,6 @@ class Clause(Base):
     version_number: Mapped[int] = mapped_column(Integer, default=1)
     is_latest: Mapped[bool] = mapped_column(Boolean, default=True)
     version_note: Mapped[str | None] = mapped_column(String(500))
-    party_identifiers: Mapped[list] = mapped_column(JSONB, default=list)
     missing_clauses: Mapped[list | None] = mapped_column(JSONB, default=list)
     detected_language: Mapped[str | None] = mapped_column(String(10), default="en")
     review_status: Mapped[str | None] = mapped_column(String(50))

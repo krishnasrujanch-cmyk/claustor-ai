@@ -44,6 +44,59 @@ async def _single_contract_facts(org_id, db, contract_id) -> str:
     )
 
 
+
+async def _party_identifier_query(
+    org_id, db, filters: dict, query: str, contract_id=None
+) -> str:
+    """
+    Query party_identifiers JSONB directly from contracts table.
+    Returns party names, roles, and all registration identifiers.
+    """
+    from sqlalchemy import text
+    import json
+
+    where = "org_id = :org_id"
+    params: dict = {"org_id": str(org_id)}
+    if contract_id:
+        where += " AND id = :contract_id"
+        params["contract_id"] = str(contract_id)
+
+    rows = await db.execute(text(f"""
+        SELECT title, counterparty, party_identifiers
+        FROM contracts
+        WHERE {where}
+          AND party_identifiers IS NOT NULL
+          AND party_identifiers != '[]'::jsonb
+        ORDER BY updated_at DESC
+        LIMIT 5
+    """), params)
+
+    results = rows.fetchall()
+    if not results:
+        return ""
+
+    lines = []
+    for row in results:
+        title = row[0] or "Contract"
+        parties = row[2] or []
+        if not parties:
+            continue
+        lines.append(f"Contract: {title}")
+        for party in parties:
+            name = party.get("party_name", "")
+            role = party.get("role", "Party")
+            addr = party.get("address", "")
+            ids  = party.get("identifiers", [])
+            lines.append(f"  {name} ({role}):")
+            if addr:
+                lines.append(f"    Address: {addr}")
+            for id_info in ids:
+                lines.append(f"    {id_info.get('type','')}: {id_info.get('value','')}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 async def run_structured_query(
     intent_sub_type: Optional[str],
     date_start:      Optional[date],
@@ -90,6 +143,9 @@ async def run_structured_query(
 
         if _matches(intent_sub_type, ["by_counterparty"]):
             return await _counterparty_query(org_id, db, filters, query, contract_id=contract_id)
+        if _matches(intent_sub_type, ["party_identifier", "gstin", "cin", "pan", "vat",
+                                       "registration", "tax_id", "company_number"]):
+            return await _party_identifier_query(org_id, db, filters, query, contract_id=contract_id)
 
         if _matches(intent_sub_type, ["by_status", "pending_review"]):
             return await _status_query(org_id, db, filters, contract_id=contract_id)
