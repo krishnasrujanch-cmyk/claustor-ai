@@ -1,0 +1,65 @@
+country: IN
+patterns:
+  GSTIN:
+    regex: "\\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z])\\b"
+    priority: 100
+    validate: true
+    normalize: uppercase
+    description: "Goods and Services Tax Identification Number"
+    label: "GSTIN"
+
+  CIN:
+    regex: "\\b([UL][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6})\\b"
+    priority: 95
+    validate: false
+    normalize: uppercase
+    description: "Company Identification Number"
+    label: "CIN"
+
+  PAN:
+    regex: "\\b([A-Z]{5}[0-9]{4}[A-Z])\\b"
+    priority: 90
+    validate: true
+    normalize: uppercase
+    description: "Permanent Account Number"
+    label: "PAN"
+
+  TAN:
+    regex: "\\b([A-Z]{4}[0-9]{5}[A-Z])\\b"
+    priority: 85
+    validate: false
+    normalize: uppercase
+    description: "Tax Deduction Account Number"
+    label: "TAN"
+
+  DIN:
+    regex: "\\b(?:DIN[:\\s]*)([0-9]{8})\\b"
+    priority: 80
+    validate: false
+    normalize: digits_only
+    description: "Director Identification Number"
+    label: "DIN"
+
+  IEC:
+    regex: "\\b(?:IEC[:\\s#]*)([0-9]{10})\\b"
+    priority: 75
+    validate: false
+    normalize: digits_only
+    description: "Importer Exporter Code"
+    label: "IEC"
+
+  LLPIN:
+    regex: "\\b(AAA-[0-9]{4})\\b"
+    priority: 70
+    validate: false
+    normalize: uppercase
+    description: "Limited Liability Partnership Identification Number"
+    label: "LLPIN"
+
+  UDYAM:
+    regex: "\\b(UDYAM-[A-Z]{2}-[0-9]{2}-[0-9]{7})\\b"
+    priority: 65
+    validate: false
+    normalize: uppercase
+    description: "MSME Registration Number"
+    label: "UDYAM"

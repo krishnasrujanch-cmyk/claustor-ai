@@ -1,0 +1,17 @@
+country: AE
+patterns:
+  UAE_TRN:
+    regex: "\\b(?:TRN[:\\s]*)?(1[0-9]{14})\\b"
+    priority: 100
+    validate: false
+    normalize: digits_only
+    description: "UAE Tax Registration Number"
+    label: "TRN"
+
+  UAE_LICENSE:
+    regex: "\\b(?:Trade\\s*License|License\\s*No)[:\\s]*([A-Z0-9/-]{6,20})\\b"
+    priority: 90
+    validate: false
+    normalize: uppercase
+    description: "UAE Trade License Number"
+    label: "Trade License"

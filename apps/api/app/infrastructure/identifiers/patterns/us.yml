@@ -1,0 +1,25 @@
+country: US
+patterns:
+  US_EIN:
+    regex: "\\b(?:EIN|FEIN|Tax\\s*ID)[:\\s]*([0-9]{2}-[0-9]{7})\\b"
+    priority: 100
+    validate: false
+    normalize: digits_only
+    description: "Employer Identification Number"
+    label: "EIN"
+
+  US_DUNS:
+    regex: "\\b(?:D-U-N-S|DUNS)[:\\s#]*([0-9]{2}-[0-9]{3}-[0-9]{4})\\b"
+    priority: 90
+    validate: false
+    normalize: digits_only
+    description: "Data Universal Numbering System"
+    label: "DUNS"
+
+  US_SAM:
+    regex: "\\b(?:CAGE|SAM)[:\\s]*([A-Z0-9]{5})\\b"
+    priority: 80
+    validate: false
+    normalize: uppercase
+    description: "System for Award Management / CAGE Code"
+    label: "CAGE"
