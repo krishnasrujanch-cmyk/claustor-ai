@@ -319,11 +319,26 @@ async def chat_stream(
                 pass
 
             # ── Step 2: JUDGE — Intent + Entity + Query Rewrite ──
+            # Get contract meta for Judge context (party resolution)
+            _judge_meta = {}
+            if req.contract_id:
+                try:
+                    from sqlalchemy import select as _smeta, text as _tmeta
+                    _crow = await db.execute(_tmeta("""
+                        SELECT title, contract_type, counterparty
+                        FROM contracts WHERE id = :cid
+                    """), {"cid": str(req.contract_id)})
+                    _cr = _crow.fetchone()
+                    if _cr:
+                        _judge_meta = {"title": _cr[0], "contract_type": _cr[1], "counterparty": _cr[2]}
+                except Exception:
+                    pass
             judge = await judge_classify(
                 query=raw_query,
                 llm=agent.llm,
                 history_turns=[(r[0], r[1]) for r in _hist_rows],
                 org_id=user.org_id,
+                contract_meta=_judge_meta,
             )
 
             # Use Judge's rewritten query for better vector retrieval

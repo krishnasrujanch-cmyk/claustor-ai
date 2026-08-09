@@ -159,6 +159,23 @@ class ContractPipeline:
                     except Exception as _ve:
                         logger.warning("vision_analysis_skipped", error=str(_ve))
 
+            # Extract Indian tax identifiers and append to searchable text
+            try:
+                from app.infrastructure.document.processor import DocumentProcessor
+                _ids = DocumentProcessor.extract_indian_identifiers(parsed.full_text)
+                if _ids:
+                    _id_lines = []
+                    if _ids.get("gstins"):
+                        _id_lines.append(f"GSTIN numbers in this contract: {', '.join(_ids['gstins'])}")
+                    if _ids.get("cins"):
+                        _id_lines.append(f"CIN numbers: {', '.join(_ids['cins'])}")
+                    if _ids.get("pans"):
+                        _id_lines.append(f"PAN numbers: {', '.join(_ids['pans'])}")
+                    if _id_lines:
+                        parsed.full_text += "\n\n=== INDIAN TAX IDENTIFIERS ===\n" + "\n".join(_id_lines)
+                        logger.info("identifiers_extracted", count=len(_id_lines))
+            except Exception as _ie:
+                logger.warning(f"identifier_extraction_failed: {_ie}")
             # Log parsing results
             logger.info("document_parsed",
                        contract_id=str(contract_id),

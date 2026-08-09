@@ -115,6 +115,7 @@ async def judge_classify(
     llm,
     history_turns: list = None,
     org_id: Optional[UUID] = None,
+    contract_meta: dict = None,
 ) -> JudgeResult:
     """
     Use Judge LLM to classify intent, extract entities, rewrite query.
@@ -135,6 +136,24 @@ async def judge_classify(
             lines.append(f"{role.upper()}: {str(content)[:150]}")
         history_text = "\n".join(lines) or "None"
 
+    # Build party context for generic reference resolution
+    party_context = ""
+    if contract_meta:
+        cp = contract_meta.get("counterparty", "")
+        ct = contract_meta.get("contract_type", "")
+        title = contract_meta.get("title", "")
+        if cp or ct:
+            party_context = f"""
+CONTRACT CONTEXT:
+- Title: {title}
+- Counterparty/Supplier: {cp}
+- Type: {ct}
+
+When user mentions "supplier", "vendor", "service provider" → refers to {cp or "the supplier"}
+When user mentions "customer", "client", "buyer" → refers to the other party
+Include actual company name in rewritten_query when resolving generic party references.
+"""
+
     prompt = JUDGE_PROMPT.format(
         today=today.isoformat(),
         fy_start=fy_start.isoformat(),
@@ -142,6 +161,8 @@ async def judge_classify(
         history=history_text,
         query=query,
     )
+    if party_context:
+        prompt = party_context + "\n" + prompt
 
     try:
         from app.infrastructure.llm.base import AgentRole, LLMMessage
