@@ -1,0 +1,14 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.git
+.env
+.env.local
+*.log
+.pytest_cache
+htmlcov
+.coverage
+alembic/versions/*.pyc
+tests/
+*.md

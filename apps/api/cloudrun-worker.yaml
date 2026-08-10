@@ -1,0 +1,25 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: claustor-worker
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      containerConcurrency: 1
+      timeoutSeconds: 3600
+      serviceAccountName: claustor-api@claustor-prod.iam.gserviceaccount.com
+      containers:
+        - image: REGION-docker.pkg.dev/claustor-prod/claustor/api:latest
+          command: ["/app/docker-entrypoint-worker.sh"]
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          envFrom:
+            - secretRef:
+                name: claustor-env
