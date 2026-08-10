@@ -71,6 +71,18 @@ async def register(req: RegisterRequest, db: DbSession):
     token = create_access_token(user.id, org.id, req.email, "super_admin", "free")
     await db.commit()
     logger.info("user_registered", user_id=str(user.id))
+    # Send welcome notification
+    try:
+        from app.services.notifications import send_notification, NotificationEvent, NotificationPayload
+        await send_notification(NotificationPayload(
+            event=NotificationEvent.WELCOME_INVITE,
+            recipient_email=user.email,
+            recipient_name=user.full_name or user.email.split("@")[0].title(),
+            org_name=req.org_name if hasattr(req, "org_name") else "",
+            action_url="https://claustor.ai/dashboard",
+        ))
+    except Exception as _ne:
+        logger.warning(f"welcome_notification_failed: {_ne}")
     return TokenResponse(access_token=token, user_id=str(user.id), org_id=str(org.id), role="super_admin", plan="free")
 
 

@@ -1,0 +1,212 @@
+# Claustor AI — Notification Configuration
+# subject, color, cta_label per event type
+
+welcome_invite:
+  subject: "Welcome to Claustor AI – Your Account is Ready"
+  color: "#0066FF"
+  cta_label: "Set Up Your Account"
+  category: user
+
+invitation_accepted:
+  subject: "{recipient_name} has joined Claustor AI"
+  color: "#22C55E"
+  cta_label: "View Team"
+  category: user
+
+password_reset:
+  subject: "Reset Your Claustor AI Password"
+  color: "#0066FF"
+  cta_label: "Reset Password"
+  category: security
+
+new_device_login:
+  subject: "New Device Login Detected – Claustor AI"
+  color: "#F59E0B"
+  cta_label: "Review Activity"
+  category: security
+
+password_changed:
+  subject: "Your Password Was Changed – Claustor AI"
+  color: "#F59E0B"
+  cta_label: "Secure My Account"
+  category: security
+
+mfa_enabled:
+  subject: "Two-Factor Authentication Enabled"
+  color: "#22C55E"
+  cta_label: "View Security Settings"
+  category: security
+
+contract_uploaded:
+  subject: "Contract Uploaded: {contract_name}"
+  color: "#0066FF"
+  cta_label: "View Contract"
+  category: contract
+
+ai_analysis_complete:
+  subject: "AI Analysis Complete: {contract_name}"
+  color: "#22C55E"
+  cta_label: "View Analysis"
+  category: contract
+
+high_risk_detected:
+  subject: "⚠️ High-Risk Clauses Detected: {contract_name}"
+  color: "#EF4444"
+  cta_label: "Review Risk Report"
+  category: contract
+
+contract_expiring:
+  subject: "Contract Expiring in {days} Days: {contract_name}"
+  color: "#F59E0B"
+  cta_label: "View Contract"
+  category: contract
+
+contract_expired:
+  subject: "Contract Expired: {contract_name}"
+  color: "#EF4444"
+  cta_label: "View Contract"
+  category: contract
+
+renewal_required:
+  subject: "Renewal Required: {contract_name}"
+  color: "#F59E0B"
+  cta_label: "Start Renewal"
+  category: contract
+
+review_assigned:
+  subject: "Contract Review Assigned: {contract_name}"
+  color: "#0066FF"
+  cta_label: "Start Review"
+  category: review
+
+review_reminder:
+  subject: "Reminder: Contract Review Due in {days} Days"
+  color: "#F59E0B"
+  cta_label: "Complete Review"
+  category: review
+
+review_completed:
+  subject: "Contract Review Completed: {contract_name}"
+  color: "#22C55E"
+  cta_label: "View Review"
+  category: review
+
+review_rejected:
+  subject: "Review Feedback Available: {contract_name}"
+  color: "#EF4444"
+  cta_label: "View Feedback"
+  category: review
+
+changes_requested:
+  subject: "Changes Requested: {contract_name}"
+  color: "#F59E0B"
+  cta_label: "View Comments"
+  category: review
+
+approval_requested:
+  subject: "Approval Required: {contract_name}"
+  color: "#0066FF"
+  cta_label: "Review & Approve"
+  category: review
+
+contract_approved:
+  subject: "Contract Approved: {contract_name}"
+  color: "#22C55E"
+  cta_label: "View Contract"
+  category: review
+
+contract_rejected:
+  subject: "Contract Rejected: {contract_name}"
+  color: "#EF4444"
+  cta_label: "View Feedback"
+  category: review
+
+obligation_due:
+  subject: "Obligation Due {days_label}: {contract_name}"
+  color: "#F59E0B"
+  cta_label: "View Obligation"
+  category: obligation
+
+obligation_overdue:
+  subject: "⚠️ Obligation Overdue: {contract_name}"
+  color: "#EF4444"
+  cta_label: "View Obligation"
+  category: obligation
+
+user_mentioned:
+  subject: "{mentioned_by} mentioned you in {contract_name}"
+  color: "#0066FF"
+  cta_label: "View Comment"
+  category: collaboration
+
+comment_added:
+  subject: "New Comment on {contract_name}"
+  color: "#0066FF"
+  cta_label: "View Comment"
+  category: collaboration
+
+trial_started:
+  subject: "Your Claustor AI Trial Has Started"
+  color: "#22C55E"
+  cta_label: "Explore Claustor"
+  category: billing
+
+trial_ending:
+  subject: "Your Trial Ends in {days} Days"
+  color: "#F59E0B"
+  cta_label: "Upgrade Now"
+  category: billing
+
+payment_successful:
+  subject: "Payment Confirmed – {plan} Plan"
+  color: "#22C55E"
+  cta_label: "View Invoice"
+  category: billing
+
+payment_failed:
+  subject: "Payment Failed – Action Required"
+  color: "#EF4444"
+  cta_label: "Update Payment"
+  category: billing
+
+subscription_expiring:
+  subject: "Subscription Expiring in {days} Days"
+  color: "#F59E0B"
+  cta_label: "Renew Now"
+  category: billing
+
+plan_downgraded:
+  subject: "Your Plan Has Been Downgraded"
+  color: "#F59E0B"
+  cta_label: "View Plans"
+  category: billing
+
+invoice_generated:
+  subject: "Invoice Ready: {amount} for {plan} Plan"
+  color: "#0066FF"
+  cta_label: "Download Invoice"
+  category: billing
+
+storage_limit_reached:
+  subject: "Storage Limit {pct}% Reached"
+  color: "#F59E0B"
+  cta_label: "Manage Storage"
+  category: system
+
+query_limit_reached:
+  subject: "AI Query Limit {pct}% Reached"
+  color: "#F59E0B"
+  cta_label: "Upgrade Plan"
+  category: system
+
+ai_service_degraded:
+  subject: "⚠️ Claustor AI Service Alert"
+  color: "#EF4444"
+  cta_label: "View Status"
+  category: system
+
+scheduled_maintenance:
+  subject: "Scheduled Maintenance: {maintenance_time}"
+  color: "#6B7280"
+  cta_label: "View Details"
+  category: system

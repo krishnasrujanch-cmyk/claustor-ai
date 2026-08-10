@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background:#F1F5F9;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+        <!-- HEADER -->
+        <tr>
+          <td style="background:{{ accent_color }};border-radius:12px 12px 0 0;padding:24px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <!-- Logo SVG inline -->
+                  <svg width="130" height="32" viewBox="0 0 450 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                      <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9"/>
+                        <stop offset="100%" stop-color="#BAE6FD"/>
+                      </linearGradient>
+                    </defs>
+                    <g transform="translate(10,5)">
+                      <path d="M 68 28 A 40 40 0 1 0 68 72" fill="none" stroke="url(#rg)" stroke-width="11" stroke-linecap="round"/>
+                      <line x1="68" y1="28" x2="80" y2="28" stroke="white" stroke-width="5" stroke-linecap="round"/>
+                      <circle cx="76" cy="28" r="5" fill="white"/>
+                      <circle cx="86" cy="28" r="3.5" fill="#BAE6FD"/>
+                      <line x1="68" y1="72" x2="80" y2="72" stroke="#BAE6FD" stroke-width="5" stroke-linecap="round"/>
+                      <circle cx="76" cy="72" r="5" fill="#BAE6FD"/>
+                      <circle cx="86" cy="72" r="3.5" fill="white"/>
+                      <rect x="30" y="31" width="28" height="38" rx="5" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
+                      <line x1="36" y1="40" x2="52" y2="40" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                      <line x1="36" y1="46" x2="52" y2="46" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-linecap="round"/>
+                      <line x1="36" y1="52" x2="52" y2="52" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-linecap="round"/>
+                      <line x1="36" y1="58" x2="46" y2="58" stroke="#BAE6FD" stroke-width="2" stroke-linecap="round"/>
+                    </g>
+                    <g transform="translate(122,0)">
+                      <text x="0" y="58" font-family="Arial,sans-serif" font-size="44" font-weight="800" fill="white" letter-spacing="-0.5">Claustor</text>
+                      <text x="2" y="82" font-family="Arial,sans-serif" font-size="19" font-weight="400" fill="rgba(255,255,255,0.75)">AI Contract Intelligence</text>
+                    </g>
+                  </svg>
+                </td>
+                <td align="right">
+                  <span style="font-size:12px;color:rgba(255,255,255,0.75);font-weight:500;">{{ category | upper }}</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- BODY -->
+        <tr>
+          <td style="background:#FFFFFF;padding:40px 32px 32px;">
+
+            <!-- Greeting -->
+            <p style="font-size:16px;color:#111827;font-weight:600;margin:0 0 8px;">
+              Hi {{ recipient_name }},
+            </p>
+
+            <!-- Dynamic content block -->
+            {{ content_block }}
+
+            <!-- CTA Button -->
+            {% if action_url %}
+            <div style="text-align:center;margin:32px 0;">
+              <a href="{{ action_url }}"
+                style="display:inline-block;background:{{ accent_color }};color:#FFFFFF;
+                       font-size:15px;font-weight:700;padding:14px 32px;border-radius:10px;
+                       text-decoration:none;letter-spacing:0.2px;">
+                {{ cta_label }} →
+              </a>
+            </div>
+            {% endif %}
+
+            <!-- Secondary info -->
+            {% if secondary_block %}
+            <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:16px 20px;margin-top:24px;">
+              {{ secondary_block }}
+            </div>
+            {% endif %}
+
+          </td>
+        </tr>
+
+        <!-- DIVIDER -->
+        <tr>
+          <td style="background:#FFFFFF;padding:0 32px;">
+            <hr style="border:none;border-top:1px solid #E5E7EB;margin:0;"/>
+          </td>
+        </tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="background:#FFFFFF;border-radius:0 0 12px 12px;padding:20px 32px 28px;">
+            <p style="font-size:12px;color:#9CA3AF;margin:0 0 6px;">
+              This email was sent by <strong style="color:#6B7280;">Claustor AI</strong>,
+              a product of DKU Technologies Pvt. Ltd., Hyderabad, India.
+            </p>
+            <p style="font-size:12px;color:#9CA3AF;margin:0;">
+              <a href="{{ unsubscribe_url }}" style="color:#0066FF;text-decoration:none;">Unsubscribe</a>
+              &nbsp;·&nbsp;
+              <a href="https://claustor.ai/privacy" style="color:#0066FF;text-decoration:none;">Privacy Policy</a>
+              &nbsp;·&nbsp;
+              <a href="https://claustor.ai/help" style="color:#0066FF;text-decoration:none;">Help Centre</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

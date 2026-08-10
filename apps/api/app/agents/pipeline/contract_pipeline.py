@@ -799,6 +799,63 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
         values = {"status": status}
         if error:
             values["processing_error"] = error[:1000]
+        # Fire AI analysis complete notification
+        # Fire high risk notification
+        if status == "analyzed" and contract_meta.get("risk_level") == "high":
+            try:
+                from app.services.notifications import send_notification, NotificationEvent, NotificationPayload
+                from sqlalchemy import text as _nt2
+                _ur2 = (await db.execute(_nt2("""
+                    SELECT u.email, u.full_name, o.name FROM users u
+                    JOIN organisations o ON o.id = u.org_id
+                    WHERE u.org_id = :org_id AND u.role IN ('admin','super_admin') LIMIT 1
+                """), {"org_id": str(org_id)})).fetchone()
+                if _ur2:
+                    _high_clauses = [c.get("clause_type","") for c in scored_clauses
+                                     if c.get("risk_level") == "high"][:5]
+                    await send_notification(NotificationPayload(
+                        event=NotificationEvent.HIGH_RISK_DETECTED,
+                        recipient_email=_ur2[0],
+                        recipient_name=_ur2[1] or _ur2[0].split("@")[0].title(),
+                        org_name=_ur2[2] or "",
+                        contract_id=str(contract_id),
+                        contract_name=contract_meta.get("title","Contract"),
+                        action_url=f"https://claustor.ai/dashboard/contracts/{contract_id}",
+                        extra={
+                            "high_risk_count": len(_high_clauses),
+                            "risk_clauses": _high_clauses,
+                        }
+                    ))
+            except Exception as _ne2:
+                logger.warning(f"high_risk_notification_failed: {_ne2}")
+        if status == "analyzed":
+            try:
+                from app.services.notifications import send_notification, NotificationEvent, NotificationPayload
+                from sqlalchemy import text as _nt
+                _user_row = await db.execute(_nt("""
+                    SELECT u.email, u.full_name, o.name
+                    FROM users u JOIN organisations o ON o.id = u.org_id
+                    WHERE u.org_id = :org_id AND u.role IN ('admin','super_admin')
+                    LIMIT 1
+                """), {"org_id": str(org_id)})
+                _ur = _user_row.fetchone()
+                if _ur:
+                    await send_notification(NotificationPayload(
+                        event=NotificationEvent.AI_ANALYSIS_COMPLETE,
+                        recipient_email=_ur[0],
+                        recipient_name=_ur[1] or _ur[0].split("@")[0].title(),
+                        org_name=_ur[2] or "",
+                        contract_id=str(contract_id),
+                        contract_name=contract_meta.get("title","Contract"),
+                        action_url=f"https://claustor.ai/dashboard/contracts/{contract_id}",
+                        extra={
+                            "risk_level": contract_meta.get("risk_level","medium"),
+                            "clause_count": len(scored_clauses),
+                            "high_risk_count": sum(1 for c in scored_clauses if c.get("risk_level")=="high"),
+                        }
+                    ))
+            except Exception as _ne:
+                logger.warning(f"analysis_notification_failed: {_ne}")
         if status == "analyzed":
             values["processed_at"] = datetime.now(timezone.utc)
 

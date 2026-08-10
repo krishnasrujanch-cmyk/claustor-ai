@@ -51,45 +51,29 @@ EMAIL_TEMPLATES = {
 }
 
 
-async def _send_email(email: str, subject: str, body: str, org_name: str = "") -> bool:
-    """Send email via Resend."""
-    try:
-        from app.core.config import settings
-        import httpx
-        if not settings.RESEND_API_KEY:
-            logger.warning("resend_not_configured")
-            return False
-
-        async with httpx.AsyncClient() as client:
-            r = await client.post(
-                "https://api.resend.com/emails",
-                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-                json={
-                    "from":    f"Claustor AI <{settings.RESEND_FROM}>",
-                    "to":      [email],
-                    "subject": subject,
-                    "html":    f"""
-<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px">
-  <div style="font-size:20px;font-weight:900;color:#0066FF;margin-bottom:24px">
-    Claustor AI
-  </div>
-  <p style="font-size:15px;color:#111827">{body}</p>
-  <a href="https://claustor.ai/dashboard/admin/billing"
-     style="display:inline-block;margin-top:20px;padding:12px 24px;
-            background:#0066FF;color:white;border-radius:8px;
-            text-decoration:none;font-weight:700">
-    Manage Billing →
-  </a>
-  <p style="margin-top:32px;font-size:12px;color:#9CA3AF">
-    Claustor AI · hello@claustor.ai
-  </p>
-</div>""",
-                },
-            )
-            return r.status_code == 200
-    except Exception as e:
-        logger.error("email_send_failed", error=str(e))
-        return False
+async def _send_email(email: str, subject: str, body: str,
+                      org_name: str = "", event_type: str = "subscription_expiring",
+                      days: int = 0, plan: str = "") -> bool:
+    """Send notification via centralized notification service."""
+    from app.services.notifications import send_notification, NotificationEvent, NotificationPayload
+    event_map = {
+        "subscription_expiring": NotificationEvent.SUBSCRIPTION_EXPIRING,
+        "trial_ending":          NotificationEvent.TRIAL_ENDING,
+        "plan_downgraded":       NotificationEvent.PLAN_DOWNGRADED,
+        "payment_failed":        NotificationEvent.PAYMENT_FAILED,
+        "contract_expiring":     NotificationEvent.CONTRACT_EXPIRING,
+        "renewal_required":      NotificationEvent.RENEWAL_REQUIRED,
+        "obligation_due":        NotificationEvent.OBLIGATION_DUE,
+    }
+    event = event_map.get(event_type, NotificationEvent.SUBSCRIPTION_EXPIRING)
+    return await send_notification(NotificationPayload(
+        event=event,
+        recipient_email=email,
+        recipient_name=email.split("@")[0].title(),
+        org_name=org_name,
+        action_url="https://claustor.ai/dashboard/admin/billing",
+        extra={"days": days, "plan": plan, "body": body},
+    ))
 
 
 async def _run_expiry_check():
