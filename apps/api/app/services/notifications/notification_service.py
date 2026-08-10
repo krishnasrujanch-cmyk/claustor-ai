@@ -14,6 +14,14 @@ from app.services.notifications.events import NotificationEvent, NotificationPay
 
 logger = structlog.get_logger(__name__)
 
+def _get_base_url() -> str:
+    """Get base URL from settings or env."""
+    try:
+        from app.core.config import settings
+        return settings.BASE_URL
+    except Exception:
+        return os.getenv("BASE_URL", "https://claustor.com")
+
 BASE_URL = os.getenv("BASE_URL", "https://claustor.ai")
 
 # Load config once at startup
@@ -70,7 +78,7 @@ def _render_base(
     result = result.replace("{{ category | upper }}", category.upper())
     result = result.replace("{{ content_block }}", content_block)
     result = result.replace("{{ cta_label }}", cta_label)
-    result = result.replace("{{ unsubscribe_url }}", unsubscribe_url or f"{_get_base_url()}/unsubscribe")
+    result = result.replace("{{ unsubscribe_url }}", unsubscribe_url or _get_base_url() + "/unsubscribe")
 
     # Handle conditional action_url block
     if action_url:
@@ -497,7 +505,7 @@ async def send_notification(payload: NotificationPayload) -> bool:
         accent_color=accent_color,
         category=category,
         secondary_block=secondary_block,
-        unsubscribe_url=f"{_get_base_url()}/unsubscribe",
+        unsubscribe_url=_get_base_url() + "/unsubscribe",
     )
 
     # Send
@@ -508,7 +516,7 @@ async def send_notification(payload: NotificationPayload) -> bool:
     )
 
     logger.info("notification_sent",
-                event=event_key,
+                event_type=event_key,
                 to=payload.recipient_email,
                 success=success)
     return success
