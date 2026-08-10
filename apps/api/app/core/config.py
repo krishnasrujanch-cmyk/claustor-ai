@@ -134,6 +134,8 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     RESEND_FROM: str = "hello@claustor.com"
     RESEND_FROM_NAME: str = "Claustor AI"
+    FRONTEND_URL: str = "https://claustor.com"
+    BASE_URL: str = "https://claustor.com"  # Base URL for all links in emails
 
     # ── Billing ───────────────────────────────────
     STRIPE_SECRET_KEY: str = ""

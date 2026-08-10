@@ -79,7 +79,7 @@ async def register(req: RegisterRequest, db: DbSession):
             recipient_email=user.email,
             recipient_name=user.full_name or user.email.split("@")[0].title(),
             org_name=req.org_name if hasattr(req, "org_name") else "",
-            action_url="https://claustor.ai/dashboard",
+            action_url=f"{settings.FRONTEND_URL}/dashboard",
         ))
     except Exception as _ne:
         logger.warning(f"welcome_notification_failed: {_ne}")
@@ -184,7 +184,7 @@ async def forgot_password(req: ForgotPasswordRequest, db: AsyncSession = Depends
     await db.commit()
 
     # Send email
-    reset_url = f"https://claustor.com/reset-password?token=reset_{reset_token}"
+    reset_url = ff"{settings.FRONTEND_URL}/reset-password?token=reset_{reset_token}"
     try:
         from app.core.config import settings
         if settings.RESEND_API_KEY:
