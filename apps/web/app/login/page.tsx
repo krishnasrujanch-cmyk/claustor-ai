@@ -38,18 +38,18 @@ function Counter({ target, suffix="" }: { target: number; suffix?: string }) {
 const TESTIMONIALS = [
   {
     quote:"Hybrid search (BM25 + Vector + RRF) finds the exact clause across thousands of contracts. The AI clause detection is remarkably accurate.",
-    name:"Sarah Jenkins", role:"Head of Legal", company:"TechCorp India",
-    avatar:"SJ",
+    name:"Hybrid Search", role:"BM25 + Vector + RRF", company:"Real AI capability",
+    avatar:"🔎",
   },
   {
     quote:"25 clause types extracted automatically — liability caps, SLA credits, payment terms, IP ownership, auto-renewal, and more.",
-    name:"Document Intelligence", role:"CFO", company:"PharmaLink Asia",
-    avatar:"RM",
+    name:"Clause Extraction", role:"25+ clause types", company:"Real AI capability",
+    avatar:"📄",
   },
   {
     quote:"25+ clause types extracted: liability caps, payment terms, SLA credits, renewal dates, IP ownership, and party identifiers across 8 countries.",
-    name:"Claustor AI", role:"Contract Manager", company:"claustor.com",
-    avatar:"PS",
+    name:"AI Copilot", role:"Citation-verified answers", company:"Real AI capability",
+    avatar:"💬",
   },
 ];
 
