@@ -36,23 +36,6 @@ function Counter({ target, suffix="" }: { target: number; suffix?: string }) {
 }
 
 // ── Testimonials ──────────────────────────────────────────────────────────────
-const TESTIMONIALS = [
-  {
-    quote:"Claustor reduced our contract review time from 3 days to under 15 minutes. The AI clause detection is remarkably accurate.",
-    name:"Sarah Jenkins", role:"Head of Legal", company:"TechCorp India",
-    avatar:"SJ",
-  },
-  {
-    quote:"The risk scoring feature helped us identify a liability cap issue in a ₹50M vendor contract. Saved us from a potential disaster.",
-    name:"Rajesh Mehta", role:"CFO", company:"PharmaLink Asia",
-    avatar:"RM",
-  },
-  {
-    quote:"Claustor extracts 25+ clause types including liability caps, payment terms, SLA credits, renewal dates, and party identifiers across 8 countries — all citation-verified.",
-    name:"AI Capability", role:"Contract Manager", company:"Claustor AI",
-    avatar:"PS",
-  },
-];
 
 // ── Input field with validation ───────────────────────────────────────────────
 function Field({
@@ -122,7 +105,6 @@ export default function LoginPage() {
   const [showPw, setShowPw]       = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [testimonialIdx, setTestimonialIdx] = useState(0);
   const [fieldErrors, setFieldErrors] = useState<Record<string,string>>({});
 
   useEffect(()=>{ if(user) router.push("/dashboard"); },[user,router]);
@@ -166,7 +148,6 @@ export default function LoginPage() {
     } finally { setSubmitting(false); }
   };
 
-  const testimonial = TESTIMONIALS[testimonialIdx];
 
   return (
     <div style={{display:"flex",height:"100vh",overflow:"hidden",fontFamily:"Inter,system-ui,sans-serif"}}>
@@ -273,41 +254,23 @@ export default function LoginPage() {
             ))}
           </div>
 
-          {/* Rotating testimonial */}
-          <div style={{padding:"20px 24px",background:"rgba(255,255,255,0.05)",
-            border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,
-            transition:"opacity 0.3s"}}>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.8)",
-              lineHeight:1.7,marginBottom:16,fontStyle:"italic"}}>
-              "{testimonial.quote}"
+          {/* Real product capabilities */}
+          <div style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:16,padding:24}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#06B6D4',letterSpacing:'1px',marginBottom:16,textTransform:'uppercase'}}>
+              What Claustor analyses in every contract
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{width:36,height:36,borderRadius:"50%",
-                background:`linear-gradient(135deg,${C.primary},${C.accent})`,
-                display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:12,fontWeight:700,color:"white",flexShrink:0}}>
-                {testimonial.avatar}
-              </div>
-              <div>
-                <div style={{fontSize:13,fontWeight:700,color:"white"}}>
-                  {testimonial.name}
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {[['⚖️','Liability caps and indemnification clauses'],['📅','Payment terms, renewals, and obligations'],['🔒','IP ownership, confidentiality, and data terms'],['⚠️','Auto-renewal, termination, and exit clauses'],['📋','SLA credits, penalties, and force majeure'],['🌍','Party IDs: GSTIN, VAT, EIN, UEN across 8 countries']].map(([icon,text]) => (
+                <div key={text} style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+                  <span style={{fontSize:15,flexShrink:0}}>{icon}</span>
+                  <span style={{fontSize:13,color:'#CBD5E1',lineHeight:1.5}}>{text}</span>
                 </div>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.45)"}}>
-                  {testimonial.role}, {testimonial.company}
-                </div>
-              </div>
-              {/* Dots */}
-              <div style={{marginLeft:"auto",display:"flex",gap:4}}>
-                {TESTIMONIALS.map((_,i)=>(
-                  <div key={i} onClick={()=>setTestimonialIdx(i)}
-                    style={{width:i===testimonialIdx?16:6,height:6,borderRadius:3,
-                      background:i===testimonialIdx?C.primary:"rgba(255,255,255,0.2)",
-                      cursor:"pointer",transition:"all 0.3s"}}/>
-                ))}
-              </div>
+              ))}
+            </div>
+            <div style={{marginTop:14,paddingTop:14,borderTop:'1px solid rgba(255,255,255,0.1)',fontSize:12,color:'#475569'}}>
+              100% citation-verified — every answer cites its source clause
             </div>
           </div>
-        </div>
       </div>
 
       {/* ── Right panel — auth form ──────────────────────────────────────── */}
