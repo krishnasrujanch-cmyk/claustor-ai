@@ -821,7 +821,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                         org_name=_ur2[2] or "",
                         contract_id=str(contract_id),
                         contract_name=contract_meta.get("title","Contract"),
-                        action_url=ff"{settings.FRONTEND_URL}/dashboard/contracts/{contract_id}",
+                        action_url=f"{settings.FRONTEND_URL}/dashboard/contracts/{contract_id}",
                         extra={
                             "high_risk_count": len(_high_clauses),
                             "risk_clauses": _high_clauses,
@@ -848,7 +848,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                         org_name=_ur[2] or "",
                         contract_id=str(contract_id),
                         contract_name=contract_meta.get("title","Contract"),
-                        action_url=ff"{settings.FRONTEND_URL}/dashboard/contracts/{contract_id}",
+                        action_url=f"{settings.FRONTEND_URL}/dashboard/contracts/{contract_id}",
                         extra={
                             "risk_level": contract_meta.get("risk_level","medium"),
                             "clause_count": len(scored_clauses),

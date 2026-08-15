@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,7 +184,7 @@ async def forgot_password(req: ForgotPasswordRequest, db: AsyncSession = Depends
     await db.commit()
 
     # Send email
-    reset_url = ff"{settings.FRONTEND_URL}/reset-password?token=reset_{reset_token}"
+    reset_url = f"{settings.FRONTEND_URL}/reset-password?token=reset_{reset_token}"
     try:
         from app.core.config import settings
         if settings.RESEND_API_KEY:

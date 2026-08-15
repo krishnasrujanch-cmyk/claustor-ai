@@ -1,4 +1,5 @@
 "use client";
+import React from "react";
 import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
 
 import Link from "next/link";
@@ -108,6 +109,7 @@ export default function LoginPage() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const isSignup     = searchParams.get("signup") === "true";
+  const [aiConsent, setAiConsent] = React.useState(false);
   const plan         = searchParams.get("plan");
 
   const { login, register, user, isLoading } = useAuthStore();
@@ -456,6 +458,33 @@ export default function LoginPage() {
             </form>
 
             <p style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:24,lineHeight:1.5}}>
+              {/* AI Consent Checkbox — shown only on signup */}
+              {isSignup && (
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12,
+                  padding: "12px 14px", background: "#EFF6FF", borderRadius: 8,
+                  border: "1px solid #DBEAFE" }}>
+                  <input
+                    type="checkbox"
+                    id="aiConsent"
+                    checked={aiConsent}
+                    onChange={e => setAiConsent(e.target.checked)}
+                    style={{ marginTop: 2, accentColor: "#0066FF", flexShrink: 0, cursor: "pointer" }}
+                  />
+                  <label htmlFor="aiConsent" style={{ fontSize: 12, color: "#374151", lineHeight: 1.6, cursor: "pointer" }}>
+                    <span style={{color:"#EF4444",fontWeight:700}}>* </span>I understand that contract content will be processed by AI providers
+                    (Anthropic, OpenAI) for analysis. My data is encrypted and never used
+                    to train AI models.{" "}
+                    <Link href="/privacy" style={{ color: "#0066FF", textDecoration: "none" }}>
+                      Privacy Policy
+                    </Link>
+                  </label>
+                </div>
+              )}
+              {isSignup && !aiConsent && (
+                <p style={{ fontSize: 11, color: "#EF4444", margin: "-8px 0 8px", paddingLeft: 2 }}>
+                  ✱ Please accept the AI processing consent to continue
+                </p>
+              )}
               By {mode==="login"?"signing in":"creating an account"}, you agree to our{" "}
               <Link href="/terms" style={{color:C.primary,textDecoration:"none"}}>Terms</Link>
               {" & "}

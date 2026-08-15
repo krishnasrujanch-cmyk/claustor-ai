@@ -10,6 +10,7 @@ from app.infrastructure.document.processor import DocumentProcessor
 from fastapi import FastAPI
 from app.middleware.rate_limit import rate_limit_middleware, Request
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.v1.middleware.rate_limiter import RateLimitMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
@@ -86,6 +87,7 @@ def create_application() -> FastAPI:
         )
 
     # ── CORS ─────────────────────────────────────
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
