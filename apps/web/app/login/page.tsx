@@ -48,8 +48,8 @@ const TESTIMONIALS = [
     avatar:"RM",
   },
   {
-    quote:"Our legal team now reviews 8× more contracts per week. The AI Copilot answers clause questions faster than our junior associates.",
-    name:"Priya Sharma", role:"Contract Manager", company:"LogiTech Solutions",
+    quote:"Claustor extracts 25+ clause types including liability caps, payment terms, SLA credits, renewal dates, and party identifiers across 8 countries — all citation-verified.",
+    name:"AI Capability", role:"Contract Manager", company:"Claustor AI",
     avatar:"PS",
   },
 ];
@@ -229,7 +229,7 @@ export default function LoginPage() {
             Review contracts{" "}
             <span style={{background:`linear-gradient(135deg,${C.primary},${C.accent})`,
               WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
-              8× faster
+              Under 60s
             </span>{" "}
             with AI
           </h1>
@@ -237,8 +237,8 @@ export default function LoginPage() {
           {/* Animated stats */}
           <div style={{display:"flex",gap:32,marginBottom:48}}>
             {[
-              {value:50000, suffix:"+", label:"Contracts analyzed"},
-              {value:94,    suffix:"%", label:"Clause accuracy"},
+              {value:25, suffix:"+", label:"Clause types extracted"},
+              {value:8, suffix:"", label:"Countries supported"},
               {value:8,     suffix:"×", label:"Faster reviews"},
             ].map(s=>(
               <div key={s.label}>
@@ -457,7 +457,6 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <p style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:24,lineHeight:1.5}}>
               {/* AI Consent Checkbox — shown only on signup */}
               {isSignup && (
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12,
@@ -485,6 +484,7 @@ export default function LoginPage() {
                   ✱ Please accept the AI processing consent to continue
                 </p>
               )}
+            <p style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:24,lineHeight:1.5}}>
               By {mode==="login"?"signing in":"creating an account"}, you agree to our{" "}
               <Link href="/terms" style={{color:C.primary,textDecoration:"none"}}>Terms</Link>
               {" & "}

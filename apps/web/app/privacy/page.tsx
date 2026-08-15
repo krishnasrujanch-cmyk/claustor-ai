@@ -9,7 +9,7 @@ export default function PrivacyPage() {
       <div style={{maxWidth:800,margin:"0 auto",padding:"60px 5vw"}}>
 
         <div style={{background:"#EFF6FF",border:"1px solid #DBEAFE",borderRadius:12,padding:"20px 24px",marginBottom:48}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#0066FF",marginBottom:10}}>TL;DR — PLAIN ENGLISH</div>
+          <div style={{fontSize:13,fontWeight:700,color:"#0066FF",marginBottom:10}}>SUMMARY — KEY POINTS</div>
           {["Your contracts are encrypted and private — we do not sell your data.",
             "AI providers (Anthropic, OpenAI) process contract content for analysis only.",
             "AI providers do NOT use your contracts to train their models.",
