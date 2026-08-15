@@ -116,11 +116,11 @@ class LLMRouter:
 
     # Role → preferred providers (first available in list wins)
     ROLE_PROVIDER_MAP: dict[AgentRole, list[LLMProvider]] = {
-        AgentRole.SAFETY_GUARD: [LLMProvider.GROQ],
-        AgentRole.EXTRACTOR:    [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
-        AgentRole.REASONER:     [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
-        AgentRole.JUDGE:        [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
-        AgentRole.ANSWERER:     [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
+        AgentRole.SAFETY_GUARD: [LLMProvider.OPENAI, LLMProvider.GROQ],
+        AgentRole.EXTRACTOR:    [LLMProvider.OPENAI, LLMProvider.GROQ, LLMProvider.ANTHROPIC],
+        AgentRole.REASONER:     [LLMProvider.OPENAI, LLMProvider.GROQ, LLMProvider.ANTHROPIC],
+        AgentRole.JUDGE:        [LLMProvider.OPENAI, LLMProvider.GROQ, LLMProvider.ANTHROPIC],
+        AgentRole.ANSWERER:     [LLMProvider.ANTHROPIC, LLMProvider.OPENAI, LLMProvider.GROQ],
         AgentRole.VISION:       [LLMProvider.ANTHROPIC, LLMProvider.GROQ],   # Gemini only for vision
         AgentRole.NEGOTIATOR:   [LLMProvider.GROQ, LLMProvider.ANTHROPIC],
     }
