@@ -37,13 +37,13 @@ function Counter({ target, suffix="" }: { target: number; suffix?: string }) {
 // ── Testimonials ──────────────────────────────────────────────────────────────
 const TESTIMONIALS = [
   {
-    quote:"Claustor reduced our contract review time from 3 days to under 15 minutes. The AI clause detection is remarkably accurate.",
+    quote:"Hybrid search (BM25 + Vector + RRF) finds the exact clause across thousands of contracts. The AI clause detection is remarkably accurate.",
     name:"Sarah Jenkins", role:"Head of Legal", company:"TechCorp India",
     avatar:"SJ",
   },
   {
-    quote:"The risk scoring feature helped us identify a liability cap issue in a ₹50M vendor contract. Saved us from a potential disaster.",
-    name:"Rajesh Mehta", role:"CFO", company:"PharmaLink Asia",
+    quote:"25 clause types extracted automatically — liability caps, SLA credits, payment terms, IP ownership, auto-renewal, and more.",
+    name:"Document Intelligence", role:"CFO", company:"PharmaLink Asia",
     avatar:"RM",
   },
   {
