@@ -321,9 +321,28 @@ class ChatAgent:
         summary: str | None = None,
         review_status: str | None = None,
         review_notes: str | None = None,
+        user_role: str = "viewer",
     ) -> list[LLMMessage]:
         """Build message list for LLM with context + history."""
         system = SYSTEM_PROMPT
+        # Viewer role restrictions
+        if user_role == "viewer":
+            system += """
+
+IMPORTANT — VIEWER MODE ACTIVE:
+This user has Viewer role with restricted data access.
+You MUST NOT reveal in your response:
+- Exact monetary values, contract amounts, or payment figures
+- Party identifiers: GSTIN, PAN, VAT, EIN, TAN, UEN, ABN or any tax IDs
+- Bank account numbers, IFSC codes, or payment details
+- Penalty amounts or exact credit percentages
+
+Instead use:
+- For monetary values: say [Amount Restricted — contact Admin]
+- For identifiers: say [ID Restricted — contact Admin]
+- For risk details: give only High/Medium/Low level summary
+- Focus on clause summaries, dates, and obligations only
+"""
         if review_status == "rejected":
             system += f"""
 
