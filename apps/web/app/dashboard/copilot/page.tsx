@@ -502,6 +502,23 @@ export default function CopilotPage() {
           <ClauStorMark size={18}/>
         </div>
         <span style={{fontSize:15,fontWeight:700,color:C.heading,flex:1}}>AI Copilot</span>
+              {(()=>{
+                try {
+                  const p = JSON.parse(atob((localStorage.getItem("token")||"").split(".")[1]||"e30="));
+                  if(p.role === "viewer") return (
+                    <span style={{
+                      fontSize:11,fontWeight:700,
+                      background:"#FEF3C7",color:"#92400E",
+                      border:"1px solid #FDE68A",
+                      padding:"2px 10px",borderRadius:20,
+                      display:"inline-flex",alignItems:"center",gap:4,
+                    }}>
+                      🔒 Viewer Mode — Some data restricted
+                    </span>
+                  );
+                } catch {}
+                return null;
+              })()}
 
         {suggestedContract && !sel && (
           <div style={{background:"rgba(0,102,255,0.06)",border:"1px solid rgba(0,102,255,0.2)",
