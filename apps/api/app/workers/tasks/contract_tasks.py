@@ -59,7 +59,18 @@ def process_contract(
 
         # Initialize DB if not already done (first task in worker)
         if async_session_factory is None:
-            await init_db(settings.DATABASE_URL)
+            import ssl as _ssl
+            ssl_ctx = _ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = _ssl.CERT_NONE
+            await init_db(
+                settings.DATABASE_URL,
+                connect_args={"ssl": ssl_ctx}
+            )
+        # Re-check after init
+        from app.infrastructure.database.session import async_session_factory as _factory
+        if _factory is None:
+            raise RuntimeError("DB session factory failed to initialize")
 
         async with async_session_factory() as db:
             try:
