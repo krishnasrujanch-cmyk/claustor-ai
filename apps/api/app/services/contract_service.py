@@ -244,6 +244,7 @@ class ContractService:
                     "contract_id": str(contract_id),
                     "org_id":      str(org_id),
                     "user_id":     str(user_id),
+                    "file_hash":   file_hash or file_path or "",
                     "file_path":   file_path or "",
                     "plan":        plan_name,
                 },
@@ -259,7 +260,7 @@ class ContractService:
             )
             return 1
         except Exception as e:
-            logger.warning("celery_queue_failed", error=str(e))
+            logger.error("celery_queue_failed", error=str(e), exc_info=True)
             # Fallback: inline processing
             try:
                 await self._process_inline(contract_id, org_id, file_hash)

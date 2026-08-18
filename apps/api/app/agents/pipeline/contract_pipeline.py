@@ -747,7 +747,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                 title=clause_data.get("title", "")[:500],
                 summary=clause_data.get("summary"),
                 raw_text=clause_data.get("raw_text", "")[:10000],
-                section_reference=clause_data.get("section_reference"),
+                section_reference=str(clause_data.get("section_reference", "") or ""),
                 risk_score=float(clause_data.get("risk_score", 30)),
                 risk_level=clause_data.get("risk_level", "low"),
                 risk_reason=clause_data.get("risk_reason"),

@@ -10,6 +10,13 @@ from uuid import UUID
 
 from app.workers.celery_app import app as celery_app
 
+PLAN_QUEUES = {
+    "free":         "free_queue",
+    "starter":      "starter_queue",
+    "professional": "pro_queue",
+    "enterprise":   "enterprise_queue",
+}
+
 logger = structlog.get_logger(__name__)
 
 
@@ -28,8 +35,13 @@ def process_contract(
     file_hash: str,
     plan: str = "starter",
     queue: str = "starter_queue",
+    file_path: str = "",
+    user_id: str = "",
     **kwargs,
 ):
+    # Support both file_hash and file_path parameter names
+    if not file_hash and file_path:
+        file_hash = file_path
     """
     Process contract via direct async execution.
     No subprocess — uses shared session factory.
