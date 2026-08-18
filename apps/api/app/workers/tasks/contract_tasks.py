@@ -1,93 +1,78 @@
-"""Claustor AI — Contract Processing Celery Tasks."""
-
-import os
-import subprocess
-import sys
+"""
+Claustor AI — Contract Processing Tasks
+Direct async execution — NO subprocess.
+Uses existing session factory to avoid connection issues.
+"""
+from __future__ import annotations
+import asyncio
 import structlog
+from uuid import UUID
+
 from app.workers.celery_app import app as celery_app
 
 logger = structlog.get_logger(__name__)
 
-PLAN_QUEUES = {
-    "free":         "free_queue",
-    "starter":      "starter_queue",
-    "professional": "pro_queue",
-    "enterprise":   "enterprise_queue",
-}
-
 
 @celery_app.task(
-    name="app.workers.tasks.contract_tasks.process_contract",
     bind=True,
-    max_retries=2,
-    soft_time_limit=600,
-    queue="starter_queue",
+    name="app.workers.tasks.contract_tasks.process_contract",
+    max_retries=3,
+    default_retry_delay=30,
+    soft_time_limit=1800,
+    time_limit=2100,
 )
-def process_contract(self, contract_id: str, org_id: str, user_id: str, file_path: str, plan: str = "starter"):
-    """Process contract in isolated subprocess."""
+def process_contract(
+    self,
+    contract_id: str,
+    org_id: str,
+    file_hash: str,
+    plan: str = "starter",
+    queue: str = "starter_queue",
+    **kwargs,
+):
+    """
+    Process contract via direct async execution.
+    No subprocess — uses shared session factory.
+    Supports 100s of concurrent documents via Celery concurrency.
+    """
     logger.info("contract_task_received",
-                contract_id=contract_id, plan=plan,
-                queue=PLAN_QUEUES.get(plan, "starter_queue"))
+                contract_id=contract_id, plan=plan, queue=queue)
 
-    api_dir = os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__))
-    )))
+    async def _run():
+        from app.infrastructure.database.session import (
+            async_session_factory, init_db
+        )
+        from app.agents.pipeline.contract_pipeline import ContractPipeline
+        from app.core.config import settings
 
-    env = os.environ.copy()
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{api_dir}:{existing}" if existing else api_dir
+        # Initialize DB if not already done (first task in worker)
+        if async_session_factory is None:
+            await init_db(settings.DATABASE_URL)
 
-    script = f"""
-import asyncio, ssl, os, uuid
-os.makedirs(os.path.expanduser("~/claustor-uploads"), exist_ok=True)
-
-async def main():
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-    from app.core.config import settings
-    from app.agents.pipeline.contract_pipeline import ContractPipeline
-
-    ssl_ctx = ssl.create_default_context()
-    engine = create_async_engine(settings.DATABASE_URL, connect_args={{"ssl": ssl_ctx}}, pool_size=3, max_overflow=2, pool_timeout=60, pool_recycle=300, pool_pre_ping=True)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    try:
-        async with factory() as db:
+        async with async_session_factory() as db:
             try:
                 pipeline = ContractPipeline()
                 await pipeline.process(
-                    contract_id=uuid.UUID("{contract_id}"),
-                    org_id=uuid.UUID("{org_id}"),
-                    file_hash="{file_path}",
+                    contract_id=UUID(contract_id),
+                    org_id=UUID(org_id),
+                    file_hash=file_hash,
                     db=db,
                 )
                 await db.commit()
-                print("SUCCESS")
+                logger.info("contract_processed",
+                            contract_id=contract_id, plan=plan)
             except Exception as e:
-                await db.rollback()
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                logger.error("contract_pipeline_failed",
+                             contract_id=contract_id, error=str(e))
                 raise
-    finally:
-        await engine.dispose()
-
-asyncio.run(main())
-"""
 
     try:
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True, text=True,
-            timeout=540, env=env, cwd=api_dir,
-        )
-        # Log subprocess stdout for debugging
-        if result.stdout:
-            for line in result.stdout.strip().split("\n"):
-                if line.strip():
-                    logger.info(f"subprocess_out: {line.strip()}")
-        if result.returncode != 0:
-            error = result.stderr[-2000:] if result.stderr else "Unknown"
-            logger.error("contract_subprocess_failed", contract_id=contract_id, error=error)
-            raise RuntimeError(error)
-        logger.info("contract_processed", contract_id=contract_id, plan=plan)
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"Timeout: {contract_id}")
+        asyncio.run(_run())
     except Exception as exc:
-        logger.error("contract_task_failed", contract_id=contract_id, error=str(exc))
+        logger.error("contract_task_failed",
+                     contract_id=contract_id, error=str(exc))
         raise self.retry(exc=exc, countdown=30)
