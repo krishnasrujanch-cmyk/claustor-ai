@@ -111,11 +111,6 @@ async def index_chunks(
             }
             pinecone_vectors.append((pinecone_id, embedding, metadata))
 
-            # Update pinecone_id in PostgreSQL
-            await db.execute(
-                text("UPDATE contract_chunks SET pinecone_id = :pid WHERE id = :cid"),
-                {"pid": pinecone_id, "cid": str(chunk.chunk_id)}
-            )
 
     # Upsert to Pinecone in batches
     if pinecone_vectors:
@@ -128,6 +123,32 @@ async def index_chunks(
                 None,
                 lambda v=vectors: idx.upsert(vectors=v, namespace=namespace)
             )
+    # Batch update pinecone_ids in DB after ALL Pinecone upserts complete
+    # Use fresh connection to avoid "connection closed" error
+    if pinecone_vectors:
+        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+        import ssl as _ssl
+        _ssl_ctx = _ssl.create_default_context()
+        _engine = create_async_engine(
+            db.get_bind().engine.url,
+            connect_args={"ssl": _ssl_ctx},
+            pool_pre_ping=True,
+        )
+        try:
+            _factory = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
+            async with _factory() as _fresh_db:
+                for _pid, _, _ in pinecone_vectors:
+                    _cid = _pid.replace("chunk_", "")
+                    try:
+                        await _fresh_db.execute(
+                            text("UPDATE contract_chunks SET pinecone_id = :pid WHERE id = :cid"),
+                            {"pid": _pid, "cid": _cid}
+                        )
+                    except Exception as _ue:
+                        logger.warning("chunk_id_update_failed", chunk_id=_cid, error=str(_ue))
+                await _fresh_db.commit()
+        finally:
+            await _engine.dispose()
         logger.info(f"chunks_indexed_pinecone: count={len(pinecone_vectors)} contract_id={contract_id}")
 
     logger.info(f"chunk_indexing_complete: total={len(chunks)} embedded={len(embeddable)} contract_id={contract_id}")
