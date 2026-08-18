@@ -47,7 +47,7 @@ async def main():
     from app.agents.pipeline.contract_pipeline import ContractPipeline
 
     ssl_ctx = ssl.create_default_context()
-    engine = create_async_engine(settings.DATABASE_URL, connect_args={{"ssl": ssl_ctx}}, pool_size=2, max_overflow=0)
+    engine = create_async_engine(settings.DATABASE_URL, connect_args={{"ssl": ssl_ctx}}, pool_size=3, max_overflow=2, pool_timeout=60, pool_recycle=300, pool_pre_ping=True)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with factory() as db:
