@@ -38,7 +38,8 @@ async def init_db(database_url: str, connect_args: dict = None) -> None:
         pool_size=10,
         max_overflow=20,
         pool_pre_ping=True,
-        pool_recycle=300,
+        pool_recycle=60,   # recycle every 60s — Neon closes idle after ~5mins
+        pool_timeout=30,
         echo=False,
     )
 

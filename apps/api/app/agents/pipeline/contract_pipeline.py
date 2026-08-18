@@ -712,11 +712,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
             __import__("sqlalchemy").update(Contract)
             .where(Contract.id == contract_id)
             .values(
-                title=contract_meta.get("title") or (
-                    await db.execute(
-                        __import__("sqlalchemy").select(Contract.title).where(Contract.id == contract_id)
-                    )
-                ).scalar() or "Contract",
+                title=contract_meta.get("title") or "Contract",
                 contract_type=contract_meta.get("contract_type"),
                 counterparty=contract_meta.get("counterparty"),
                 governing_law=contract_meta.get("governing_law"),

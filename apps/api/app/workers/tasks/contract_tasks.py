@@ -51,28 +51,27 @@ def process_contract(
                 contract_id=contract_id, plan=plan, queue=queue)
 
     async def _run():
-        from app.infrastructure.database.session import (
-            async_session_factory, init_db
-        )
+        import ssl as _ssl
+        import app.infrastructure.database.session as _db_module
         from app.agents.pipeline.contract_pipeline import ContractPipeline
         from app.core.config import settings
 
-        # Initialize DB if not already done (first task in worker)
-        if async_session_factory is None:
-            import ssl as _ssl
+        # Initialize DB if session factory not ready
+        if _db_module.async_session_factory is None:
             ssl_ctx = _ssl.create_default_context()
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = _ssl.CERT_NONE
-            await init_db(
+            await _db_module.init_db(
                 settings.DATABASE_URL,
-                connect_args={"ssl": ssl_ctx}
+                connect_args={"ssl": ssl_ctx, "statement_cache_size": 0}
             )
-        # Re-check after init
-        from app.infrastructure.database.session import async_session_factory as _factory
-        if _factory is None:
+
+        if _db_module.async_session_factory is None:
             raise RuntimeError("DB session factory failed to initialize")
 
-        async with async_session_factory() as db:
+        # Get fresh session — don't reuse across long LLM operations
+        session = _db_module.async_session_factory()
+        async with session as db:
             try:
                 pipeline = ContractPipeline()
                 await pipeline.process(
