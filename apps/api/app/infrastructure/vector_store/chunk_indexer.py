@@ -10,7 +10,8 @@ from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, delete
+from sqlalchemy import text
+from app.core.config import settings, delete
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ async def index_chunks(
         import ssl as _ssl
         _ssl_ctx = _ssl.create_default_context()
         _engine = create_async_engine(
-            db.get_bind().engine.url,
+            settings.DATABASE_URL,
             connect_args={"ssl": _ssl_ctx},
             pool_pre_ping=True,
         )
