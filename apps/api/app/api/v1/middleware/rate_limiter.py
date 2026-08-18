@@ -63,7 +63,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
         rule = _match_rule(path)
-        print(f"[RateLimit] path={path} rule={rule}")
 
         if not rule:
             return await call_next(request)

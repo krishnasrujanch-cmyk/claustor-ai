@@ -339,6 +339,11 @@ class ContractPipeline:
                 error=str(e),
                 exc_info=True,
             )
+            # Rollback any pending transaction before updating status
+            try:
+                await db.rollback()
+            except Exception:
+                pass
             await self._update_status(db, contract_id, "failed", error=str(e))
             try:
                 from app.api.v1.endpoints.webhooks import trigger_webhook_event

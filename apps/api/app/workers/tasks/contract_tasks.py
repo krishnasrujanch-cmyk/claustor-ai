@@ -51,14 +51,19 @@ async def main():
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with factory() as db:
-            pipeline = ContractPipeline()
-            await pipeline.process(
-                contract_id=uuid.UUID("{contract_id}"),
-                org_id=uuid.UUID("{org_id}"),
-                file_hash="{file_path}",
-                db=db,
-            )
-        print("SUCCESS")
+            try:
+                pipeline = ContractPipeline()
+                await pipeline.process(
+                    contract_id=uuid.UUID("{contract_id}"),
+                    org_id=uuid.UUID("{org_id}"),
+                    file_hash="{file_path}",
+                    db=db,
+                )
+                await db.commit()
+                print("SUCCESS")
+            except Exception as e:
+                await db.rollback()
+                raise
     finally:
         await engine.dispose()
 

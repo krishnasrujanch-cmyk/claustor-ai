@@ -321,12 +321,12 @@ class ChatAgent:
         summary: str | None = None,
         review_status: str | None = None,
         review_notes: str | None = None,
-        user_role: str = "viewer",
+        user_role: str = "admin",  # default to admin — only restrict if explicitly viewer
     ) -> list[LLMMessage]:
         """Build message list for LLM with context + history."""
         system = SYSTEM_PROMPT
         # Viewer role restrictions
-        if user_role == "viewer":
+        if user_role in ("viewer", "business_viewer", "legal_reviewer"):
             system += """
 
 IMPORTANT — VIEWER MODE ACTIVE:

@@ -16,18 +16,18 @@ logger = structlog.get_logger(__name__)
 
 # Context window budget per plan
 CONTEXT_LIMITS = {
-    "free":         2000,   # 2K chars
-    "starter":      4000,   # 4K chars
-    "professional": 8000,   # 8K chars
-    "enterprise":   16000,  # 16K chars
+    "free":         4000,   # was 2K
+    "starter":      8000,   # was 4K
+    "professional": 20000,  # was 8K — full tables need more context
+    "enterprise":   40000,  # was 16K
 }
 
 # Top-K results per plan
 TOP_K_LIMITS = {
-    "free":         2,
-    "starter":      4,
-    "professional": 6,
-    "enterprise":   10,
+    "free":         4,    # was 2
+    "starter":      8,    # was 4
+    "professional": 15,   # was 6 — tables/schedules need more chunks
+    "enterprise":   25,   # was 10
 }
 
 
