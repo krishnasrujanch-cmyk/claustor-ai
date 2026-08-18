@@ -805,35 +805,46 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
         values = {"status": status}
         if error:
             values["processing_error"] = error[:1000]
-        # Fire AI analysis complete notification
-        # Fire high risk notification
-        if status == "analyzed" and contract_meta.get("risk_level") == "high":
+        # Fire high risk + analysis complete notification — read from DB
+        if status == "analyzed":
             try:
                 from app.services.notifications import send_notification, NotificationEvent, NotificationPayload
                 from sqlalchemy import text as _nt2
-                _ur2 = (await db.execute(_nt2("""
-                    SELECT u.email, u.full_name, o.name FROM users u
-                    JOIN organisations o ON o.id = u.org_id
-                    WHERE u.org_id = :org_id AND u.role IN ('admin','super_admin') LIMIT 1
-                """), {"org_id": str(org_id)})).fetchone()
-                if _ur2:
-                    _high_clauses = [c.get("clause_type","") for c in scored_clauses
-                                     if c.get("risk_level") == "high"][:5]
-                    await send_notification(NotificationPayload(
-                        event=NotificationEvent.HIGH_RISK_DETECTED,
-                        recipient_email=_ur2[0],
-                        recipient_name=_ur2[1] or _ur2[0].split("@")[0].title(),
-                        org_name=_ur2[2] or "",
+                # Get contract + user data from DB
+                _cr = (await db.execute(_nt2("""
+                    SELECT c.title, c.risk_level, u.email, u.full_name, o.name
+                    FROM contracts c
+                    JOIN organisations o ON o.id = c.org_id
+                    JOIN users u ON u.org_id = o.id
+                    WHERE c.id = :cid AND u.role IN ('admin','super_admin')
+                    LIMIT 1
+                """), {"cid": str(contract_id)})).fetchone()
+                if _cr:
+                    _payload_base = dict(
+                        recipient_email=_cr[2],
+                        recipient_name=_cr[3] or _cr[2].split("@")[0].title(),
+                        org_name=_cr[4] or "",
                         contract_id=str(contract_id),
-                        contract_name=contract_meta.get("title","Contract"),
+                        contract_name=_cr[0] or "Contract",
                         action_url=f"{settings.FRONTEND_URL}/dashboard/contracts/{contract_id}",
-                        extra={
-                            "high_risk_count": len(_high_clauses),
-                            "risk_clauses": _high_clauses,
-                        }
-                    ))
+                    )
+                    # High risk notification
+                    if _cr[1] == "high":
+                        _hc = (await db.execute(_nt2("""
+                            SELECT clause_type FROM clauses
+                            WHERE contract_id = :cid AND risk_level = 'high'
+                            LIMIT 5
+                        """), {"cid": str(contract_id)})).fetchall()
+                        await send_notification(NotificationPayload(
+                            event=NotificationEvent.HIGH_RISK_DETECTED,
+                            extra={
+                                "high_risk_count": len(_hc),
+                                "risk_clauses": [r[0] for r in _hc],
+                            },
+                            **_payload_base
+                        ))
             except Exception as _ne2:
-                logger.warning(f"high_risk_notification_failed: {_ne2}")
+                logger.warning(f"notification_failed: {_ne2}")
         if status == "analyzed":
             try:
                 from app.services.notifications import send_notification, NotificationEvent, NotificationPayload
