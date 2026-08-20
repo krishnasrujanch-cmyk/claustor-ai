@@ -13,6 +13,7 @@ import structlog
 from app.core.config import settings
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.database.db_utils import db_op_with_retry, is_connection_alive
+from app.infrastructure.database.session_manager import PipelineSessionManager
 from sqlalchemy import select, update
 
 from app.domain.models import Contract, Clause, Obligation
@@ -50,19 +51,28 @@ class ContractPipeline:
         file_hash: str,
         db: AsyncSession,
         session_factory=None,
+        session_manager: "PipelineSessionManager | None" = None,
     ) -> None:
         """
         Process contract pipeline.
-        Pattern 4: session_factory passed for fresh sessions per DB operation.
-        If not provided, falls back to passed db session.
+        Uses PipelineSessionManager for fresh sessions per DB operation.
+        Each phase gets its own session — no long-lived sessions held.
         """
-        # Store factory for use in helper methods
+        from app.core.config import settings
+        # Create session manager if not provided
+        if session_manager is None:
+            session_manager = PipelineSessionManager(settings.DATABASE_URL)
+            await session_manager.initialize()
+            _owns_manager = True
+        else:
+            _owns_manager = False
+        self._session_manager = session_manager
         self._session_factory = session_factory
         """Run full pipeline. Updates contract status at each step."""
 
         try:
             # ── Step 1: Download + Parse ──────────────────
-            await self._update_status(db, contract_id, "parsing")
+            await self._session_manager.update_status(contract_id, "parsing")
             logger.info("pipeline_step", step="parsing", contract_id=str(contract_id))
             await asyncio.sleep(0.3)  # Let frontend poll catch this step
 
@@ -213,7 +223,7 @@ class ContractPipeline:
                 logger.warning("metadata_save_failed", error=str(_me))
 
             # ── Step 2: Extract Clauses ───────────────────
-            await self._update_status(db, contract_id, "extracting")
+            await self._session_manager.update_status(contract_id, "extracting")
             logger.info("pipeline_step", step="extracting", contract_id=str(contract_id))
 
             # ── ClauseEngine — All 3 Phases ──────────────
@@ -236,7 +246,7 @@ class ContractPipeline:
             logger.info("scored_clauses_sample", sample=scored_clauses[0] if scored_clauses else {})
 
             # ── Step 3: Score Risks ───────────────────────
-            await self._update_status(db, contract_id, "scoring")
+            await self._session_manager.update_status(contract_id, "scoring")
             logger.info("pipeline_step", step="scoring", contract_id=str(contract_id))
 
             # Risk scoring done by ClauseEngine above
@@ -248,7 +258,7 @@ class ContractPipeline:
             obligations_data = await self._extract_obligations(parsed.full_text)
 
             # ── Step 6: Index in Pinecone ─────────────────
-            await self._update_status(db, contract_id, "indexing")
+            await self._session_manager.update_status(contract_id, "indexing")
             logger.info(f"pipeline_step: step=indexing contract_id={contract_id}")
 
             # ── Hierarchical chunking — parent/child with rich metadata ──
@@ -316,7 +326,7 @@ class ContractPipeline:
                 party_ids=_party_ids,
             )
 
-            await self._update_status(db, contract_id, "analyzed")
+            await self._session_manager.update_status(contract_id, "analyzed")
             logger.info(
                 "pipeline_complete",
                 contract_id=str(contract_id),
@@ -353,7 +363,7 @@ class ContractPipeline:
                 await db.rollback()
             except Exception:
                 pass
-            await self._update_status(db, contract_id, "failed", error=str(e))
+            await self._session_manager.update_status(contract_id, "failed", error=str(e))
             try:
                 from app.api.v1.endpoints.webhooks import trigger_webhook_event
                 await trigger_webhook_event(
@@ -679,13 +689,14 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
 
 
     async def _save_results(self, db: AsyncSession, *args, **kwargs) -> None:
-        """Pattern 1+2+3: Save results using fresh session with retry."""
-        if self._session_factory:
-            async def _do_save(fresh_db: AsyncSession):
-                await self._save_results_inner(fresh_db, *args, **kwargs)
-            await db_op_with_retry(
-                self._session_factory, _do_save,
-                max_retries=3,
+        """
+        Save results using PipelineSessionManager.
+        Fresh NullPool connection — guaranteed alive after 10+ min pipeline.
+        """
+        mgr = getattr(self, "_session_manager", None)
+        if mgr:
+            await mgr.execute(
+                lambda fresh_db: self._save_results_inner(fresh_db, *args, **kwargs),
                 operation_name="save_pipeline_results"
             )
         else:

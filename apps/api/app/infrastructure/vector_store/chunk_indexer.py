@@ -84,10 +84,10 @@ async def index_chunks(
         batch = embeddable[i:i+EMBED_BATCH_SIZE]
         texts = [c.text for c in batch]
 
-        embeddings = await loop.run_in_executor(
-            None,
-            lambda t=texts: embedder.encode(t, normalize_embeddings=True).tolist()
-        )
+        embeddings = embedder.encode(
+            texts, normalize_embeddings=True, show_progress_bar=False
+        ).tolist()
+
 
         for chunk, embedding in zip(batch, embeddings):
             pinecone_id = f"chunk_{chunk.chunk_id}"
@@ -120,10 +120,7 @@ async def index_chunks(
         for i in range(0, len(pinecone_vectors), PINECONE_BATCH_SIZE):
             batch = pinecone_vectors[i:i+PINECONE_BATCH_SIZE]
             vectors = [{"id": v[0], "values": v[1], "metadata": v[2]} for v in batch]
-            await loop.run_in_executor(
-                None,
-                lambda v=vectors: idx.upsert(vectors=v, namespace=namespace)
-            )
+            idx.upsert(vectors=vectors, namespace=namespace)
     # pinecone_id DB update skipped — not required for query functionality
         logger.info(f"chunks_indexed_pinecone: count={len(pinecone_vectors)} contract_id={contract_id}")
 

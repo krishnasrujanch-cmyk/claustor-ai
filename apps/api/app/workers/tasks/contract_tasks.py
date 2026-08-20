@@ -74,13 +74,21 @@ def process_contract(
         async with session as db:
             try:
                 pipeline = ContractPipeline()
-                await pipeline.process(
-                    contract_id=UUID(contract_id),
-                    org_id=UUID(org_id),
-                    file_hash=file_hash,
-                    db=db,
-                    session_factory=_db_module.async_session_factory,
-                )
+                from app.infrastructure.database.session_manager import PipelineSessionManager
+                from app.core.config import settings as _settings
+                mgr = PipelineSessionManager(_settings.DATABASE_URL)
+                await mgr.initialize()
+                try:
+                    await pipeline.process(
+                        contract_id=UUID(contract_id),
+                        org_id=UUID(org_id),
+                        file_hash=file_hash,
+                        db=db,
+                        session_factory=_db_module.async_session_factory,
+                        session_manager=mgr,
+                    )
+                finally:
+                    await mgr.dispose()
                 await db.commit()
                 logger.info("contract_processed",
                             contract_id=contract_id, plan=plan)
