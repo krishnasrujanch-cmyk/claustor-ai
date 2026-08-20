@@ -620,6 +620,7 @@ RULES:
 CONTRACT TEXT (key sections):
 {combined}
 Return JSON with these fields (use null if not found):
+- title: official name/title of the contract (e.g. "Agreement for Sale", "Non-Disclosure Agreement", "Master Services Agreement")
 - contract_type: type of contract (MSA, NDA, SLA, Employment, Vendor, License, Lease, Loan, Other)
 - counterparty: name of the other party (not our company)
 - effective_date: contract start date (YYYY-MM-DD format or null)
