@@ -761,7 +761,6 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                 risk_score=round(overall_risk, 2),
                 risk_level=risk_level,
                 clause_count=len(scored_clauses),
-                status="analyzed",
                 missing_clauses=_missing_clauses if "_missing_clauses" in dir() else [],
                 detected_language=_detected_lang if "_detected_lang" in dir() else "en",
                 party_identifiers=party_ids or [],
