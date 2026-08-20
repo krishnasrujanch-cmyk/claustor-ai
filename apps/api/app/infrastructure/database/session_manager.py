@@ -193,7 +193,6 @@ class PipelineSessionManager:
         from sqlalchemy import text as _text
 
         async def _op(db: AsyncSession):
-            values = {"status": status, "contract_id": str(contract_id)}
             if error:
                 await db.execute(
                     _text("""
@@ -201,9 +200,9 @@ class PipelineSessionManager:
                         SET status = :status,
                             processing_error = :error,
                             updated_at = NOW()
-                        WHERE id = :contract_id::UUID
+                        WHERE id = :cid
                     """),
-                    {**values, "error": error[:1000]},
+                    {"status": status, "error": error[:1000], "cid": str(contract_id)},
                 )
             else:
                 await db.execute(
@@ -211,9 +210,9 @@ class PipelineSessionManager:
                         UPDATE contracts
                         SET status = :status,
                             updated_at = NOW()
-                        WHERE id = :contract_id::UUID
+                        WHERE id = :cid
                     """),
-                    values,
+                    {"status": status, "cid": str(contract_id)},
                 )
 
         await self.execute(_op, operation_name=f"update_status_{status}")
