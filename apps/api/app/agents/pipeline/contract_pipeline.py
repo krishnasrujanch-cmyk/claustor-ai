@@ -768,7 +768,18 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
             )
         )
 
-        # Save clauses
+        # Delete existing clauses first (idempotent — safe for retries)
+        await db.execute(
+            __import__("sqlalchemy").delete(Clause).where(Clause.contract_id == contract_id)
+        )
+        await db.execute(
+        all_clauses = []
+        all_obligations = []
+            __import__("sqlalchemy").delete(Obligation).where(Obligation.contract_id == contract_id)
+        )
+
+        # Build all clause objects
+        all_clauses = []
         for _ci, clause_data in enumerate(scored_clauses):
             clause = Clause(
                 contract_id=contract_id,
@@ -791,7 +802,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                 related_clauses=clause_data.get("related_clauses", []),
                 cross_references=clause_data.get("cross_references", []),
             )
-            db.add(clause)
+            all_clauses.append(clause)
 
         # Save obligations
         for ob_data in obligations_data:
@@ -808,8 +819,12 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
                 currency=ob_data.get("currency"),
                 status="pending",
             )
-            db.add(obligation)
+            all_obligations.append(obligation)
 
+        # Atomic bulk insert — all or nothing
+        db.add_all(all_clauses)
+        db.add_all(all_obligations)
+        await db.flush()
         await db.commit()
 
         logger.info(
