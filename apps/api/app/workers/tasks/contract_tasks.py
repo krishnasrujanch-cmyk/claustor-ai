@@ -79,6 +79,7 @@ def process_contract(
                     org_id=UUID(org_id),
                     file_hash=file_hash,
                     db=db,
+                    session_factory=_db_module.async_session_factory,
                 )
                 await db.commit()
                 logger.info("contract_processed",

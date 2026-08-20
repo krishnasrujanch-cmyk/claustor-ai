@@ -21,6 +21,7 @@ Start workers:
 """
 
 from celery import Celery
+from celery.signals import worker_process_init
 from celery.schedules import crontab
 from app.workers.tasks import expiry_tasks  # noqa: F401
 from kombu import Queue, Exchange
@@ -90,6 +91,22 @@ app.conf.update(
 )
 
 # ── Beat Schedule ────────────────────────────────────
+
+
+@worker_process_init.connect
+def preload_ml_models(**kwargs):
+    """Pre-load bge-m3 at worker startup — avoids cold start per task."""
+    try:
+        import structlog
+        logger = structlog.get_logger(__name__)
+        logger.info("preloading_bge_m3_model")
+        from app.infrastructure.vector_store.pinecone_store import preload_embedder
+        preload_embedder()
+        logger.info("bge_m3_model_ready")
+    except Exception as e:
+        import logging
+        logging.warning(f"bge_m3_preload_failed: {e}")
+
 app.conf.beat_scheduler = "celery.beat.PersistentScheduler"
 app.conf.beat_schedule_filename = "/tmp/claustor-celerybeat-schedule"
 app.conf.beat_schedule = {

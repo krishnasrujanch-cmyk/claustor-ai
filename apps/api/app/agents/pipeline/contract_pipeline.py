@@ -12,6 +12,7 @@ from uuid import UUID
 import structlog
 from app.core.config import settings
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.infrastructure.database.db_utils import db_op_with_retry, is_connection_alive
 from sqlalchemy import select, update
 
 from app.domain.models import Contract, Clause, Obligation
@@ -48,7 +49,15 @@ class ContractPipeline:
         org_id: UUID,
         file_hash: str,
         db: AsyncSession,
+        session_factory=None,
     ) -> None:
+        """
+        Process contract pipeline.
+        Pattern 4: session_factory passed for fresh sessions per DB operation.
+        If not provided, falls back to passed db session.
+        """
+        # Store factory for use in helper methods
+        self._session_factory = session_factory
         """Run full pipeline. Updates contract status at each step."""
 
         try:
@@ -668,7 +677,21 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
         except json.JSONDecodeError:
             return []
 
-    async def _save_results(
+
+    async def _save_results(self, db: AsyncSession, *args, **kwargs) -> None:
+        """Pattern 1+2+3: Save results using fresh session with retry."""
+        if self._session_factory:
+            async def _do_save(fresh_db: AsyncSession):
+                await self._save_results_inner(fresh_db, *args, **kwargs)
+            await db_op_with_retry(
+                self._session_factory, _do_save,
+                max_retries=3,
+                operation_name="save_pipeline_results"
+            )
+        else:
+            await self._save_results_inner(db, *args, **kwargs)
+
+    async def _save_results_inner(
         self,
         db: AsyncSession,
         contract_id: UUID,

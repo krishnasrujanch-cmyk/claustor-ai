@@ -19,6 +19,32 @@ logger = structlog.get_logger(__name__)
 EMBEDDING_MODEL = "BAAI/bge-m3"
 _EMBEDDER_CACHE = None  # Module-level cache — survives across instances
 
+def preload_embedder() -> None:
+    """
+    Pre-load bge-m3 at worker startup.
+    Call from Celery worker_process_init signal.
+    Model stays in memory for ALL tasks in this worker process.
+    """
+    global _EMBEDDER_CACHE
+    if _EMBEDDER_CACHE is not None:
+        return
+    try:
+        import os
+        from sentence_transformers import SentenceTransformer
+        os.environ.setdefault(
+            "SENTENCE_TRANSFORMERS_HOME",
+            os.path.expanduser("~/.cache/sentence_transformers")
+        )
+        _EMBEDDER_CACHE = SentenceTransformer(
+            "BAAI/bge-m3",
+            device="cpu",
+        )
+        # Warm up with dummy encode
+        _EMBEDDER_CACHE.encode(["warmup"], normalize_embeddings=True)
+    except Exception as e:
+        import structlog
+        structlog.get_logger(__name__).warning("preload_embedder_failed", error=str(e))
+
 def _preload_embedder():
     """Load embedding model at import time — runs once per process."""
     global _EMBEDDER_CACHE
