@@ -479,54 +479,31 @@ class ContractPipeline:
             "registration, maintenance, handover, other"
         )
 
-        # Smart batching — split by sections first, fallback to size-based
-        # Larger batches = fewer LLM calls = cheaper + faster
-        BATCH_SIZE = 16000   # ~4000 tokens — fits gpt-4o-mini context well
-        OVERLAP = 1000       # enough to catch clauses split across boundaries
-        MAX_BATCHES = 10     # cap at 10 LLM calls regardless of doc size
+        # Size-based batching with overlap — reliable for all contract types
+        BATCH_SIZE = 8000    # ~2000 tokens — proven to work well
+        OVERLAP = 500        # catch clauses split across boundaries
+        MAX_BATCHES = 15     # cap: 15 * 8000 = 120K chars max coverage
 
-        # Try section-based splitting first (cleaner boundaries)
-        import re
-        section_pattern = re.compile(
-            r"(?=^|\n)(\d+\.\s+[A-Z][A-Z\s]{3,}|SCHEDULE\s+[A-Z]|ANNEXURE\s+[A-Z])",
-            re.MULTILINE
-        )
-        section_splits = [m.start() for m in section_pattern.finditer(full_text)]
+        batches = []
+        pos = 0
+        while pos < len(full_text):
+            end_pos = min(pos + BATCH_SIZE, len(full_text))
+            batches.append(full_text[pos:end_pos])
+            if end_pos == len(full_text):
+                break
+            pos = end_pos - OVERLAP
 
-        if len(section_splits) >= 3:
-            # Group sections into batches of ~BATCH_SIZE chars
-            batches = []
-            current_batch_start = 0
-            for split_pos in section_splits[1:] + [len(full_text)]:
-                if split_pos - current_batch_start >= BATCH_SIZE:
-                    batches.append(full_text[current_batch_start:split_pos])
-                    current_batch_start = max(0, split_pos - OVERLAP)
-            if current_batch_start < len(full_text):
-                batches.append(full_text[current_batch_start:])
-        else:
-            # Fallback: size-based batching
-            batches = []
-            pos = 0
-            while pos < len(full_text):
-                end_pos = min(pos + BATCH_SIZE, len(full_text))
-                batches.append(full_text[pos:end_pos])
-                if end_pos == len(full_text):
-                    break
-                pos = end_pos - OVERLAP
-
-        # Cap batches to avoid excessive LLM calls on very large docs
+        # For very large docs, merge to stay within MAX_BATCHES
         if len(batches) > MAX_BATCHES:
-            # Merge smaller batches
-            merged = []
-            chunk_size = len(batches) // MAX_BATCHES + 1
-            for i in range(0, len(batches), chunk_size):
-                merged.append("\n\n".join(batches[i:i+chunk_size]))
-            batches = merged[:MAX_BATCHES]
+            step = len(batches) // MAX_BATCHES + 1
+            batches = [
+                "\n\n".join(batches[i:i+step])
+                for i in range(0, len(batches), step)
+            ][:MAX_BATCHES]
 
         logger.info("clause_extraction_plan",
                     doc_chars=len(full_text),
-                    batches=len(batches),
-                    strategy="section-based" if len(section_splits) >= 3 else "size-based")
+                    batches=len(batches))
 
         # Table summary for context
         table_summary = ""
