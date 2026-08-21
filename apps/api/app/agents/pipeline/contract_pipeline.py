@@ -334,19 +334,23 @@ class ContractPipeline:
                 obligations=len(obligations_data),
             )
 
-            # Trigger webhook event
+            # Trigger webhook event — use fresh session
             try:
                 from app.api.v1.endpoints.webhooks import trigger_webhook_event
-                await trigger_webhook_event(
-                    org_id=org_id,
-                    event="contract.analyzed",
-                    data={
-                        "contract_id": str(contract_id),
-                        "clause_count": len(scored_clauses),
-                        "obligation_count": len(obligations_data),
-                        "risk_level": "low",
-                    },
-                    db=db,
+                async def _webhook_success(fresh_db):
+                    await trigger_webhook_event(
+                        org_id=org_id,
+                        event="contract.analyzed",
+                        data={
+                            "contract_id": str(contract_id),
+                            "clause_count": len(scored_clauses),
+                            "obligation_count": len(obligations_data),
+                            "risk_level": "low",
+                        },
+                        db=fresh_db,
+                    )
+                await self._session_manager.execute(
+                    _webhook_success, operation_name="webhook_analyzed"
                 )
             except Exception as we:
                 logger.warning("webhook_trigger_failed", error=str(we))
@@ -366,11 +370,15 @@ class ContractPipeline:
             await self._session_manager.update_status(contract_id, "failed", error=str(e))
             try:
                 from app.api.v1.endpoints.webhooks import trigger_webhook_event
-                await trigger_webhook_event(
-                    org_id=org_id,
-                    event="contract.failed",
-                    data={"contract_id": str(contract_id), "error": str(e)[:200]},
-                    db=db,
+                async def _webhook_failed(fresh_db):
+                    await trigger_webhook_event(
+                        org_id=org_id,
+                        event="contract.failed",
+                        data={"contract_id": str(contract_id), "error": str(e)[:200]},
+                        db=fresh_db,
+                    )
+                await self._session_manager.execute(
+                    _webhook_failed, operation_name="webhook_failed"
                 )
             except Exception:
                 pass
@@ -773,13 +781,12 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
             __import__("sqlalchemy").delete(Clause).where(Clause.contract_id == contract_id)
         )
         await db.execute(
-        all_clauses = []
-        all_obligations = []
             __import__("sqlalchemy").delete(Obligation).where(Obligation.contract_id == contract_id)
         )
 
         # Build all clause objects
         all_clauses = []
+        all_obligations = []
         for _ci, clause_data in enumerate(scored_clauses):
             clause = Clause(
                 contract_id=contract_id,
@@ -825,7 +832,7 @@ Return ONLY valid JSON array. Focus on actionable obligations with dates or dead
         db.add_all(all_clauses)
         db.add_all(all_obligations)
         await db.flush()
-        await db.commit()
+        # commit handled by PipelineSessionManager.session() context manager
 
         logger.info(
             "results_saved",
