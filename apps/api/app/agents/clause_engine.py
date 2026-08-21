@@ -223,7 +223,7 @@ class HybridBoundaryDetector:
                 sections.append(DetectedSection(
                     section_ref=ref,
                     heading=heading,
-                    text=section_text[:2000],  # Cap each section
+                    text=section_text[:5000],  # Cap each section
                     start_pos=start,
                     end_pos=end,
                     confidence=0.9,
@@ -542,13 +542,13 @@ class ClauseEngine:
         type_list = ", ".join(CLAUSE_TYPES.keys())
 
         # Batch sections into groups of 5 for efficiency
-        batch_size = 5
+        batch_size = 4  # smaller batches with larger text per section
         all_clauses: list[dict] = []
 
         for i in range(0, len(sections), batch_size):
             batch = sections[i:i + batch_size]
             sections_text = "\n\n---\n\n".join([
-                f"SECTION {j+1} (ref: {s.section_ref}, heading: {s.heading}):\n{s.text[:600]}"
+                f"SECTION {j+1} (ref: {s.section_ref}, heading: {s.heading}):\n{s.text[:3000]}"
                 for j, s in enumerate(batch)
             ])
 
