@@ -1,7 +1,8 @@
 """
 Claustor AI — Contract Processing Tasks
 Direct async execution — NO subprocess.
-Uses existing session factory to avoid connection issues.
+PipelineSessionManager handles all long-running DB sessions.
+Outer session used only for fast step1 reads (<5s).
 """
 from __future__ import annotations
 import asyncio
@@ -23,7 +24,7 @@ logger = structlog.get_logger(__name__)
 @celery_app.task(
     bind=True,
     name="app.workers.tasks.contract_tasks.process_contract",
-    max_retries=3,
+    max_retries=2,
     default_retry_delay=30,
     soft_time_limit=1800,
     time_limit=2100,
@@ -42,11 +43,7 @@ def process_contract(
     # Support both file_hash and file_path parameter names
     if not file_hash and file_path:
         file_hash = file_path
-    """
-    Process contract via direct async execution.
-    No subprocess — uses shared session factory.
-    Supports 100s of concurrent documents via Celery concurrency.
-    """
+
     logger.info("contract_task_received",
                 contract_id=contract_id, plan=plan, queue=queue)
 
@@ -54,9 +51,10 @@ def process_contract(
         import ssl as _ssl
         import app.infrastructure.database.session as _db_module
         from app.agents.pipeline.contract_pipeline import ContractPipeline
+        from app.infrastructure.database.session_manager import PipelineSessionManager
         from app.core.config import settings
 
-        # Initialize DB if session factory not ready
+        # Initialize shared session factory if needed
         if _db_module.async_session_factory is None:
             ssl_ctx = _ssl.create_default_context()
             ssl_ctx.check_hostname = False
@@ -69,37 +67,35 @@ def process_contract(
         if _db_module.async_session_factory is None:
             raise RuntimeError("DB session factory failed to initialize")
 
-        # Get fresh session — don't reuse across long LLM operations
-        session = _db_module.async_session_factory()
-        async with session as db:
+        # Create session manager — handles all long-running DB ops
+        mgr = PipelineSessionManager(settings.DATABASE_URL)
+        await mgr.initialize()
+
+        try:
+            pipeline = ContractPipeline()
+
+            # No outer session — pipeline uses session_manager for ALL DB ops
+            # Each DB operation gets its own fresh NullPool connection
+            await pipeline.process(
+                contract_id=UUID(contract_id),
+                org_id=UUID(org_id),
+                file_hash=file_hash,
+                db=None,
+                session_factory=_db_module.async_session_factory,
+                session_manager=mgr,
+            )
+            logger.info("contract_processed",
+                        contract_id=contract_id, plan=plan)
+
+        except Exception as e:
+            logger.error("contract_pipeline_failed",
+                         contract_id=contract_id, error=str(e))
+            raise
+        finally:
             try:
-                pipeline = ContractPipeline()
-                from app.infrastructure.database.session_manager import PipelineSessionManager
-                from app.core.config import settings as _settings
-                mgr = PipelineSessionManager(_settings.DATABASE_URL)
-                await mgr.initialize()
-                try:
-                    await pipeline.process(
-                        contract_id=UUID(contract_id),
-                        org_id=UUID(org_id),
-                        file_hash=file_hash,
-                        db=db,
-                        session_factory=_db_module.async_session_factory,
-                        session_manager=mgr,
-                    )
-                finally:
-                    await mgr.dispose()
-                await db.commit()
-                logger.info("contract_processed",
-                            contract_id=contract_id, plan=plan)
-            except Exception as e:
-                try:
-                    await db.rollback()
-                except Exception:
-                    pass
-                logger.error("contract_pipeline_failed",
-                             contract_id=contract_id, error=str(e))
-                raise
+                await mgr.dispose()
+            except Exception:
+                pass
 
     try:
         asyncio.run(_run())

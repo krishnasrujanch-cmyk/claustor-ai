@@ -83,18 +83,17 @@ class ContractPipeline:
             from app.domain.models import Organisation
             from sqlalchemy import select as _sel_org
 
-            # Get org plan for feature gating
-            _org_result = await db.execute(
-                _sel_org(Organisation.plan).where(Organisation.id == org_id)
-            )
-            _org_plan = _org_result.scalar() or "free"
-
-            # Get original filename from DB
+            # Get org plan + filename via session_manager (fresh session)
             from app.domain.models import Contract as _Contract
-            _fname_result = await db.execute(
-                _sel_org(_Contract.original_filename).where(_Contract.id == contract_id)
+            async def _get_init_data(fresh_db):
+                from sqlalchemy import select as _s2
+                r1 = await fresh_db.execute(_s2(Organisation.plan).where(Organisation.id == org_id))
+                r2 = await fresh_db.execute(_s2(_Contract.original_filename).where(_Contract.id == contract_id))
+                return r1.scalar() or 'free', r2.scalar() or 'contract.pdf'
+            _org_plan, _filename = await self._session_manager.execute(
+                _get_init_data, operation_name='get_init_data'
             )
-            _filename = _fname_result.scalar() or "contract.pdf"
+            logger.info("pipeline_init", contract_id=str(contract_id), plan=_org_plan, file=_filename)
 
             # Parse with plan-gated features
             _doc_processor = DocumentProcessor.get()
@@ -211,14 +210,15 @@ class ContractPipeline:
             try:
                 from app.domain.models import DocumentMetadata
                 from sqlalchemy import update as _upd
-                await db.execute(
-                    _upd(_Contract)
-                    .where(_Contract.id == contract_id)
-                    .values(
-                        has_signatures=parsed.has_signatures,
+                async def _save_meta(fresh_db):
+                    await fresh_db.execute(
+                        _upd(_Contract)
+                        .where(_Contract.id == contract_id)
+                        .values(has_signatures=parsed.has_signatures)
                     )
+                await self._session_manager.execute(
+                    _save_meta, operation_name="save_metadata"
                 )
-                await db.commit()
             except Exception as _me:
                 logger.warning("metadata_save_failed", error=str(_me))
 
@@ -306,12 +306,14 @@ class ContractPipeline:
                             _hc.risk_score = _rs
                             break
 
+            # index_chunks — pass session_manager for its own DB saves
             await index_chunks(
                 chunks=_hier_chunks,
                 contract_id=contract_id,
                 org_id=org_id,
-                db=db,
+                db=None,
                 vector_store=self.vector_store,
+                session_manager=self._session_manager,
             )
 
             # ── Step 7: Save Results to DB ────────────────
@@ -401,14 +403,18 @@ class ContractPipeline:
         from sqlalchemy import select, text
         from pathlib import Path
 
-        # Strategy 1: Look up stored file_path from DB
+        # Strategy 1: Look up stored file_path via session_manager
         try:
-            result = await db.execute(
-                text("SELECT file_path FROM contracts WHERE id = :id"),
-                {"id": str(contract_id)}
+            async def _get_file_path(fresh_db):
+                r = await fresh_db.execute(
+                    text("SELECT file_path FROM contracts WHERE id = :id"),
+                    {"id": str(contract_id)}
+                )
+                return r.fetchone()
+            _fp_row = await self._session_manager.execute(
+                _get_file_path, operation_name="get_file_path"
             )
-            row = result.fetchone()
-            stored_path = row[0] if row else None
+            stored_path = _fp_row[0] if _fp_row else None
         except Exception as e:
             logger.warning("db_lookup_failed", error=str(e))
             stored_path = None

@@ -1,17 +1,19 @@
 """
 Claustor AI — Chunk Indexer
 Saves ContractChunkData to PostgreSQL (BM25) + Pinecone (vectors).
+
+Architecture: Two-phase design for long-running embedding operations.
+  Phase A (fast <5s):  DELETE old + INSERT new chunks to PostgreSQL
+  Phase B (slow 10min): bge-m3 embed + Pinecone upsert (NO DB held open)
 """
 
 from __future__ import annotations
-import asyncio
 import logging
 from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,30 +27,46 @@ async def index_chunks(
     org_id: UUID,
     db: AsyncSession,
     vector_store,
+    session_manager=None,
 ) -> None:
     """
-    Save chunks to PostgreSQL (BM25) and Pinecone (vectors).
-    Deletes old chunks first for clean reindex.
+    Two-phase indexing:
+    Phase A: Save chunks to PostgreSQL (fast, commits immediately)
+    Phase B: Embed + upsert to Pinecone (slow, no DB session held)
     """
-    # ── Step 1: Delete old chunks ──
+    # ── Phase A: PostgreSQL save (fast, <5s) ──────────────────────────────────
+    if session_manager:
+        # Use fresh NullPool session — guaranteed alive
+        async def _save_to_postgres(fresh_db: AsyncSession):
+            await _phase_a_save(fresh_db, chunks, contract_id, org_id)
+        await session_manager.execute(_save_to_postgres, operation_name="save_chunks_postgres")
+    else:
+        # Fallback: use passed db session
+        await _phase_a_save(db, chunks, contract_id, org_id)
+
+    # ── Phase B: Embed + Pinecone (slow, no DB) ───────────────────────────────
+    await _phase_b_embed_and_index(chunks, contract_id, org_id, vector_store)
+
+
+async def _phase_a_save(
+    db: AsyncSession,
+    chunks: list,
+    contract_id: UUID,
+    org_id: UUID,
+) -> None:
+    """Phase A: Delete old + save new chunks to PostgreSQL. Fast (<5s)."""
+    from app.domain.models import ContractChunk
+
+    # Delete old chunks
     await db.execute(
         text("DELETE FROM contract_chunks WHERE contract_id = :cid"),
         {"cid": str(contract_id)}
     )
     logger.info(f"old_chunks_deleted: contract_id={contract_id}")
 
-    # ── Step 2: Delete old Pinecone vectors ──
-    try:
-        await vector_store.delete_contract(org_id, contract_id)
-    except Exception as e:
-        logger.warning(f"pinecone_delete_failed: {e}")
-
-    # ── Step 3: Save to PostgreSQL ──
-    from app.domain.models import ContractChunk
-
-    db_chunks = []
-    for chunk in chunks:
-        db_chunk = ContractChunk(
+    # Build and insert new chunks
+    db_chunks = [
+        ContractChunk(
             id          = chunk.chunk_id,
             contract_id = chunk.contract_id,
             org_id      = chunk.org_id,
@@ -65,55 +83,72 @@ async def index_chunks(
             cross_refs  = chunk.cross_refs or [],
             table_json  = chunk.table_json,
         )
-        db_chunks.append(db_chunk)
-
+        for chunk in chunks
+    ]
     db.add_all(db_chunks)
-    await db.flush()  # flush but don't commit — pipeline handles the transaction
+    await db.flush()
     logger.info(f"chunks_saved_postgres: count={len(db_chunks)} contract_id={contract_id}")
 
-    # ── Step 4: Embed + Upsert to Pinecone ──
+
+async def _phase_b_embed_and_index(
+    chunks: list,
+    contract_id: UUID,
+    org_id: UUID,
+    vector_store,
+) -> None:
+    """
+    Phase B: bge-m3 embed + Pinecone upsert.
+    NO database session held — runs after Phase A committed.
+    Long-running (10+ mins on CPU). Safe from DB timeout issues.
+    """
+    # Delete old Pinecone vectors
+    try:
+        await vector_store.delete_contract(org_id, contract_id)
+    except Exception as e:
+        logger.warning(f"pinecone_delete_failed: {e}")
+
     # Only embed non-signature chunks
     embeddable = [c for c in chunks if c.chunk_type != "signature"]
+    if not embeddable:
+        logger.info(f"chunk_indexing_complete: total={len(chunks)} embedded=0 contract_id={contract_id}")
+        return
 
-    # Embed in batches
+    # Embed synchronously — run_in_executor deadlocks in Celery forked workers
     embedder = await vector_store.get_embedder()
-    loop = asyncio.get_event_loop()
-
     pinecone_vectors = []
+
     for i in range(0, len(embeddable), EMBED_BATCH_SIZE):
         batch = embeddable[i:i+EMBED_BATCH_SIZE]
         texts = [c.text for c in batch]
-
         embeddings = embedder.encode(
             texts, normalize_embeddings=True, show_progress_bar=False
         ).tolist()
 
-
         for chunk, embedding in zip(batch, embeddings):
-            pinecone_id = f"chunk_{chunk.chunk_id}"
-            metadata = {
-                "chunk_id":      str(chunk.chunk_id),
-                "contract_id":   str(chunk.contract_id),
-                "org_id":        str(chunk.org_id),
-                "parent_id":     str(chunk.parent_id) if chunk.parent_id else "",
-                "is_parent":     chunk.is_parent,
-                "chunk_type":    chunk.chunk_type,
-                "section_ref":   chunk.section_ref or "",
-                "heading":       (chunk.heading or "")[:500],
-                "importance":    chunk.importance or "low",
-                "risk_level":    chunk.risk_level or "",
-                "risk_score":    chunk.risk_score or 0.0,
-                "contract_type": chunk.contract_type or "",
-                "counterparty":  (chunk.counterparty or "")[:200],
-                "expiry_date":   chunk.expiry_date or "",
-                "effective_date":chunk.effective_date or "",
-                # Store short text preview for context (not full text)
-                "text_preview":  chunk.text[:200],
-            }
-            pinecone_vectors.append((pinecone_id, embedding, metadata))
+            pinecone_vectors.append((
+                f"chunk_{chunk.chunk_id}",
+                embedding,
+                {
+                    "chunk_id":      str(chunk.chunk_id),
+                    "contract_id":   str(chunk.contract_id),
+                    "org_id":        str(chunk.org_id),
+                    "parent_id":     str(chunk.parent_id) if chunk.parent_id else "",
+                    "is_parent":     chunk.is_parent,
+                    "chunk_type":    chunk.chunk_type,
+                    "section_ref":   chunk.section_ref or "",
+                    "heading":       (chunk.heading or "")[:500],
+                    "importance":    chunk.importance or "low",
+                    "risk_level":    chunk.risk_level or "",
+                    "risk_score":    chunk.risk_score or 0.0,
+                    "contract_type": chunk.contract_type or "",
+                    "counterparty":  (chunk.counterparty or "")[:200],
+                    "expiry_date":   chunk.expiry_date or "",
+                    "effective_date":chunk.effective_date or "",
+                    "text_preview":  chunk.text[:200],
+                }
+            ))
 
-
-    # Upsert to Pinecone in batches
+    # Upsert to Pinecone
     if pinecone_vectors:
         namespace = f"org_{str(org_id).replace('-','')[:8]}"
         idx = vector_store.index
@@ -121,7 +156,8 @@ async def index_chunks(
             batch = pinecone_vectors[i:i+PINECONE_BATCH_SIZE]
             vectors = [{"id": v[0], "values": v[1], "metadata": v[2]} for v in batch]
             idx.upsert(vectors=vectors, namespace=namespace)
-    # pinecone_id DB update skipped — not required for query functionality
+            logger.info(f"Upserting {len(batch)} vectors into namespace '{namespace}'")
+
         logger.info(f"chunks_indexed_pinecone: count={len(pinecone_vectors)} contract_id={contract_id}")
 
     logger.info(f"chunk_indexing_complete: total={len(chunks)} embedded={len(embeddable)} contract_id={contract_id}")
@@ -134,7 +170,6 @@ async def fetch_chunk_texts(
     """Fetch full text for chunk IDs from PostgreSQL."""
     if not chunk_ids:
         return {}
-    # Strip "chunk_" prefix if present (Pinecone IDs use this prefix)
     clean_ids = [cid.replace("chunk_", "") if cid.startswith("chunk_") else cid
                  for cid in chunk_ids]
     placeholders = ",".join(f"'{cid}'" for cid in clean_ids)
@@ -181,8 +216,7 @@ async def fetch_parent_texts(
     }
 
 
-async def bm25_search(  # DEBUG VERSION
-
+async def bm25_search(
     query: str,
     org_id: UUID,
     db: AsyncSession,
@@ -190,22 +224,15 @@ async def bm25_search(  # DEBUG VERSION
     top_k: int = 10,
     exclude_types: list[str] = None,
 ) -> list[dict]:
-    """
-    BM25 full-text search on contract_chunks table.
-    Returns chunk dicts with text and metadata.
-    """
+    """BM25 full-text search on contract_chunks table."""
     exclude_types = exclude_types or ["signature"]
-    # Build exclude clause — use NOT IN with literals to avoid array param issues
-    exclude_list = ",".join(f"'{t}'" for t in (exclude_types or ["signature"]))
+    exclude_list = ",".join(f"'{t}'" for t in exclude_types)
     conditions = [
         "org_id = :org_id",
         f"chunk_type NOT IN ({exclude_list})",
         "to_tsvector('simple', text) @@ plainto_tsquery('simple', :query)",
     ]
-    params = {
-        "org_id": str(org_id),
-        "query": query,
-    }
+    params = {"org_id": str(org_id), "query": query}
     if contract_id:
         conditions.append("contract_id = :contract_id")
         params["contract_id"] = str(contract_id)
@@ -242,21 +269,18 @@ async def bm25_search(  # DEBUG VERSION
         logger.warning(f"bm25_search_error: {e}")
         return []
 
+
 async def fetch_cross_ref_chunks(
     chunk_ids: list[str],
     db: AsyncSession,
 ) -> list[dict]:
-    """
-    Fetch chunks referenced by cross_refs of given chunks.
-    Returns additional context chunks from cross-referenced sections.
-    """
+    """Fetch chunks referenced by cross_refs of given chunks."""
     if not chunk_ids:
         return []
     clean_ids = [cid.replace("chunk_","") if cid.startswith("chunk_") else cid
                  for cid in chunk_ids]
-    placeholders = ",".join(f"\'{cid}\'" for cid in clean_ids)
+    placeholders = ",".join(f"'{cid}'" for cid in clean_ids)
     try:
-        # Get cross_refs from retrieved chunks
         r = await db.execute(text(f"""
             SELECT cross_refs, contract_id::text, org_id::text
             FROM contract_chunks
@@ -268,21 +292,17 @@ async def fetch_cross_ref_chunks(
         if not rows:
             return []
 
-        # Extract section references and find matching chunks
         all_refs = []
         contract_id = rows[0][1]
-        org_id = rows[0][2]
         for row in rows:
-            refs = row[0] or []
-            all_refs.extend(refs)
+            all_refs.extend(row[0] or [])
 
         if not all_refs:
             return []
 
-        # Search for chunks matching cross-references by heading/section_ref
         ref_conditions = " OR ".join([
             f"heading ILIKE '%{ref.split()[-1][:20]}%' OR section_ref ILIKE '%{ref.split()[-1][:20]}%'"
-            for ref in all_refs[:5]  # limit to 5 refs
+            for ref in all_refs[:5]
         ])
 
         r2 = await db.execute(text(f"""
@@ -304,4 +324,3 @@ async def fetch_cross_ref_chunks(
     except Exception as e:
         logger.warning(f"cross_ref_fetch_error: {e}")
         return []
-

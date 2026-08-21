@@ -137,7 +137,18 @@ class PipelineSessionManager:
         async with self._factory() as db:
             try:
                 yield db
-                await db.commit()
+                try:
+                    await db.commit()
+                except Exception as commit_err:
+                    # NullPool connection may close during long operations
+                    # If commit fails, try rollback and re-raise
+                    logger.warning("session_commit_failed",
+                                   error=str(commit_err)[:200])
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
+                    raise
             except Exception:
                 try:
                     await db.rollback()
@@ -159,6 +170,9 @@ class PipelineSessionManager:
             try:
                 async with self.session() as db:
                     result = await operation(db)
+                    if attempt > 0:
+                        logger.info("pipeline_db_retry_success",
+                                   operation=operation_name, attempt=attempt+1)
                     return result
             except Exception as exc:
                 if _is_transient(exc) and attempt < self._max_retries - 1:
