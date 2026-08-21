@@ -488,8 +488,7 @@ class ContractPipeline:
         # Try section-based splitting first (cleaner boundaries)
         import re
         section_pattern = re.compile(
-            r"(?=^|
-)(\d+\.\s+[A-Z][A-Z\s]{3,}|SCHEDULE\s+[A-Z]|ANNEXURE\s+[A-Z])",
+            r"(?=^|\n)(\d+\.\s+[A-Z][A-Z\s]{3,}|SCHEDULE\s+[A-Z]|ANNEXURE\s+[A-Z])",
             re.MULTILINE
         )
         section_splits = [m.start() for m in section_pattern.finditer(full_text)]
