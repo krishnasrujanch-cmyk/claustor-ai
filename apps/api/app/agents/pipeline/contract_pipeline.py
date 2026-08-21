@@ -462,58 +462,93 @@ class ContractPipeline:
     ) -> list[dict]:
         """
         Extract all clauses from contract text using LLM.
-        Uses batching to minimize API calls.
+        Processes full document in overlapping batches — generic for any contract type.
         """
-        # Truncate to fit context window
-        text_sample = full_text[:8000]
+        import json
 
-        table_summary = ""
-        if tables:
-            table_summary = f"\n\nTABLES FOUND ({len(tables)}):\n"
-            for t in tables[:3]:  # first 3 tables
-                table_summary += t.get("text", "")[:500] + "\n"
-
-        prompt = f"""Analyze this contract and extract all important clauses.
-
-CONTRACT TEXT:
-{text_sample}
-{table_summary}
-
-Extract clauses and return as JSON array. Each clause must have:
-- clause_type: one of [liability, indemnification, termination, payment, confidentiality, ip_ownership, governing_law, dispute_resolution, auto_renewal, warranty, force_majeure, non_compete, data_protection, change_of_control, audit_rights, assignment, limitation_of_liability, representations, other]
-- title: short descriptive title
-- summary: 1-2 sentence summary of what the clause says
-- raw_text: the actual clause text (max 500 chars)
-- section_reference: section number if visible (e.g. "Section 8.2")
-
-Return ONLY valid JSON array, no other text."""
-
-        response = await self.llm.complete(
-            messages=[
-                LLMMessage(role="system", content="You are a legal contract analyst. Return only valid JSON."),
-                LLMMessage(role="user", content=prompt),
-            ],
-            role=AgentRole.EXTRACTOR,
-            json_mode=True,
+        # Generic clause types — covers all contract categories universally
+        CLAUSE_TYPES = (
+            "payment, termination, liability, indemnification, confidentiality, "
+            "governing_law, dispute_resolution, force_majeure, warranty, "
+            "representations, notices, assignment, amendment, entire_agreement, "
+            "ip_ownership, license, non_compete, data_protection, audit_rights, "
+            "sla, acceptance_testing, change_order, auto_renewal, "
+            "limitation_of_liability, insurance, change_of_control, "
+            "payment_schedule, penalty, security_deposit, non_solicitation, "
+            "benefits, severance, possession, construction_timeline, "
+            "registration, maintenance, handover, other"
         )
 
-        import json
-        try:
-            content = response.content.strip()
-            # Handle if response is wrapped in object
-            parsed = json.loads(content)
-            if isinstance(parsed, dict):
-                # Try common keys
-                for key in ["clauses", "data", "results", "items"]:
-                    if key in parsed:
-                        parsed = parsed[key]
-                        break
-            if isinstance(parsed, list):
-                return parsed
-            return []
-        except json.JSONDecodeError as e:
-            logger.warning("clause_extraction_json_error", error=str(e))
-            return []
+        # Process full document in overlapping batches
+        BATCH_SIZE = 8000
+        OVERLAP = 500
+        batches = []
+        pos = 0
+        while pos < len(full_text):
+            end_pos = min(pos + BATCH_SIZE, len(full_text))
+            batches.append(full_text[pos:end_pos])
+            if end_pos == len(full_text):
+                break
+            pos = end_pos - OVERLAP
+
+        # Table summary for context
+        table_summary = ""
+        if tables:
+            table_summary = f"\n\nTABLES IN CONTRACT ({len(tables)}):\n"
+            for t in tables[:5]:
+                table_summary += t.get("text", "")[:300] + "\n"
+
+        all_clauses = []
+        seen_keys = set()
+
+        for batch_idx, batch_text in enumerate(batches):
+            prompt = f"""Extract ALL important clauses from this contract section.
+This is section {batch_idx + 1} of {len(batches)} of the full contract.
+
+CONTRACT TEXT:
+{batch_text}
+{table_summary if batch_idx == 0 else ""}
+
+Return a JSON array of clauses found in this section. Each clause:
+- clause_type: one of [{CLAUSE_TYPES}]
+- title: short descriptive title
+- summary: 1-2 sentence summary of what the clause says
+- raw_text: actual clause text from the contract (max 500 chars)
+- section_reference: section number if visible (e.g. "6", "11.2")
+
+Rules:
+- Extract ALL substantive clauses present, do not skip any
+- Use "other" for domain-specific clauses not in the type list
+- Do NOT duplicate clauses already extracted in earlier sections
+Return ONLY valid JSON array, no other text."""
+
+            try:
+                response = await self.llm.complete(
+                    messages=[
+                        LLMMessage(role="system", content="You are a legal contract analyst. Extract all clauses accurately. Return only valid JSON array."),
+                        LLMMessage(role="user", content=prompt),
+                    ],
+                    role=AgentRole.EXTRACTOR,
+                    json_mode=True,
+                )
+                batch_clauses = json.loads(response.content.strip())
+                if not isinstance(batch_clauses, list):
+                    continue
+                for clause in batch_clauses:
+                    ct = str(clause.get("clause_type", "other"))
+                    title = str(clause.get("title", ""))[:40]
+                    key = f"{ct}:{title.lower()}"
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        all_clauses.append(clause)
+            except Exception as e:
+                logger.warning(f"clause_extraction_batch_{batch_idx}_failed: {e}")
+                continue
+
+        logger.info("clauses_extracted",
+                    count=len(all_clauses),
+                    batches=len(batches),
+                    doc_chars=len(full_text))
 
     async def _score_risks(self, clauses: list[dict]) -> list[dict]:
         """
