@@ -3,15 +3,15 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install --legacy-peer-deps",
   "framework": "nextjs",
-  "regions": ["sin1"],
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_API_URL": "https://claustor-api-433747726821.asia-south1.run.app",
-      "NEXT_PUBLIC_APP_URL": "https://claustor.com",
-      "NEXT_PUBLIC_AUTH0_DOMAIN": "claustor.us.auth0.com",
-      "NEXT_PUBLIC_AUTH0_CLIENT_ID": "QGasMsTsqtJZBl23ZZhfcPFGx0lmS4Cb",
-      "NEXT_PUBLIC_RAZORPAY_KEY_ID": "rzp_live_TSlbohAjzYuldw",
-      "NEXT_PUBLIC_ENVIRONMENT": "production"
-    }
+  "regions": [
+    "sin1"
+  ],
+  "env": {
+    "NEXT_PUBLIC_API_URL": "https://claustor-api-433747726821.asia-south1.run.app",
+    "NEXT_PUBLIC_APP_URL": "https://claustor.com",
+    "NEXT_PUBLIC_AUTH0_DOMAIN": "claustor.us.auth0.com",
+    "NEXT_PUBLIC_AUTH0_CLIENT_ID": "QGasMsTsqtJZBl23ZZhfcPFGx0lmS4Cb",
+    "NEXT_PUBLIC_RAZORPAY_KEY_ID": "rzp_live_TSlbohAjzYuldw",
+    "NEXT_PUBLIC_ENVIRONMENT": "production"
   }
 }
