@@ -7,7 +7,7 @@ import Link from "next/link";
 import { getToken } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 // Priority uses filled pills
 const PRIORITY_META: Record<string,{bg:string,text:string,label:string}> = {
   urgent: {bg:"#FEF2F2",text:"#DC2626",label:"🔴 URGENT"},

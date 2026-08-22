@@ -7,7 +7,7 @@ import { contracts as contractsAPI, getToken } from "@/lib/api";
 import { Contract } from "@/lib/api";
 import { Send, Copy, Check, RotateCcw, AlertTriangle, CheckCircle, Shield, DollarSign, BookOpen, FileText, Search, X } from "lucide-react";
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const C = {
   primary:"#0066FF", primaryLight:"#E6F0FF", accent:"#00A3FF",
   heading:"#111827", body:"#374151", muted:"#6B7280",

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { getToken } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const CLAUSE_TYPES = ["liability","payment","termination","confidentiality","indemnification","governing_law","dispute_resolution","ip_ownership","force_majeure","auto_renewal","duration","other"];
 
 export default function PlaybookPage() {

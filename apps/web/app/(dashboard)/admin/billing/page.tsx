@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { billing as billingAPI, getToken } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const PLANS = [
   {
     id: "free", label: "Free", price: 0,

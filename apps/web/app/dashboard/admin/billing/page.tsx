@@ -11,7 +11,7 @@ import {
   Eye, Database, Globe, Clock, BarChart2, Upload,
 } from "lucide-react";
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const C = {
   primary:"#0066FF", primaryLight:"#E6F0FF",
   heading:"#111827", body:"#374151", muted:"#6B7280",

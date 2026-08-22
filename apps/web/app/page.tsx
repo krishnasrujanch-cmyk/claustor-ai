@@ -303,7 +303,7 @@ function DemoPopup({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async () => {
     try {
-      await fetch("http://localhost:8000/api/v1/billing/enterprise/contact", {
+      await fetch("${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/billing/enterprise/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -445,7 +445,7 @@ function EnterprisePopup({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async () => {
     try {
-      await fetch("http://localhost:8000/api/v1/billing/enterprise/contact", {
+      await fetch("${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/billing/enterprise/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

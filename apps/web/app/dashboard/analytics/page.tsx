@@ -6,7 +6,7 @@ import Link from "next/link";
 import { getToken, contracts as contractsAPI, Contract } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 function StatCard({ label, value, sub, color=C.primary }: any) {
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"20px 24px" }}>
@@ -165,11 +165,11 @@ export default function AnalyticsPage() {
               View contract →
             </Link>
           )}
-          <a href={`http://localhost:8000/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`}
+          <a href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`}
             onClick={e=>{
               const token = getToken();
               e.preventDefault();
-              fetch(`http://localhost:8000/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`,
+              fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`,
                 {headers:{Authorization:`Bearer ${token}`}})
                 .then(r=>r.blob()).then(blob=>{
                   const url = URL.createObjectURL(blob);

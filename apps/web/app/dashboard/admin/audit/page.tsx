@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { getToken } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const ACTION_ICONS: Record<string,string> = {
   contract_upload:   "⬆️", contract_view:    "👁️",
   contract_delete:   "🗑️", contract_export:   "⬇️",

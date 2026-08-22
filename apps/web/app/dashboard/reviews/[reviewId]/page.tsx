@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getToken } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const RISK_COLOR: Record<string,string> = {high:C.error,medium:C.warning,low:C.success};
 
 type ClauseFlag = {clause_id:string;action:"accept"|"flag"|"comment";comment?:string};
