@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { Nav, Footer, PageHero, Section, Item } from "@/components/nav-footer";
 
 export default function PrivacyPage() {

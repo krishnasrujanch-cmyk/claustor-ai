@@ -1,9 +1,10 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useAuthStore } from "@/store/auth";
 import { Eye, EyeOff, CheckCircle, Zap, Shield, Clock } from "lucide-react";
 
@@ -104,7 +105,7 @@ function Field({
   );
 }
 
-export default function LoginPage() {
+function LoginPageInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const isSignup     = searchParams.get("signup") === "true";
@@ -470,5 +471,13 @@ export default function LoginPage() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
       `}</style>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>Loading...</div>}>
+      <LoginPageInner />
+    </Suspense>
   );
 }

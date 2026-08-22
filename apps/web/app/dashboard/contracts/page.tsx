@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
 import { Pagination } from "@/components/shared/Pagination";

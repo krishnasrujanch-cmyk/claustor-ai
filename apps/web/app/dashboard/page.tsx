@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { contracts as contractsAPI, billing as billingAPI, getToken } from "@/lib/api";

@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { useEffect, useState, useRef, useMemo } from "react";
 import { users as usersAPI, getToken } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
@@ -281,7 +282,7 @@ export default function UsersPage() {
 
   const handleInvite = async (invData:any) => {
     const result = await usersAPI.invite(invData);
-    const link = result?.invite_url || "";
+    const link = (result as any)?.invite_url || "";
     showMsg(link?`✅ Invited! Link: ${link}`:`✅ Invitation sent to ${invData.email}`);
     load();
   };

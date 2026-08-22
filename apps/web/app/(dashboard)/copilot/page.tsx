@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import { useEffect, useRef, useState } from "react";
 import { chat as chatAPI, contracts as contractsAPI, Contract } from "@/lib/api";

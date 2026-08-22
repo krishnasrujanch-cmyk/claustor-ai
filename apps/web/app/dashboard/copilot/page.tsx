@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import ReactMarkdown from "react-markdown";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -376,7 +377,7 @@ interface Msg {
   error?:boolean; db_sourced?:boolean;
 }
 
-export default function CopilotPage() {
+function CopilotPageInner() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [sel, setSel]             = useState("");
   const [selName, setSelName]     = useState("All contracts");
@@ -779,5 +780,13 @@ export default function CopilotPage() {
         @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
       `}</style>
     </div>
+  );
+}
+
+export default function CopilotPage() {
+  return (
+    <Suspense fallback={<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>Loading...</div>}>
+      <CopilotPageInner />
+    </Suspense>
   );
 }

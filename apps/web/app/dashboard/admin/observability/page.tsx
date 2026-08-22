@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import { getToken } from "@/lib/api";
 import { Zap, DollarSign, Clock, CheckCircle, AlertTriangle, Shield, TrendingUp } from "lucide-react";

@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { useEffect, useState, useMemo } from "react";
 import { getToken } from "@/lib/api";
 import { Pagination } from "@/components/shared/Pagination";

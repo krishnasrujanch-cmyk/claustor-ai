@@ -1,8 +1,10 @@
 "use client";
+export const dynamic = "force-dynamic";
 import { useEffect } from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function RegisterPage() {
+function RegisterPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const plan = searchParams.get("plan");
@@ -23,5 +25,13 @@ export default function RegisterPage() {
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>Loading...</div>}>
+      <RegisterPageInner />
+    </Suspense>
   );
 }
