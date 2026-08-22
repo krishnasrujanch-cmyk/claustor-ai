@@ -83,7 +83,7 @@ def create_application() -> FastAPI:
     if settings.ENVIRONMENT == "production":
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=["claustor.com", "*.claustor.com", "claustor-api-*.run.app"],
+            allowed_hosts=["claustor.com", "*.claustor.com", "*.run.app", "localhost"],
         )
 
     # ── CORS ─────────────────────────────────────

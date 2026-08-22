@@ -51,3 +51,4 @@ infrastructure/terraform/.terraform.lock.hcl
 # ── Logs ─────────────────────────────────────────
 *.log
 logs/
+.env.production
