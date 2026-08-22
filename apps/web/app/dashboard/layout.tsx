@@ -272,9 +272,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const h = {Authorization:`Bearer ${token}`};
     // Load pending reviews + upcoming obligations counts
     Promise.all([
-      fetch("${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/reviews/my-queue",{headers:h})
+      fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/reviews/my-queue`,{headers:h})
         .then(r=>r.ok?r.json():{queue:[]}).catch(()=>({queue:[]})),
-      fetch("${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/obligations/?status=pending&due_soon=true",{headers:h})
+      fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/obligations/?status=pending&due_soon=true`,{headers:h})
         .then(r=>r.ok?r.json():{obligations:[]}).catch(()=>({obligations:[]})),
     ]).then(([rev, obl])=>{
       setNavBadges({
