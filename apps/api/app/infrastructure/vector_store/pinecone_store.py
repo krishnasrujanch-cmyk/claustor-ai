@@ -54,7 +54,7 @@ def _preload_embedder():
         import os
         from sentence_transformers import SentenceTransformer
         cache_dir = os.getenv("SENTENCE_TRANSFORMERS_HOME",
-                   os.path.expanduser("~/.cache/huggingface/sentence_transformers"))
+                   os.path.expanduser("~/.cache/sentence_transformers"))
         _EMBEDDER_CACHE = SentenceTransformer(
             EMBEDDING_MODEL, cache_folder=cache_dir, local_files_only=True)
         print(f"✅ Embedder preloaded at import: {EMBEDDING_MODEL}")
@@ -186,8 +186,8 @@ class VectorStore:
             from sentence_transformers import SentenceTransformer
             loop = asyncio.get_event_loop()
             import os
-            cache_dir = os.getenv("SENTENCE_TRANSFORMERS_HOME", 
-                       os.path.expanduser("~/.cache/huggingface/sentence_transformers"))
+            cache_dir = os.getenv("SENTENCE_TRANSFORMERS_HOME",
+                       os.path.expanduser("~/.cache/sentence_transformers"))
             _EMBEDDER_CACHE = await loop.run_in_executor(
                 None,
                 lambda: SentenceTransformer(EMBEDDING_MODEL, cache_folder=cache_dir, local_files_only=True)
