@@ -48,10 +48,14 @@ def rerank_chunks(query: str, chunks: list, top_k: int = 6) -> list:
 def _cross_encoder_rerank(query: str, chunks: list, top_k: int) -> list:
     """
     Cross-encoder reranking using sentence-transformers.
-    Model: cross-encoder/ms-marco-MiniLM-L-6-v2 (already cached locally).
+    Uses cached model from _load_reranker() — never loads twice.
     """
-    from sentence_transformers import CrossEncoder
-    model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
+    global _cross_encoder
+    if _cross_encoder is None:
+        _load_reranker()
+    if _cross_encoder is None:
+        raise RuntimeError("cross_encoder_not_available")
+    model = _cross_encoder
 
     # Build pairs
     pairs = []
