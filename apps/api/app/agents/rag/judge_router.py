@@ -84,7 +84,7 @@ Return ONLY this JSON (no markdown):
     "status": "pending|approved|rejected|flagged|null",
     "missing_clause": "clause_type or null"
   }},
-  "rewritten_query": "Rewrite the query for better vector search. Expand abbreviations, add related legal terms. Keep it under 100 words.",
+  "rewritten_query": "Rewrite the query for better contract search. Expand abbreviations, add synonyms and related legal terms. For financial queries add: payment, amount, schedule, consideration, instalment, fee, price. For date queries add: expiry, term, duration, effective, commencement. For party queries add: company, entity, counterparty, developer, allottee. Keep it under 100 words.",
   "reasoning": "One line why you chose this intent"
 
 COMPLEXITY RULES:
