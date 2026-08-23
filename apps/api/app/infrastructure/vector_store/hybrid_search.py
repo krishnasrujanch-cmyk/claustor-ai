@@ -55,15 +55,15 @@ class HybridSearchEngine:
     ):
         # Semantic uses rewritten query (richer), BM25 uses raw query (keywords)
         bm25_query = raw_query or query
-        sem_task = asyncio.create_task(
-            self._semantic_search(query, org_id, contract_id, semantic_top_k, clause_type))
-        kw_task  = asyncio.create_task(
-            self._keyword_search(bm25_query, org_id, db, contract_id, keyword_top_k, clause_type))
-        sem, kw = await asyncio.gather(sem_task, kw_task, return_exceptions=True)
-        if isinstance(sem, Exception):
-            logger.warning(f"semantic_search_failed: {sem}"); sem = []
-        if isinstance(kw, Exception):
-            logger.warning(f"keyword_search_failed: {kw}"); kw = []
+        # BM25 first (fast <1s), then semantic (slow on cold start)
+        try:
+            kw = await self._keyword_search(bm25_query, org_id, db, contract_id, keyword_top_k, clause_type)
+        except Exception as e:
+            logger.warning(f"keyword_search_failed: {e}"); kw = []
+        try:
+            sem = await self._semantic_search(query, org_id, contract_id, semantic_top_k, clause_type)
+        except Exception as e:
+            logger.warning(f"semantic_search_failed: {e}"); sem = []
         logger.info("hybrid_search_raw", semantic_hits=len(sem), keyword_hits=len(kw))
 
         fused = self._rrf(sem, kw, top_k)

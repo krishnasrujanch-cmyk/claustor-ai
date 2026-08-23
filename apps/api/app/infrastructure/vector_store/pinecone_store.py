@@ -56,7 +56,7 @@ def _preload_embedder():
         cache_dir = os.getenv("SENTENCE_TRANSFORMERS_HOME",
                    os.path.expanduser("~/.cache/sentence_transformers"))
         _EMBEDDER_CACHE = SentenceTransformer(
-            EMBEDDING_MODEL, cache_folder=cache_dir, local_files_only=True)
+            EMBEDDING_MODEL, cache_folder=cache_dir)
         print(f"✅ Embedder preloaded at import: {EMBEDDING_MODEL}")
     except Exception as e:
         print(f"⚠️ Embedder preload failed: {e}")
@@ -190,7 +190,7 @@ class VectorStore:
                        os.path.expanduser("~/.cache/sentence_transformers"))
             _EMBEDDER_CACHE = await loop.run_in_executor(
                 None,
-                lambda: SentenceTransformer(EMBEDDING_MODEL, cache_folder=cache_dir, local_files_only=True)
+                lambda: SentenceTransformer(EMBEDDING_MODEL, cache_folder=cache_dir)
             )
             logger.info("embedder_loaded", model=EMBEDDING_MODEL)
         self._embedder = _EMBEDDER_CACHE
