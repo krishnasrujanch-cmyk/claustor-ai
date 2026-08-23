@@ -32,22 +32,22 @@ class ModelTier(str, Enum):
 # Complexity → model mapping per plan
 COMPLEXITY_ROUTING: dict[str, dict[str, dict]] = {
     "free": {
-        "simple":  {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
-        "medium":  {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
-        "complex": {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
+        "simple":  {"provider": "openai",    "model": "gpt-4o-mini"},
+        "medium":  {"provider": "openai",    "model": "gpt-4o-mini"},
+        "complex": {"provider": "anthropic", "model": "claude-sonnet-4-5"},
     },
     "starter": {
-        "simple":  {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
-        "medium":  {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
+        "simple":  {"provider": "openai",    "model": "gpt-4o-mini"},
+        "medium":  {"provider": "openai",    "model": "gpt-4o-mini"},
         "complex": {"provider": "anthropic", "model": "claude-haiku-4-5"},
     },
     "professional": {
-        "simple":  {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
+        "simple":  {"provider": "openai",    "model": "gpt-4o-mini"},
         "medium":  {"provider": "anthropic", "model": "claude-haiku-4-5"},
         "complex": {"provider": "anthropic", "model": "claude-sonnet-4-5"},
     },
     "enterprise": {
-        "simple":  {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
+        "simple":  {"provider": "openai",    "model": "gpt-4o-mini"},
         "medium":  {"provider": "anthropic", "model": "claude-haiku-4-5"},
         "complex": {"provider": "anthropic", "model": "claude-sonnet-4-5"},
     },
@@ -56,22 +56,22 @@ COMPLEXITY_ROUTING: dict[str, dict[str, dict]] = {
 # Base config per plan per role (non-answerer roles)
 PLAN_MODEL_CONFIG: dict[str, dict] = {
     "free": {
-        "judge":     {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
-        "extractor": {"provider": "groq",      "model": "llama-3.1-8b-instant"},
-        "answerer":  {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
-        "safety":    {"provider": "groq",      "model": "llama-3.1-8b-instant"},
+        "judge":     {"provider": "openai",    "model": "gpt-4o-mini"},
+        "extractor": {"provider": "openai",    "model": "gpt-4o-mini"},
+        "answerer":  {"provider": "openai",    "model": "gpt-4o-mini"},
+        "safety":    {"provider": "openai",    "model": "gpt-4o-mini"},
     },
     "starter": {
-        "judge":     {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
+        "judge":     {"provider": "openai",    "model": "gpt-4o-mini"},
         "extractor": {"provider": "anthropic", "model": "claude-haiku-4-5"},
         "answerer":  {"provider": "anthropic", "model": "claude-haiku-4-5"},
-        "safety":    {"provider": "groq",      "model": "llama-3.1-8b-instant"},
+        "safety":    {"provider": "openai",    "model": "gpt-4o-mini"},
     },
     "professional": {
-        "judge":     {"provider": "groq",      "model": "llama-3.3-70b-versatile"},
+        "judge":     {"provider": "openai",    "model": "gpt-4o-mini"},
         "extractor": {"provider": "anthropic", "model": "claude-haiku-4-5"},
         "answerer":  {"provider": "anthropic", "model": "claude-haiku-4-5"},  # overridden by complexity
-        "safety":    {"provider": "groq",      "model": "llama-3.1-8b-instant"},
+        "safety":    {"provider": "openai",    "model": "gpt-4o-mini"},
     },
     "enterprise": {
         "judge":     {"provider": "anthropic", "model": "claude-haiku-4-5"},
