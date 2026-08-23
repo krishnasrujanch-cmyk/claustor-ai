@@ -42,7 +42,7 @@ COMPLEXITY_ROUTING: dict[str, dict[str, dict]] = {
         "complex": {"provider": "anthropic", "model": "claude-haiku-4-5"},
     },
     "professional": {
-        "simple":  {"provider": "anthropic", "model": "claude-haiku-4-5"},
+        "simple":  {"provider": "anthropic", "model": "claude-sonnet-4-5"},
         "medium":  {"provider": "anthropic", "model": "claude-sonnet-4-5"},
         "complex": {"provider": "anthropic", "model": "claude-sonnet-4-5"},
     },
