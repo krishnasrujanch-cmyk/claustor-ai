@@ -166,11 +166,11 @@ export default function AnalyticsPage() {
               View contract →
             </Link>
           )}
-          <a href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`}
+          <a href={`${API}/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`}
             onClick={e=>{
               const token = getToken();
               e.preventDefault();
-              fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`,
+              fetch(`${API}/api/v1/analytics/export?format=csv${selectedId?`&contract_id=${selectedId}`:""}`,
                 {headers:{Authorization:`Bearer ${token}`}})
                 .then(r=>r.blob()).then(blob=>{
                   const url = URL.createObjectURL(blob);

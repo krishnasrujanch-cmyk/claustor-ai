@@ -1,4 +1,5 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
@@ -303,7 +304,7 @@ function DemoPopup({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async () => {
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/billing/enterprise/contact`, {
+      await fetch(`${API}/api/v1/billing/enterprise/contact`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -445,7 +446,7 @@ function EnterprisePopup({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async () => {
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/billing/enterprise/contact`, {
+      await fetch(`${API}/api/v1/billing/enterprise/contact`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

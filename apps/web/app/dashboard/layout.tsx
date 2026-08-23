@@ -1,4 +1,5 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
 
 import Link from "next/link";
@@ -250,7 +251,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const tok = t ? (() => { try { return JSON.parse(t)?.state?.token||""; } catch { return ""; } })() : "";
     const poll = setInterval(async ()=>{
       try {
-        const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/contracts/${bgJob.contractId}/status`,
+        const r = await fetch(`${API}/api/v1/contracts/${bgJob.contractId}/status`,
           { headers: { Authorization: `Bearer ${tok}` } });
         if (!r.ok) return;
         const d = await r.json();
@@ -272,9 +273,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const h = {Authorization:`Bearer ${token}`};
     // Load pending reviews + upcoming obligations counts
     Promise.all([
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/reviews/my-queue`,{headers:h})
+      fetch(`${API}/api/v1/reviews/my-queue`,{headers:h})
         .then(r=>r.ok?r.json():{queue:[]}).catch(()=>({queue:[]})),
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/obligations/?status=pending&due_soon=true`,{headers:h})
+      fetch(`${API}/api/v1/obligations/?status=pending&due_soon=true`,{headers:h})
         .then(r=>r.ok?r.json():{obligations:[]}).catch(()=>({obligations:[]})),
     ]).then(([rev, obl])=>{
       setNavBadges({
