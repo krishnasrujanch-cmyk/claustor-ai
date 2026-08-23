@@ -35,12 +35,17 @@ class RazorpayBillingProvider(BaseBillingProvider):
 
     def __init__(self, key_id: str, key_secret: str, webhook_secret: str):
         try:
+            import pkg_resources  # ensure setuptools available
+        except ImportError:
+            import sys, subprocess
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "setuptools"])
+        try:
             import razorpay
             self.client = razorpay.Client(auth=(key_id, key_secret))
             self.webhook_secret = webhook_secret
             logger.info("razorpay_provider_initialized")
-        except ImportError:
-            raise RuntimeError("razorpay package not installed. Run: pip install razorpay")
+        except (ImportError, Exception) as e:
+            raise RuntimeError(f"razorpay initialization failed: {e}. Run: pip install razorpay setuptools")
 
     def get_provider_name(self) -> str:
         return "razorpay"
