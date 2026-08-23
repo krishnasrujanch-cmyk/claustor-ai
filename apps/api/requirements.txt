@@ -82,3 +82,5 @@ ruff>=0.7.0
 mypy>=1.13.0
 razorpay==2.0.1
 setuptools>=65.0.0
+
+anthropic>=0.20.0
