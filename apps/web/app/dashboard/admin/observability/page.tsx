@@ -1,10 +1,11 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import { getToken } from "@/lib/api";
 import { Zap, DollarSign, Clock, CheckCircle, AlertTriangle, Shield, TrendingUp } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 const DKU_ORG = "00000000-0000-0000-0000-000000000002";
 const C = {
   primary:"#0066FF", primaryLight:"#E6F0FF",

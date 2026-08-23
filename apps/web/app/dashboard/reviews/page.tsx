@@ -1,4 +1,5 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
@@ -7,7 +8,7 @@ import Link from "next/link";
 import { getToken } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 // Priority uses filled pills
 const PRIORITY_META: Record<string,{bg:string,text:string,label:string}> = {
   urgent: {bg:"#FEF2F2",text:"#DC2626",label:"🔴 URGENT"},

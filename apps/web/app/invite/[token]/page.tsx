@@ -1,10 +1,11 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { C } from "@/lib/design-tokens";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function InvitePage() {
   const { token } = useParams();
   const router    = useRouter();

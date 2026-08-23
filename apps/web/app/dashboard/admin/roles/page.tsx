@@ -1,11 +1,12 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
 import { getToken } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 const BUILT_IN_COLORS: Record<string,string> = {
   super_admin:"#0066FF", dept_admin:"#7C3AED",
   contract_manager:"#2563EB", legal_reviewer:"#0891B2",

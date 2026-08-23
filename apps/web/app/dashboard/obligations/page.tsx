@@ -1,11 +1,12 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import { useEffect, useState, useMemo } from "react";
 import { getToken } from "@/lib/api";
 import { Pagination } from "@/components/shared/Pagination";
 import { C } from "@/lib/design-tokens";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 const PAGE_SIZE = 10;
 const URGENCY_COLOR: Record<string,string> = {
   urgent:"#EF4444", high:"#F97316", normal:"#F59E0B", low:"#22C55E"

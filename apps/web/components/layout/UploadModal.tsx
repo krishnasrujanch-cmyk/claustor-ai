@@ -1,11 +1,12 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { X, UploadCloud, FileText, CheckCircle, AlertCircle, Loader } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type ModalState = "dropzone" | "processing" | "complete" | "error" | "minimized";

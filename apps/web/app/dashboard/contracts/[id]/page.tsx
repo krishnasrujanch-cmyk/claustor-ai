@@ -1,4 +1,5 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import { useAuthStore } from "@/store/auth";
 
@@ -9,7 +10,7 @@ import { contracts as contractsAPI, chat as chatAPI, Contract, Clause, getToken 
 import { MarkdownText } from "@/components/shared/MarkdownText";
 import { C } from "@/lib/design-tokens";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 function RiskBadge({ level }: { level:string }) {
   const m: Record<string,any> = {
     high:{bg:"#FEF2F2",text:"#DC2626"},

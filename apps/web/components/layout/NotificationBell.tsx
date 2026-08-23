@@ -1,10 +1,11 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getToken } from "@/lib/api";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
 // ── Relative time formatter ────────────────────────────────────────────────────
 function relativeTime(dateStr: string): string {

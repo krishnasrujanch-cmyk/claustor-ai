@@ -1,4 +1,5 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
@@ -6,7 +7,7 @@ import Link from "next/link";
 import { getToken, contracts as contractsAPI, Contract } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 function StatCard({ label, value, sub, color=C.primary }: any) {
   return (
     <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"20px 24px" }}>

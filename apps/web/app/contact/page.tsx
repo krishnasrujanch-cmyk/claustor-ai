@@ -1,4 +1,5 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import { useState } from "react";
 import { Nav, Footer, PageHero } from "@/components/nav-footer";
@@ -9,7 +10,7 @@ export default function ContactPage() {
 
   const handleSubmit = async () => {
     try {
-      const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      
       await fetch(`${API}/api/v1/billing/enterprise/contact`, {
         method:"POST",
         headers:{"Content-Type":"application/json"},

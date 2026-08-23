@@ -1,4 +1,5 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
@@ -10,7 +11,7 @@ import { useAuthStore } from "@/store/auth";
 import { can } from "@/lib/permissions";
 import { C } from "@/lib/design-tokens";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 const RISK_META: Record<string,{bg:string,text:string,dot:string}> = {
   high:   {bg:"#FEF2F2",text:"#DC2626",dot:"#EF4444"},
   medium: {bg:"#FFFBEB",text:"#D97706",dot:"#F59E0B"},

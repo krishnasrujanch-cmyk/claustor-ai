@@ -1,11 +1,12 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 
 import { useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/store/auth";
 import { useRouter } from "next/navigation";
 import { X, User, Building2, Save, LogOut, ChevronRight } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
 interface ProfileData {
   user: { id: string; email: string; full_name: string; role: string };

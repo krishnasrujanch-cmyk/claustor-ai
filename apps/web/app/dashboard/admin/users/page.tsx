@@ -1,11 +1,12 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import { useEffect, useState, useRef, useMemo } from "react";
 import { users as usersAPI, getToken } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { Search, MoreVertical, UserPlus, Edit2, X, Check } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 const C = {
   primary:"#0066FF", primaryLight:"#E6F0FF",
   heading:"#111827", body:"#374151", muted:"#6B7280",

@@ -1,4 +1,5 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 
 import { useRef, useState, useEffect } from "react";
@@ -6,7 +7,7 @@ import { getToken } from "@/lib/api";
 import { C } from "@/lib/design-tokens";
 import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function BulkImportPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);

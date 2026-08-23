@@ -1,4 +1,5 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -8,7 +9,7 @@ import {
   Clock, ArrowRight, X, Hash, TrendingUp, Calendar
 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SuggestionCategory = "contracts" | "counterparties" | "risks" | "ai" | "recent";
