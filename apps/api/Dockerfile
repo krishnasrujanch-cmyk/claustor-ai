@@ -12,7 +12,11 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir setuptools wheel
+RUN pip install --no-cache-dir setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download bge-m3 embedding model
+RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')" || true
 
 # Copy app
 COPY . .
