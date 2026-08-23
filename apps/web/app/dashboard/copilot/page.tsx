@@ -3,7 +3,7 @@ import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import ReactMarkdown from "react-markdown";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback , Suspense } from "react";
 import { contracts as contractsAPI, getToken } from "@/lib/api";
 import { Contract } from "@/lib/api";
 import { Send, Copy, Check, RotateCcw, AlertTriangle, CheckCircle, Shield, DollarSign, BookOpen, FileText, Search, X } from "lucide-react";
