@@ -370,6 +370,10 @@ async def chat_stream(
                         filters=judge.filters,
                     )
 
+            # Heartbeat before slow bge-m3 encoding
+            yield "data: " + __import__("json").dumps({"type":"heartbeat"}) + "\n\n"
+
+
             # ── Step 4: Vector Search + Reranker (if needed) ──
             if judge.needs_vector:
                 context = await agent.retriever.retrieve(

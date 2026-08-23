@@ -469,7 +469,7 @@ function CopilotPageInner() {
           if(!line.startsWith("data: ")) continue;
           try{
             const d=JSON.parse(line.slice(6));
-            if(d.type==="token"){full+=d.content;setMessages(prev=>{const u=[...prev];u[u.length-1]={...u[u.length-1],content:full,isStreaming:true};return u;});}
+            if(d.type==="heartbeat"){/* keep-alive - ignore */} else if(d.type==="token"){full+=d.content;setMessages(prev=>{const u=[...prev];u[u.length-1]={...u[u.length-1],content:full,isStreaming:true};return u;});}
             else if(d.type==="citations") cits=d.citations||[];
             else if(d.type==="meta"){
               if(d.db_sourced){dbSourced=true;setMessages(prev=>{const u=[...prev];u[u.length-1]={...u[u.length-1],db_sourced:true,groundedness:1,isStreaming:false};return u;});}
