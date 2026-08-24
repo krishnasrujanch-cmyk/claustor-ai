@@ -31,11 +31,15 @@ def _gcs_available() -> bool:
     try:
         creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
         if creds and Path(creds).exists():
+            logger.info("gcs_auth_via_credentials_file")
             return True
         from google.auth import default
-        default()
+        credentials, project = default()
+        logger.info("gcs_auth_via_adc", project=project,
+                    cred_type=type(credentials).__name__)
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning("gcs_auth_failed", error=str(e))
         return False
 
 
