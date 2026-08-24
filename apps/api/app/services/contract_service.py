@@ -159,8 +159,8 @@ class ContractService:
                 org_id=org_id,
                 contract_id=contract_id,
                 filename=filename,
-                file_bytes=file_bytes,
-                mime_type=mime_type,
+                file_bytes=file_bytes or data,
+                mime_type=content_type,
             )
             gcs_path = result["gcs_path"]
         except Exception as e:
