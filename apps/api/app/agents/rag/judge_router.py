@@ -58,8 +58,13 @@ ONLY needs_db=true (pure structured query — NO contract text needed):
 
 KEY RULE: If a specific contract_id is selected AND the query asks about
 content/data/clauses/schedules → ALWAYS needs_vector=true, needs_db=false
-Only use needs_db=true when the answer comes from contract metadata fields,
-NOT from the contract text itself.
+Only use needs_db=true when the answer comes from contract METADATA FIELDS in the database:
+  - expiry dates, contract types, party names, risk scores, clause counts
+  - "how many contracts", "which contracts expire", "list all contracts"
+DO NOT use needs_db=true for:
+  - Financial amounts, payment terms, consideration amounts → these are in contract TEXT
+  - Clause contents, legal terms, obligations → these are in contract TEXT
+  - "what is the amount/price/fee/rate" → needs_vector=true, needs_db=false
 
 Return ONLY this JSON (no markdown):
 {{

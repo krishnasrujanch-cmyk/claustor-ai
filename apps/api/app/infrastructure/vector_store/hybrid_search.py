@@ -185,11 +185,11 @@ class HybridSearchEngine:
         filt = {"org_id": str(org_id), "chunk_type": {"$nin": ["signature"]}}
         if contract_id: filt["contract_id"] = str(contract_id)
         if clause_type: filt["chunk_type"] = clause_type
-        embedder = await vs.get_embedder()
-        loop = asyncio.get_event_loop()
-        emb = await loop.run_in_executor(
-            None, lambda: embedder.encode([query], normalize_embeddings=True)[0].tolist())
+        # HF Inference API — bge-m3 (0.38s vs 10s local, same model)
+        emb = await vs.embed_query_hf(query)
         try:
+            import asyncio
+            loop = asyncio.get_event_loop()
             res = await loop.run_in_executor(
                 None, lambda: vs.index.query(
                     vector=emb, top_k=top_k, namespace=namespace,

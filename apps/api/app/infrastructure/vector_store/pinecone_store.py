@@ -179,6 +179,24 @@ class VectorStore:
         )
         return index_name
 
+
+    async def embed_query_hf(self, query: str) -> list[float]:
+        """
+        Embed query using HuggingFace Inference API — bge-m3.
+        0.38s vs 10s local. Same model = same vectors = no reindexing.
+        """
+        import httpx
+        from app.core.config import settings
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(
+                "https://router.huggingface.co/hf-inference/models/BAAI/bge-m3/pipeline/feature-extraction",
+                headers={"Authorization": f"Bearer {settings.HF_API_TOKEN}"},
+                json={"inputs": [query]}
+            )
+            r.raise_for_status()
+            data = r.json()
+            return data[0] if isinstance(data[0], list) else data
+
     async def get_embedder(self):
         """Lazy-load sentence transformer model — module-level cache."""
         global _EMBEDDER_CACHE
