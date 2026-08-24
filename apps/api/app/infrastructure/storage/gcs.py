@@ -39,14 +39,14 @@ def _gcs_available() -> bool:
         return False
 
 
-USE_GCS = _gcs_available()
+# USE_GCS evaluated lazily in StorageClient.__init__
 
 
 class StorageClient:
     """Unified storage — GCS or local fallback."""
 
     def __init__(self):
-        if USE_GCS:
+        if _gcs_available():
             from google.cloud import storage as gcs
             self._client = gcs.Client(project=getattr(settings, "GCP_PROJECT", None))
             self._bucket_name = getattr(settings, "GCS_BUCKET_CONTRACTS", "claustor-contracts")
