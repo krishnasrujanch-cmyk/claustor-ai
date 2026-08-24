@@ -148,7 +148,7 @@ class AlertService:
                     {"<p style='color:#DC2626;font-weight:600;'>⚠️ Auto-renewal notice required " + str(contract.renewal_notice_days) + " days before expiry.</p>" if contract.auto_renewal and contract.renewal_notice_days else ""}
                     <table style="width:100%;border-collapse:collapse;margin:16px 0;">
                       <tr><td style="padding:8px 0;color:#6B7280;font-size:13px;">Counterparty</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">{contract.counterparty or "—"}</td></tr>
-                      <tr><td style="padding:8px 0;color:#6B7280;font-size:13px;">Contract value</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">{contract.contract_currency or "USD"} {contract.contract_value:,.0f if contract.contract_value else "—"}</td></tr>
+                      <tr><td style="padding:8px 0;color:#6B7280;font-size:13px;">Contract value</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">{contract.contract_currency or "USD"} {f"{contract.contract_value:,.0f}" if contract.contract_value else "—"}</td></tr>
                       <tr><td style="padding:8px 0;color:#6B7280;font-size:13px;">Auto-renewal</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">{"Yes" if contract.auto_renewal else "No"}</td></tr>
                     </table>
                     <a href="https://claustor.com/dashboard/contracts/{contract.id}" style="display:inline-block;background:#5B4BFF;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
