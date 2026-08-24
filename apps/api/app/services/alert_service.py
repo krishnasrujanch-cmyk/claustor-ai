@@ -226,7 +226,7 @@ class AlertService:
                       <tr><td style="padding:8px 0;color:#6B7280;font-size:13px;">Type</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">{obligation.obligation_type}</td></tr>
                       <tr><td style="padding:8px 0;color:#6B7280;font-size:13px;">Party</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">{obligation.party or "—"}</td></tr>
                       <tr><td style="padding:8px 0;color:#6B7280;font-size:13px;">Due date</td><td style="padding:8px 0;color:#DC2626;font-weight:700;font-size:13px;">{obligation.due_date}</td></tr>
-                      {f'<tr><td style="padding:8px 0;color:#6B7280;font-size:13px;">Amount</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">{obligation.currency or "USD"} {obligation.amount:,.0f}</td></tr>' if obligation.amount else ""}
+                      {f'<tr><td style="padding:8px 0;color:#6B7280;font-size:13px;">Amount</td><td style="padding:8px 0;color:#111827;font-weight:600;font-size:13px;">{obligation.currency or "USD"} {f"{obligation.amount:,.0f}" if obligation.amount else "—"}</td></tr>' if obligation.amount else ""}
                     </table>
                     <a href="https://claustor.com/dashboard/obligations" style="display:inline-block;background:#F59E0B;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
                       View obligation →

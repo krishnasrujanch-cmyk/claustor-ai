@@ -158,7 +158,7 @@ def get_plan_providers(plan: str, role: str) -> list[str]:
 def get_plan_model(plan: str, role: str, complexity: str = "simple") -> str:
     """Get primary model for a plan+role, with complexity routing for answerer."""
     if role == "answerer":
-        return get_answerer_for_complexity(plan, complexity).get("model", "llama-3.3-70b-versatile")
+        return get_answerer_for_complexity(plan, complexity).get("model", "gpt-4o-mini")
     config = PLAN_MODEL_CONFIG.get(plan, PLAN_MODEL_CONFIG["free"])
     role_config = config.get(role, {})
-    return role_config.get("model", "llama-3.3-70b-versatile")
+    return role_config.get("model", "gpt-4o-mini")
