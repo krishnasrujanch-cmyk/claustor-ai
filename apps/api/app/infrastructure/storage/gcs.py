@@ -46,7 +46,8 @@ class StorageClient:
     """Unified storage — GCS or local fallback."""
 
     def __init__(self):
-        if _gcs_available():
+        self._gcs = _gcs_available()
+        if self._gcs:
             from google.cloud import storage as gcs
             self._client = gcs.Client(project=getattr(settings, "GCP_PROJECT", None))
             self._bucket_name = getattr(settings, "GCS_BUCKET_CONTRACTS", "claustor-contracts")
@@ -66,7 +67,7 @@ class StorageClient:
         path = f"orgs/{org_id}/contracts/{contract_id}/{filename}"
         payload = data or file_bytes or b""
 
-        if USE_GCS:
+        if self._gcs:
             blob = self._bucket.blob(path)
             await asyncio.get_event_loop().run_in_executor(
                 None,
@@ -90,7 +91,7 @@ class StorageClient:
         return await asyncio.gather(*tasks)
 
     async def download_contract(self, gcs_path: str) -> bytes:
-        if USE_GCS and gcs_path.startswith("gs://"):
+        if self._gcs and gcs_path.startswith("gs://"):
             parts = gcs_path.replace("gs://", "").split("/", 1)
             blob = self._client.bucket(parts[0]).blob(parts[1])
             return await asyncio.get_event_loop().run_in_executor(
@@ -105,7 +106,7 @@ class StorageClient:
             raise FileNotFoundError(f"File not found: {gcs_path}")
 
     async def delete_contract(self, org_id: UUID, contract_id: UUID) -> None:
-        if USE_GCS:
+        if self._gcs:
             prefix = f"orgs/{org_id}/contracts/{contract_id}/"
             blobs = self._client.list_blobs(self._bucket_name, prefix=prefix)
             for blob in blobs:
