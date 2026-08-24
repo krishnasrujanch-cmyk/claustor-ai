@@ -27,14 +27,24 @@ if __name__ == "__main__":
     t = threading.Thread(target=start_health_server, daemon=True)
     t.start()
 
-    # Start Celery worker as subprocess (keeps health thread alive)
-    proc = subprocess.Popen([
+    # Start Celery worker
+    worker_proc = subprocess.Popen([
         "celery", "-A", "app.workers.celery_app", "worker",
         "--loglevel=info",
         "-Q", "enterprise_queue,pro_queue,starter_queue,free_queue",
         "--concurrency=2",
     ])
-    
     print("Celery worker started", flush=True)
-    proc.wait()
-    sys.exit(proc.returncode)
+
+    # Start Celery Beat scheduler (daily alerts, monthly resets)
+    beat_proc = subprocess.Popen([
+        "celery", "-A", "app.workers.celery_app", "beat",
+        "--loglevel=info",
+        "--scheduler", "celery.beat:PersistentScheduler",
+    ])
+    print("Celery beat started", flush=True)
+
+    # Wait for worker (primary process)
+    worker_proc.wait()
+    beat_proc.terminate()
+    sys.exit(worker_proc.returncode)
