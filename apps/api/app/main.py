@@ -43,14 +43,9 @@ async def lifespan(app: FastAPI):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, DocumentProcessor.init_models)
 
-    # Pre-load embedding model at startup (bge-large ~1.3GB, load once)
-    try:
-        from app.infrastructure.vector_store.pinecone_store import get_vector_store
-        _store = get_vector_store()
-        await _store.get_embedder()
-        logger.info("embedding_model_preloaded")
-    except Exception as _e:
-        logger.warning(f"embedding_model_preload_failed: {_e}")
+    # bge-m3 preload removed from API — using HF Inference API for queries
+    # Worker container still loads bge-m3 for indexing
+    logger.info("query_embedding_via_hf_inference_api")
 
     # Pre-load cross-encoder reranker at startup
     try:
