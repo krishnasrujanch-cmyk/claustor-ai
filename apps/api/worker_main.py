@@ -33,7 +33,8 @@ if __name__ == "__main__":
         "--loglevel=info",
         "-Q", "enterprise_queue,pro_queue,starter_queue,free_queue",
         "--concurrency=1",
-        "--pool=solo",  # No forking — avoids OOM from bge-m3 memory copy
+        "--pool=prefork",
+        "--max-tasks-per-child=1",  # Fresh process per task — avoids bge-m3 OOM
     ])
     print("Celery worker started", flush=True)
 
