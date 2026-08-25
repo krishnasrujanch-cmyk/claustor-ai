@@ -113,16 +113,22 @@ async def _phase_b_embed_and_index(
         logger.info(f"chunk_indexing_complete: total={len(chunks)} embedded=0 contract_id={contract_id}")
         return
 
-    # Embed synchronously — run_in_executor deadlocks in Celery forked workers
-    embedder = await vector_store.get_embedder()
+    # Run bge-m3 in subprocess — isolates 1.3GB model from Celery worker
+    import subprocess, json as _json, sys as _sys, os as _os
+    _embed_script = _os.path.join(_os.path.dirname(__file__), "embed_subprocess.py")
     pinecone_vectors = []
 
     for i in range(0, len(embeddable), EMBED_BATCH_SIZE):
         batch = embeddable[i:i+EMBED_BATCH_SIZE]
         texts = [c.text for c in batch]
-        embeddings = embedder.encode(
-            texts, normalize_embeddings=True, show_progress_bar=False
-        ).tolist()
+        proc = subprocess.run(
+            [_sys.executable, _embed_script],
+            input=_json.dumps(texts),
+            capture_output=True, text=True, timeout=300
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"Embedding subprocess failed: {proc.stderr[:200]}")
+        embeddings = _json.loads(proc.stdout)
 
         for chunk, embedding in zip(batch, embeddings):
             pinecone_vectors.append((
