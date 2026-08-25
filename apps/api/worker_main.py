@@ -32,7 +32,8 @@ if __name__ == "__main__":
         "celery", "-A", "app.workers.celery_app", "worker",
         "--loglevel=info",
         "-Q", "enterprise_queue,pro_queue,starter_queue,free_queue",
-        "--concurrency=1",  # bge-m3 uses 1.3GB RAM — keep 1 to avoid OOM
+        "--concurrency=1",
+        "--pool=solo",  # No forking — avoids OOM from bge-m3 memory copy
     ])
     print("Celery worker started", flush=True)
 
