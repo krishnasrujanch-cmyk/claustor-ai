@@ -189,7 +189,6 @@ class ContractService:
             file_hash=file_hash,
             file_path=gcs_path,
             file_size_bytes=len(file_bytes),
-            content_type=mime_type,
             status="queued",
             version=1,
         )
