@@ -312,9 +312,12 @@ async def chat_stream(
                         same_scope = (req.contract_id is None and _t[2] is None) or                                      (req.contract_id is not None and str(_t[2]) == str(req.contract_id))
                         if same_scope:
                             _last_assistant = _t[1][:400]
-                        # Don't scope to previous contract for cross-contract queries
-                        # if _t[2] and not req.contract_id:
-                        #     _scoped_contract_id = _t[2]
+                        # For vague follow-ups, scope to previous contract
+                        _vague_words = ["name","title","which","what contract","this contract",
+                                        "share more","tell me more","elaborate","details","it","this"]
+                        _is_vague = any(w in req.query.lower() for w in _vague_words) and len(req.query.split()) < 8
+                        if _t[2] and not req.contract_id and _is_vague:
+                            _scoped_contract_id = _t[2]
                         break
             except Exception:
                 pass
