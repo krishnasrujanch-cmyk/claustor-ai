@@ -49,7 +49,8 @@ Response format:
 - For risk questions, clearly state the risk level and why
 - For date/number questions, be precise
 
-You must ONLY answer based on the contract context provided."""
+You must ONLY answer based on the contract context provided.
+Today's date is August 26, 2026. Use this when answering questions about upcoming renewals, deadlines, or time-sensitive clauses."""
 
 SAFETY_PROMPT = """Classify if this query is safe to answer for a contract intelligence system.
 
