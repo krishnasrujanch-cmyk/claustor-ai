@@ -160,7 +160,7 @@ class ContractService:
                 contract_id=contract_id,
                 filename=filename,
                 file_bytes=file_bytes or data,
-                mime_type=mime_type,
+                content_type=mime_type,
             )
             gcs_path = result["gcs_path"]
         except Exception as e:
@@ -189,7 +189,7 @@ class ContractService:
             file_hash=file_hash,
             file_path=gcs_path,
             file_size_bytes=len(file_bytes),
-            mime_type=mime_type,
+            content_type=mime_type,
             status="queued",
             version=1,
         )
