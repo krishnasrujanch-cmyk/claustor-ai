@@ -20,12 +20,8 @@ ENV HF_HOME=/root/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/root/.cache/huggingface/transformers
 ENV SENTENCE_TRANSFORMERS_HOME=/root/.cache/sentence_transformers
 
-# Pre-download bge-m3 model during build
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3'); print('bge-m3 cached')"
 RUN python3 -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2'); print('reranker cached')" || true  
 
-# Pre-download bge-m3 embedding model
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')" || true
 
 # Copy app
 COPY . .
