@@ -1,10 +1,10 @@
 """
-Claustor Worker — Celery + HTTP health server for Cloud Run
+Claustor Worker — Celery worker + Beat + HTTP health server for Cloud Run
+Runs Celery directly in-process with health server in background thread.
 """
 import os
-import threading
-import subprocess
 import sys
+import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -23,29 +23,28 @@ def start_health_server():
     server.serve_forever()
 
 if __name__ == "__main__":
-    # Start health server in background thread
+    # Health server in background thread
     t = threading.Thread(target=start_health_server, daemon=True)
     t.start()
+    print("Health server started", flush=True)
 
-    # Start Celery worker
-    worker_proc = subprocess.Popen([
-        "celery", "-A", "app.workers.celery_app", "worker",
-        "--loglevel=info",
-        "-Q", "enterprise_queue,pro_queue,starter_queue,free_queue",
-        "--concurrency=1",
-        "--pool=threads",  # No fork = no OOM. bge-m3 runs in subprocess anyway
-    ])
-    print("Celery worker started", flush=True)
-
-    # Start Celery Beat scheduler (daily alerts, monthly resets)
+    # Start Beat in background thread
+    import subprocess
     beat_proc = subprocess.Popen([
         "celery", "-A", "app.workers.celery_app", "beat",
         "--loglevel=info",
         "--scheduler", "celery.beat:PersistentScheduler",
-    ])
+    ], stdout=sys.stdout, stderr=sys.stderr, bufsize=1)
     print("Celery beat started", flush=True)
 
-    # Wait for worker (primary process)
-    worker_proc.wait()
-    beat_proc.terminate()
-    sys.exit(worker_proc.returncode)
+    # Run Celery worker directly in main process (no subprocess)
+    # This ensures logs stream properly and no silent crashes
+    print("Starting Celery worker...", flush=True)
+    from app.workers.celery_app import app
+    app.worker_main([
+        "worker",
+        "--loglevel=info",
+        "-Q", "enterprise_queue,pro_queue,starter_queue,free_queue",
+        "--concurrency=1",
+        "--pool=threads",
+    ])
