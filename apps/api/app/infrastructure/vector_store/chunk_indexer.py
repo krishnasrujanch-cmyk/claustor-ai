@@ -113,22 +113,21 @@ async def _phase_b_embed_and_index(
         logger.info(f"chunk_indexing_complete: total={len(chunks)} embedded=0 contract_id={contract_id}")
         return
 
-    # Run bge-m3 in subprocess — isolates 1.3GB model from Celery worker
-    import subprocess, json as _json, sys as _sys, os as _os
-    _embed_script = _os.path.join(_os.path.dirname(__file__), "embed_subprocess.py")
+    # Use HF Inference API for indexing — no local bge-m3 needed
+    # Same model as query (bge-m3), same vectors, cosine=1.0000
+    import httpx, json as _json
+    from app.core.config import settings
+    HF_URL = "https://router.huggingface.co/hf-inference/models/BAAI/bge-m3/pipeline/feature-extraction"
+    HF_HEADERS = {"Authorization": f"Bearer {settings.HF_API_TOKEN}"}
     pinecone_vectors = []
 
     for i in range(0, len(embeddable), EMBED_BATCH_SIZE):
         batch = embeddable[i:i+EMBED_BATCH_SIZE]
         texts = [c.text for c in batch]
-        proc = subprocess.run(
-            [_sys.executable, _embed_script],
-            input=_json.dumps(texts),
-            capture_output=True, text=True, timeout=300
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(f"Embedding subprocess failed: {proc.stderr[:200]}")
-        embeddings = _json.loads(proc.stdout)
+        with httpx.Client(timeout=60) as client:
+            r = client.post(HF_URL, headers=HF_HEADERS, json={"inputs": texts})
+            r.raise_for_status()
+        embeddings = r.json()
 
         for chunk, embedding in zip(batch, embeddings):
             pinecone_vectors.append((
