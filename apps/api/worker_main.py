@@ -33,8 +33,7 @@ if __name__ == "__main__":
         "--loglevel=info",
         "-Q", "enterprise_queue,pro_queue,starter_queue,free_queue",
         "--concurrency=1",
-        "--pool=prefork",
-        "--max-tasks-per-child=1",  # Fresh process per task — avoids bge-m3 OOM
+        "--pool=threads",  # No fork = no OOM. bge-m3 runs in subprocess anyway
     ])
     print("Celery worker started", flush=True)
 
