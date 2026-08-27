@@ -37,9 +37,13 @@ def _gcs_available() -> bool:
         credentials, project = default()
         logger.info("gcs_auth_via_adc", project=project,
                     cred_type=type(credentials).__name__)
+        # Verify actual GCS access
+        from google.cloud import storage as _gcs
+        _gcs.Client(project=project)
         return True
     except Exception as e:
-        logger.warning("gcs_auth_failed", error=str(e))
+        logger.warning("gcs_auth_failed", error=str(e),
+                       error_type=type(e).__name__)
         return False
 
 
