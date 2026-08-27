@@ -79,11 +79,15 @@ def make_session_factory(database_url: str) -> tuple[Any, async_sessionmaker]:
         database_url,
         connect_args={
             "ssl": _make_ssl_context(),
-            "statement_cache_size": 0,  # Required for NullPool + asyncpg
-            "timeout": 30,              # 30s connection timeout (default too short)
-            "command_timeout": 60,      # 60s query timeout
+            "statement_cache_size": 0,
+            "timeout": 30,
+            "command_timeout": 60,
         },
-        poolclass=NullPool,
+        pool_size=2,
+        max_overflow=3,
+        pool_pre_ping=True,       # Test connection before use
+        pool_recycle=300,          # Recycle connections every 5 min
+        pool_timeout=30,           # Wait up to 30s for a connection
         echo=False,
     )
     factory = async_sessionmaker(
