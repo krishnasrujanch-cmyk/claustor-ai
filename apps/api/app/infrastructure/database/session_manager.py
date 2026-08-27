@@ -80,6 +80,8 @@ def make_session_factory(database_url: str) -> tuple[Any, async_sessionmaker]:
         connect_args={
             "ssl": _make_ssl_context(),
             "statement_cache_size": 0,  # Required for NullPool + asyncpg
+            "timeout": 30,              # 30s connection timeout (default too short)
+            "command_timeout": 60,      # 60s query timeout
         },
         poolclass=NullPool,
         echo=False,
@@ -112,7 +114,7 @@ class PipelineSessionManager:
         await mgr.dispose()
     """
 
-    def __init__(self, database_url: str, max_retries: int = 3):
+    def __init__(self, database_url: str, max_retries: int = 5):
         self._database_url = database_url
         self._max_retries = max_retries
         self._engine = None
@@ -181,7 +183,7 @@ class PipelineSessionManager:
                     return result
             except Exception as exc:
                 if _is_transient(exc) and attempt < self._max_retries - 1:
-                    wait = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    wait = min(2 ** (attempt + 1), 30)  # Exponential backoff: 2s, 4s, 8s, 16s, 30s
                     logger.warning(
                         "pipeline_db_retry",
                         operation=operation_name,
