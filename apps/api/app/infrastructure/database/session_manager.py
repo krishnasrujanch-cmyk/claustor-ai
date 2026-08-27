@@ -46,6 +46,11 @@ _TRANSIENT_ERRORS = (
     "broken pipe",
     "interface error",
     "operational error",
+    "authentication timed out",
+    "protocolviolationerror",
+    "asyncpg.exceptions",
+    "ssl connection has been closed",
+    "end of file",
 )
 
 
