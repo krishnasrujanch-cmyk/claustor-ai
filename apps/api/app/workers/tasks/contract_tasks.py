@@ -82,7 +82,13 @@ def process_contract(
                 pass
 
     try:
-        asyncio.run(_run())
+        # Create fresh event loop for this thread (threads pool)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_run())
+        finally:
+            loop.close()
     except Exception as exc:
         logger.error("contract_task_failed",
                      contract_id=contract_id, error=str(exc))
