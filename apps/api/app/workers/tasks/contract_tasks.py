@@ -48,6 +48,7 @@ def process_contract(
                 contract_id=contract_id, plan=plan, queue=queue)
 
     async def _run():
+        from app.agents.pipeline.contract_pipeline import ContractPipeline
         from app.infrastructure.database.session_manager import PipelineSessionManager
         from app.core.config import settings
 
