@@ -48,24 +48,9 @@ def process_contract(
                 contract_id=contract_id, plan=plan, queue=queue)
 
     async def _run():
-        import ssl as _ssl
-        import app.infrastructure.database.session as _db_module
-        from app.agents.pipeline.contract_pipeline import ContractPipeline
         from app.infrastructure.database.session_manager import PipelineSessionManager
         from app.core.config import settings
 
-        # Initialize shared session factory if needed
-        if _db_module.async_session_factory is None:
-            ssl_ctx = _ssl.create_default_context()
-            ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = _ssl.CERT_NONE
-            await _db_module.init_db(
-                settings.DATABASE_URL,
-                connect_args={"ssl": ssl_ctx, "statement_cache_size": 0}
-            )
-
-        if _db_module.async_session_factory is None:
-            raise RuntimeError("DB session factory failed to initialize")
 
         # Create session manager — handles all long-running DB ops
         mgr = PipelineSessionManager(settings.DATABASE_URL)
@@ -81,7 +66,6 @@ def process_contract(
                 org_id=UUID(org_id),
                 file_hash=file_hash,
                 db=None,
-                session_factory=_db_module.async_session_factory,
                 session_manager=mgr,
             )
             logger.info("contract_processed",
