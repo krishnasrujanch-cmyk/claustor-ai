@@ -70,7 +70,7 @@ class AnthropicProvider(BaseLLMProvider):
             system_content = "You must respond with valid JSON only. No other text."
 
         try:
-            client = _anthropic.AsyncAnthropic(api_key=self.api_key, timeout=60.0)
+            client = _anthropic.AsyncAnthropic(api_key=self.api_key, timeout=_anthropic.Timeout(60.0, connect=10.0))
             kwargs_call = dict(
                 model=self.model,
                 max_tokens=max_tokens,
@@ -113,7 +113,7 @@ class AnthropicProvider(BaseLLMProvider):
     async def is_available(self) -> bool:
         try:
             import anthropic as _anthropic
-            client = _anthropic.AsyncAnthropic(api_key=self.api_key, timeout=60.0)
+            client = _anthropic.AsyncAnthropic(api_key=self.api_key, timeout=_anthropic.Timeout(60.0, connect=10.0))
             await client.models.list()
             return True
         except Exception:
