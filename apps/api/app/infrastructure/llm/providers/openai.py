@@ -22,7 +22,11 @@ class OpenAIProvider(BaseLLMProvider):
         self.default_model = model
         try:
             from openai import AsyncOpenAI
-            self.client = AsyncOpenAI(api_key=api_key, timeout=60.0)
+            from httpx import Timeout as _Timeout
+            self.client = AsyncOpenAI(
+                api_key=api_key,
+                timeout=_Timeout(60.0, connect=10.0)
+            )
             logger.info("openai_provider_initialized")
         except ImportError:
             raise RuntimeError("openai not installed. Run: pip install openai")
