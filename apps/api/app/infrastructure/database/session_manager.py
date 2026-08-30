@@ -125,8 +125,23 @@ class PipelineSessionManager:
         self._factory = None
 
     async def initialize(self) -> None:
-        """Initialize engine and session factory."""
+        """Initialize engine and session factory, pre-warm connection."""
         self._engine, self._factory = make_session_factory(self._database_url)
+        # Pre-warm: establish actual DB connection with retry
+        for attempt in range(self._max_retries):
+            try:
+                async with self._engine.connect() as conn:
+                    await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+                logger.info("pipeline_db_connected", attempt=attempt+1)
+                break
+            except Exception as e:
+                wait = min(2 ** (attempt + 1), 30)
+                logger.warning("pipeline_db_connect_retry",
+                               attempt=attempt+1, error=str(e)[:100], wait=wait)
+                if attempt < self._max_retries - 1:
+                    await __import__("asyncio").sleep(wait)
+                else:
+                    logger.error("pipeline_db_connect_failed_all_retries")
         logger.debug("pipeline_session_manager_initialized")
 
     async def dispose(self) -> None:
