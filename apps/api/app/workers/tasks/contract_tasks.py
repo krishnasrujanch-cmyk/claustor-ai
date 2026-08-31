@@ -24,7 +24,7 @@ logger = structlog.get_logger(__name__)
 @celery_app.task(
     bind=True,
     name="app.workers.tasks.contract_tasks.process_contract",
-    max_retries=2,
+    max_retries=6,
     default_retry_delay=30,
     soft_time_limit=1800,
     time_limit=2100,
@@ -93,4 +93,4 @@ def process_contract(
     except Exception as exc:
         logger.error("contract_task_failed",
                      contract_id=contract_id, error=str(exc))
-        raise self.retry(exc=exc, countdown=30)
+        raise self.retry(exc=exc, countdown=min(30 * (2 ** self.request.retries), 300))

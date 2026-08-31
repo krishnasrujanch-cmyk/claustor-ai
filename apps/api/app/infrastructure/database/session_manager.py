@@ -118,7 +118,7 @@ class PipelineSessionManager:
         await mgr.dispose()
     """
 
-    def __init__(self, database_url: str, max_retries: int = 5):
+    def __init__(self, database_url: str, max_retries: int = 8):
         self._database_url = database_url
         self._max_retries = max_retries
         self._engine = None
