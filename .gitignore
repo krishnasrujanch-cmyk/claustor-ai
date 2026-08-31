@@ -52,3 +52,4 @@ infrastructure/terraform/.terraform.lock.hcl
 *.log
 logs/
 .env.production
+apps/api/db_migration/
