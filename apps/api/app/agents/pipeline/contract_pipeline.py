@@ -422,31 +422,29 @@ class ContractPipeline:
         # Strategy 2: Download using stored path
         if stored_path:
             try:
-                # Handle relative "local/org_id/contract_id/filename" paths
                 if stored_path.startswith("local/"):
                     abs_path = Path("/tmp/claustor-uploads") / stored_path[len("local/"):]
                     if abs_path.exists():
                         logger.info("file_found_local_path", path=str(abs_path))
                         return abs_path.read_bytes()
+                elif stored_path.startswith("gs://"):
+                    # Direct GCS download — bypass StorageClient
+                    import asyncio
+                    from google.cloud import storage as gcs_lib
+                    client = gcs_lib.Client()
+                    parts = stored_path.replace("gs://", "").split("/", 1)
+                    blob = client.bucket(parts[0]).blob(parts[1])
+                    data = await asyncio.get_event_loop().run_in_executor(
+                        None, blob.download_as_bytes
+                    )
+                    logger.info("file_downloaded_gcs", path=stored_path, size=len(data))
+                    return data
                 else:
                     storage = get_storage_client()
                     return await storage.download_contract(stored_path)
             except Exception as e:
                 logger.warning("storage_download_failed", path=stored_path,
                                error=str(e), error_type=type(e).__name__)
-                # Try GCS directly with explicit auth
-                try:
-                    from google.cloud import storage as gcs_lib
-                    client = gcs_lib.Client()
-                    parts = stored_path.replace("gs://", "").split("/", 1)
-                    blob = client.bucket(parts[0]).blob(parts[1])
-                    import asyncio
-                    return await asyncio.get_event_loop().run_in_executor(
-                        None, blob.download_as_bytes
-                    )
-                except Exception as e2:
-                    logger.error("gcs_direct_download_failed", error=str(e2),
-                                 error_type=type(e2).__name__)
 
         # Strategy 3: Scan local tmp directory
         local_base = Path.home() / "claustor-uploads"
