@@ -1,12 +1,12 @@
 """
 Claustor AI — Database Session Management
 """
-
 import ssl
 from collections.abc import AsyncGenerator
 from typing import Optional
 
 import structlog
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -25,11 +25,11 @@ class Base(DeclarativeBase):
 
 async def init_db(database_url: str, connect_args: dict = None) -> None:
     global async_session_factory
+
     if connect_args is None:
-        import ssl as _ssl
-        ssl_ctx = _ssl.create_default_context()
+        ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = _ssl.CERT_NONE
+        ssl_ctx.verify_mode = ssl.CERT_NONE
         connect_args = {"ssl": ssl_ctx}
 
     engine = create_async_engine(
@@ -42,6 +42,12 @@ async def init_db(database_url: str, connect_args: dict = None) -> None:
         pool_timeout=30,
         echo=False,
     )
+
+    # Neon's pooled connection rejects search_path as a startup parameter,
+    # so we set it as the first statement on every new DBAPI connection instead.
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_search_path(dbapi_connection, connection_record):
+        dbapi_connection.run_async(lambda c: c.execute("SET search_path TO public"))
 
     async_session_factory = async_sessionmaker(
         engine,
@@ -61,7 +67,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     if async_session_factory is None:
         raise RuntimeError("Database not initialized.")
-
     session: AsyncSession = async_session_factory()
     try:
         yield session

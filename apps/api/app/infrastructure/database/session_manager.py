@@ -69,12 +69,16 @@ def _make_ssl_context() -> ssl.SSLContext:
     return ctx
 
 
+
 def make_session_factory(database_url: str) -> tuple[Any, async_sessionmaker]:
     """
-    Create a fresh engine + session factory using NullPool.
-    NullPool = new connection per session = no idle timeout issues.
-    Use for long-running pipeline operations.
+    Create a fresh engine + session factory for long-running pipeline operations.
+    Uses Neon's DIRECT (non-pooled) endpoint — bypasses PgBouncer which causes
+    intermittent 'Authentication timed out' errors with bursty serverless clients.
+    API uses the pooled endpoint (high concurrency); worker uses direct (reliable).
     """
+    # Strip -pooler from URL to use Neon's direct endpoint
+    database_url = database_url.replace("-pooler.", ".")
     engine = create_async_engine(
         database_url,
         connect_args={
@@ -90,6 +94,14 @@ def make_session_factory(database_url: str) -> tuple[Any, async_sessionmaker]:
         pool_timeout=30,           # Wait up to 30s for a connection
         echo=False,
     )
+
+    # Neon's pooled connection rejects search_path as a startup parameter,
+    # so we set it as the first statement on every new DBAPI connection instead.
+    from sqlalchemy import event as _event
+    @_event.listens_for(engine.sync_engine, "connect")
+    def _set_search_path(dbapi_connection, connection_record):
+        dbapi_connection.run_async(lambda c: c.execute("SET search_path TO public"))
+
     factory = async_sessionmaker(
         engine,
         class_=AsyncSession,

@@ -18,7 +18,7 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 PINECONE_BATCH_SIZE = 100
-EMBED_BATCH_SIZE = 32
+EMBED_BATCH_SIZE = 8  # Smaller batches — some chunks are 30K+ chars
 
 
 async def index_chunks(
@@ -123,8 +123,9 @@ async def _phase_b_embed_and_index(
 
     for i in range(0, len(embeddable), EMBED_BATCH_SIZE):
         batch = embeddable[i:i+EMBED_BATCH_SIZE]
-        texts = [c.text for c in batch]
-        with httpx.Client(timeout=60) as client:
+        # Truncate to bge-m3 max input (~8000 chars ≈ 8192 tokens)
+        texts = [c.text[:8000] for c in batch]
+        with httpx.Client(timeout=120) as client:
             r = client.post(HF_URL, headers=HF_HEADERS, json={"inputs": texts})
             r.raise_for_status()
         embeddings = r.json()

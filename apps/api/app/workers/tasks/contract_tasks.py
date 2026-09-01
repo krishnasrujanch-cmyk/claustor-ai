@@ -11,6 +11,24 @@ from uuid import UUID
 
 from app.workers.celery_app import app as celery_app
 
+# Module-level singleton — created once per worker process, reused across
+# all tasks. Keeps a warm connection pool instead of paying a fresh TLS
+# handshake (which occasionally hangs on Cloud Run) for every single task.
+_session_manager = None
+
+
+async def _get_session_manager():
+    global _session_manager
+    # No lock needed — worker concurrency=1, one task at a time
+    if _session_manager is None:
+        from app.infrastructure.database.session_manager import PipelineSessionManager
+        from app.core.config import settings
+        mgr = PipelineSessionManager(settings.DATABASE_URL)
+        await mgr.initialize()
+        _session_manager = mgr
+    return _session_manager
+
+
 PLAN_QUEUES = {
     "free":         "free_queue",
     "starter":      "starter_queue",
@@ -76,11 +94,9 @@ def process_contract(
             logger.error("contract_pipeline_failed",
                          contract_id=contract_id, error=str(e))
             raise
-        finally:
-            try:
-                await mgr.dispose()
-            except Exception:
-                pass
+        # NOTE: mgr is NOT disposed here — module-level singleton,
+        # reused across tasks for a warm connection pool. Only torn
+        # down if the whole worker process exits.
 
     try:
         # Create fresh event loop for this thread (threads pool)

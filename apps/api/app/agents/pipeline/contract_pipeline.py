@@ -72,7 +72,10 @@ class ContractPipeline:
 
         try:
             # ── Step 1: Download + Parse ──────────────────
-            await self._session_manager.update_status(contract_id, "parsing")
+            try:
+                await self._session_manager.update_status(contract_id, "parsing")
+            except Exception as _se:
+                logger.warning("status_update_skipped", step="parsing", error=str(_se)[:100])
             logger.info("pipeline_step", step="parsing", contract_id=str(contract_id))
             await asyncio.sleep(0.3)  # Let frontend poll catch this step
 
@@ -223,7 +226,10 @@ class ContractPipeline:
                 logger.warning("metadata_save_failed", error=str(_me))
 
             # ── Step 2: Extract Clauses ───────────────────
-            await self._session_manager.update_status(contract_id, "extracting")
+            try:
+                await self._session_manager.update_status(contract_id, "extracting")
+            except Exception:
+                logger.warning("status_update_skipped", step="extracting")
             logger.info("pipeline_step", step="extracting", contract_id=str(contract_id))
 
             # ── ClauseEngine — All 3 Phases ──────────────
@@ -246,7 +252,10 @@ class ContractPipeline:
             logger.info("scored_clauses_sample", sample=scored_clauses[0] if scored_clauses else {})
 
             # ── Step 3: Score Risks ───────────────────────
-            await self._session_manager.update_status(contract_id, "scoring")
+            try:
+                await self._session_manager.update_status(contract_id, "scoring")
+            except Exception:
+                logger.warning("status_update_skipped", step="scoring")
             logger.info("pipeline_step", step="scoring", contract_id=str(contract_id))
 
             # Risk scoring done by ClauseEngine above
@@ -258,7 +267,10 @@ class ContractPipeline:
             obligations_data = await self._extract_obligations(parsed.full_text)
 
             # ── Step 6: Index in Pinecone ─────────────────
-            await self._session_manager.update_status(contract_id, "indexing")
+            try:
+                await self._session_manager.update_status(contract_id, "indexing")
+            except Exception:
+                logger.warning("status_update_skipped", step="indexing")
             logger.info(f"pipeline_step: step=indexing contract_id={contract_id}")
 
             # ── Hierarchical chunking — parent/child with rich metadata ──
@@ -419,6 +431,27 @@ class ContractPipeline:
             logger.warning("db_lookup_failed", error=str(e))
             stored_path = None
 
+
+        # Strategy 1b: If DB lookup failed, scan GCS directly
+        if stored_path is None:
+            try:
+                from google.cloud import storage as gcs_lib
+                from google.auth import default as _gauth
+                _creds, _proj = _gauth()
+                _gclient = gcs_lib.Client(project=_proj or "claustor-ai-prod", credentials=_creds)
+                _prefix = f"orgs/{org_id}/contracts/{contract_id}/"
+                _blobs = list(_gclient.list_blobs("claustor-contracts-prod", prefix=_prefix))
+                if _blobs:
+                    _blob = _blobs[0]
+                    import asyncio as _aio
+                    _data = await _aio.get_event_loop().run_in_executor(None, _blob.download_as_bytes)
+                    logger.info("file_downloaded_gcs_scan", path=_blob.name, size=len(_data))
+                    return _data
+                else:
+                    logger.warning("gcs_scan_no_blobs", prefix=_prefix)
+            except Exception as _e2:
+                logger.warning("gcs_scan_failed", error=str(_e2))
+
         # Strategy 2: Download using stored path
         if stored_path:
             try:
@@ -431,7 +464,9 @@ class ContractPipeline:
                     # Direct GCS download — bypass StorageClient
                     import asyncio
                     from google.cloud import storage as gcs_lib
-                    client = gcs_lib.Client()
+                    from google.auth import default as _gauth_default2
+                    _creds2, _proj2 = _gauth_default2()
+                    client = gcs_lib.Client(project=_proj2 or "claustor-ai-prod", credentials=_creds2)
                     parts = stored_path.replace("gs://", "").split("/", 1)
                     blob = client.bucket(parts[0]).blob(parts[1])
                     data = await asyncio.get_event_loop().run_in_executor(
