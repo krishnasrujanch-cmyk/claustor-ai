@@ -1,7 +1,7 @@
 "use client";
 import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, Suspense, useState, useMemo } from "react";
 import Link from "next/link";
 import { contracts as contractsAPI, billing as billingAPI, getToken } from "@/lib/api";
 import { Contract } from "@/lib/api";
@@ -355,6 +355,19 @@ function ClauseHeatmap({ contracts }: { contracts: any[] }) {
 // ── Main Dashboard ────────────────────────────────────────────────
 export default function DashboardPage() {
   const [allContracts, setAllContracts] = useState<Contract[]>([]);
+
+  // Handle SSO token from URL redirect
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const ssoToken = params.get("token");
+    if (ssoToken) {
+      localStorage.setItem("token", ssoToken);
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+      window.location.reload();
+    }
+  }, []);
   const [recentContracts, setRecent]    = useState<Contract[]>([]);
   const [obligations, setObligations]   = useState<any[]>([]);
   const [reviews, setReviews]           = useState<any[]>([]);

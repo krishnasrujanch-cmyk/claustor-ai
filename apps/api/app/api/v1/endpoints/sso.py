@@ -34,7 +34,7 @@ async def sso_login(
             detail="SSO not configured. Auth0 domain not set."
         )
 
-    callback_url = redirect_uri or f"{settings.APP_URL}/api/v1/sso/callback"
+    callback_url = redirect_uri or f"{settings.API_URL}/api/v1/sso/callback"
     auth0 = get_auth0_service()
     login_url = auth0.get_login_url(
         redirect_uri=callback_url,
@@ -60,7 +60,7 @@ async def sso_callback(
 
     try:
         auth0 = get_auth0_service()
-        callback_url = f"{settings.APP_URL}/api/v1/sso/callback"
+        callback_url = f"{settings.API_URL}/api/v1/sso/callback"
 
         # Exchange code for tokens
         tokens = await auth0.exchange_code(
@@ -98,7 +98,7 @@ async def sso_callback(
         logger.info("sso_login_success", user_id=str(user.id), email=user.email)
 
         # Redirect to frontend with token
-        frontend_url = f"{settings.APP_URL}/dashboard?token={access_token}"
+        frontend_url = f"{settings.FRONTEND_URL}/dashboard?token={access_token}"
         if state:
             frontend_url += f"&state={state}"
 
@@ -106,7 +106,7 @@ async def sso_callback(
 
     except Exception as e:
         logger.error("sso_callback_failed", error=str(e))
-        error_url = f"{settings.APP_URL}/login?error=sso_failed"
+        error_url = f"{settings.FRONTEND_URL}/login?error=sso_failed"
         return RedirectResponse(url=error_url)
 
 

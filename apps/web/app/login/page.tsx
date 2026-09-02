@@ -440,7 +440,7 @@ function LoginPageInner() {
 
               {/* Google SSO (UI only) */}
               <button type="button"
-                onClick={()=>{window.location.href=`${API}/api/v1/sso/login?redirect_uri=${window.location.origin}/auth/callback`}}
+                onClick={()=>{window.location.href=`${API}/api/v1/sso/login`}}
                 style={{width:"100%",padding:"11px",borderRadius:10,
                   border:`1.5px solid ${C.border}`,background:C.surface,
                   fontSize:13,fontWeight:600,color:C.heading,cursor:"pointer",
