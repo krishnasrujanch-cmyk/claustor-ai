@@ -1,4 +1,6 @@
 "use client";
+import { API_URL as API } from "@/lib/config";
+
 export const dynamic = "force-dynamic";
 import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
 
@@ -438,7 +440,7 @@ function LoginPageInner() {
 
               {/* Google SSO (UI only) */}
               <button type="button"
-                onClick={()=>alert("Google SSO coming soon — Enterprise plan feature")}
+                onClick={()=>{window.location.href=`${API}/api/v1/sso/login?redirect_uri=${window.location.origin}/auth/callback`}}
                 style={{width:"100%",padding:"11px",borderRadius:10,
                   border:`1.5px solid ${C.border}`,background:C.surface,
                   fontSize:13,fontWeight:600,color:C.heading,cursor:"pointer",

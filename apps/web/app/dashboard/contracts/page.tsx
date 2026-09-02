@@ -371,6 +371,29 @@ export default function ContractsPage() {
               🏢 By Counterparty
             </button>
           </div>
+          {/* Reports */}
+          <button onClick={async()=>{
+            const token = getToken();
+            const r = await fetch(`${API}/api/v1/reports/portfolio-risk`,
+              {headers:{Authorization:`Bearer ${token}`}});
+            if(r.ok){const b=await r.blob();const a=document.createElement('a');
+              a.href=URL.createObjectURL(b);a.download='portfolio-risk-report.pdf';a.click();}
+          }} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #E2E8F0',
+            background:'white',cursor:'pointer',fontSize:12,color:'#64748B',height:34,
+            display:'flex',alignItems:'center',gap:4}}>
+            📊 Risk Report
+          </button>
+          <button onClick={async()=>{
+            const token = getToken();
+            const r = await fetch(`${API}/api/v1/reports/counterparty-exposure`,
+              {headers:{Authorization:`Bearer ${token}`}});
+            if(r.ok){const b=await r.blob();const a=document.createElement('a');
+              a.href=URL.createObjectURL(b);a.download='counterparty-exposure-report.pdf';a.click();}
+          }} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #E2E8F0',
+            background:'white',cursor:'pointer',fontSize:12,color:'#64748B',height:34,
+            display:'flex',alignItems:'center',gap:4}}>
+            🏢 Exposure Report
+          </button>
           {/* Refresh */}
           <button
             onClick={()=>{ setPage(1); viewMode==="counterparty"?setCounterpartyGroups(null):load(); setCounterpartyLoading(viewMode==="counterparty"); }}
