@@ -1,8 +1,9 @@
 """
-Claustor AI — Contract Processing Tasks
+Claustor Worker — Contract Processing Task
+============================================
 Direct async execution — NO subprocess.
 PipelineSessionManager handles all long-running DB sessions.
-Outer session used only for fast step1 reads (<5s).
+Fresh manager per task — no singleton (event loops differ per task).
 """
 from __future__ import annotations
 import asyncio
@@ -10,24 +11,6 @@ import structlog
 from uuid import UUID
 
 from app.workers.celery_app import app as celery_app
-
-# Module-level singleton — created once per worker process, reused across
-# all tasks. Keeps a warm connection pool instead of paying a fresh TLS
-# handshake (which occasionally hangs on Cloud Run) for every single task.
-_session_manager = None
-
-
-async def _get_session_manager():
-    global _session_manager
-    # No lock needed — worker concurrency=1, one task at a time
-    if _session_manager is None:
-        from app.infrastructure.database.session_manager import PipelineSessionManager
-        from app.core.config import settings
-        mgr = PipelineSessionManager(settings.DATABASE_URL)
-        await mgr.initialize()
-        _session_manager = mgr
-    return _session_manager
-
 
 PLAN_QUEUES = {
     "free":         "free_queue",
@@ -58,7 +41,6 @@ def process_contract(
     user_id: str = "",
     **kwargs,
 ):
-    # Support both file_hash and file_path parameter names
     if not file_hash and file_path:
         file_hash = file_path
 
@@ -70,16 +52,12 @@ def process_contract(
         from app.infrastructure.database.session_manager import PipelineSessionManager
         from app.core.config import settings
 
-
-        # Create session manager — handles all long-running DB ops
+        # Fresh manager per task — each task has its own event loop
         mgr = PipelineSessionManager(settings.DATABASE_URL)
         await mgr.initialize()
 
         try:
             pipeline = ContractPipeline()
-
-            # No outer session — pipeline uses session_manager for ALL DB ops
-            # Each DB operation gets its own fresh NullPool connection
             await pipeline.process(
                 contract_id=UUID(contract_id),
                 org_id=UUID(org_id),
@@ -94,12 +72,13 @@ def process_contract(
             logger.error("contract_pipeline_failed",
                          contract_id=contract_id, error=str(e))
             raise
-        # NOTE: mgr is NOT disposed here — module-level singleton,
-        # reused across tasks for a warm connection pool. Only torn
-        # down if the whole worker process exits.
+        finally:
+            try:
+                await mgr.dispose()
+            except Exception:
+                pass
 
     try:
-        # Create fresh event loop for this thread (threads pool)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
