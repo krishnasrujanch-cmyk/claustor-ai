@@ -467,3 +467,26 @@ def get_vector_store() -> VectorStore:
     if _vector_store is None:
         _vector_store = VectorStore()
     return _vector_store
+
+
+async def embed_query_cohere(query: str) -> list[float]:
+    """Embed query using Cohere embed-multilingual-v3.0 (1024 dims)."""
+    import httpx
+    from app.core.config import settings
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(
+            "https://api.cohere.com/v2/embed",
+            headers={
+                "Authorization": f"Bearer {settings.COHERE_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "embed-multilingual-v3.0",
+                "texts": [query],
+                "input_type": "search_query",
+                "embedding_types": ["float"],
+                "truncate": "END",
+            },
+        )
+        r.raise_for_status()
+    return r.json()["embeddings"]["float"][0]

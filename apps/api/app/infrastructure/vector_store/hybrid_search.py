@@ -186,7 +186,7 @@ class HybridSearchEngine:
         if contract_id: filt["contract_id"] = str(contract_id)
         if clause_type: filt["chunk_type"] = clause_type
         # HF Inference API — bge-m3 (0.38s vs 10s local, same model)
-        emb = await vs.embed_query_hf(query)
+        emb = await vs.embed_query_cohere(query)
         try:
             import asyncio
             loop = asyncio.get_event_loop()

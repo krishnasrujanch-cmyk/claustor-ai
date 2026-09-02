@@ -83,6 +83,7 @@ class Settings(BaseSettings):
 
     # ── HuggingFace Inference
     HF_API_TOKEN: str = ""
+    COHERE_API_KEY: str = ""
 
     # ── LLM Providers ─────────────────────────────
     # Primary: Groq

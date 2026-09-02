@@ -113,22 +113,182 @@ async def _phase_b_embed_and_index(
         logger.info(f"chunk_indexing_complete: total={len(chunks)} embedded=0 contract_id={contract_id}")
         return
 
-    # Use HF Inference API for indexing — no local bge-m3 needed
-    # Same model as query (bge-m3), same vectors, cosine=1.0000
-    import httpx, json as _json
+    # Use Cohere embed-multilingual-v3.0 for indexing (1024 dims)
+    import httpx
     from app.core.config import settings
-    HF_URL = "https://router.huggingface.co/hf-inference/models/BAAI/bge-m3/pipeline/feature-extraction"
-    HF_HEADERS = {"Authorization": f"Bearer {settings.HF_API_TOKEN}"}
+    COHERE_URL = "https://api.cohere.com/v2/embed"
+    COHERE_HEADERS = {
+        "Authorization": f"Bearer {settings.COHERE_API_KEY}",
+        "Content-Type": "application/json",
+    }
     pinecone_vectors = []
 
     for i in range(0, len(embeddable), EMBED_BATCH_SIZE):
         batch = embeddable[i:i+EMBED_BATCH_SIZE]
-        # Truncate to bge-m3 max input (~8000 chars ≈ 8192 tokens)
-        texts = [c.text[:8000] for c in batch]
-        with httpx.Client(timeout=120) as client:
-            r = client.post(HF_URL, headers=HF_HEADERS, json={"inputs": texts})
-            r.raise_for_status()
-        embeddings = r.json()
+        texts = [c.text[:4096] for c in batch]
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=60) as client:
+                    r = client.post(COHERE_URL, headers=COHERE_HEADERS, json={
+                        "model": "embed-multilingual-v3.0",
+                        "texts": texts,
+                        "input_type": "search_document",
+                        "embedding_types": ["float"],
+                        "truncate": "END",
+                    })
+                    r.raise_for_status()
+                embeddings = r.json()["embeddings"]["float"]
+                break
+            except Exception as _e:
+                if attempt < 2:
+                    import time; time.sleep(2 ** attempt)
+                else:
+                    raise RuntimeError(f"Cohere embedding failed after 3 attempts: {_e}")
+"""
+Claustor AI — Chunk Indexer
+Saves ContractChunkData to PostgreSQL (BM25) + Pinecone (vectors).
+
+Architecture: Two-phase design for long-running embedding operations.
+  Phase A (fast <5s):  DELETE old + INSERT new chunks to PostgreSQL
+  Phase B (slow 10min): bge-m3 embed + Pinecone upsert (NO DB held open)
+"""
+
+from __future__ import annotations
+import logging
+from typing import Optional
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+
+logger = logging.getLogger(__name__)
+
+PINECONE_BATCH_SIZE = 100
+EMBED_BATCH_SIZE = 8  # Smaller batches — some chunks are 30K+ chars
+
+
+async def index_chunks(
+    chunks: list,
+    contract_id: UUID,
+    org_id: UUID,
+    db: AsyncSession,
+    vector_store,
+    session_manager=None,
+) -> None:
+    """
+    Two-phase indexing:
+    Phase A: Save chunks to PostgreSQL (fast, commits immediately)
+    Phase B: Embed + upsert to Pinecone (slow, no DB session held)
+    """
+    # ── Phase A: PostgreSQL save (fast, <5s) ──────────────────────────────────
+    if session_manager:
+        # Use fresh NullPool session — guaranteed alive
+        async def _save_to_postgres(fresh_db: AsyncSession):
+            await _phase_a_save(fresh_db, chunks, contract_id, org_id)
+        await session_manager.execute(_save_to_postgres, operation_name="save_chunks_postgres")
+    else:
+        # Fallback: use passed db session
+        await _phase_a_save(db, chunks, contract_id, org_id)
+
+    # ── Phase B: Embed + Pinecone (slow, no DB) ───────────────────────────────
+    await _phase_b_embed_and_index(chunks, contract_id, org_id, vector_store)
+
+
+async def _phase_a_save(
+    db: AsyncSession,
+    chunks: list,
+    contract_id: UUID,
+    org_id: UUID,
+) -> None:
+    """Phase A: Delete old + save new chunks to PostgreSQL. Fast (<5s)."""
+    from app.domain.models import ContractChunk
+
+    # Delete old chunks
+    await db.execute(
+        text("DELETE FROM contract_chunks WHERE contract_id = :cid"),
+        {"cid": str(contract_id)}
+    )
+    logger.info(f"old_chunks_deleted: contract_id={contract_id}")
+
+    # Build and insert new chunks
+    db_chunks = [
+        ContractChunk(
+            id          = chunk.chunk_id,
+            contract_id = chunk.contract_id,
+            org_id      = chunk.org_id,
+            parent_id   = chunk.parent_id,
+            is_parent   = chunk.is_parent,
+            chunk_type  = chunk.chunk_type,
+            chunk_index = chunk.chunk_index,
+            text        = chunk.text,
+            heading     = chunk.heading,
+            section_ref = chunk.section_ref,
+            page_number = chunk.page_number,
+            risk_score  = chunk.risk_score,
+            importance  = chunk.importance,
+            cross_refs  = chunk.cross_refs or [],
+            table_json  = chunk.table_json,
+        )
+        for chunk in chunks
+    ]
+    db.add_all(db_chunks)
+    await db.flush()
+    logger.info(f"chunks_saved_postgres: count={len(db_chunks)} contract_id={contract_id}")
+
+
+async def _phase_b_embed_and_index(
+    chunks: list,
+    contract_id: UUID,
+    org_id: UUID,
+    vector_store,
+) -> None:
+    """
+    Phase B: bge-m3 embed + Pinecone upsert.
+    NO database session held — runs after Phase A committed.
+    Long-running (10+ mins on CPU). Safe from DB timeout issues.
+    """
+    # Delete old Pinecone vectors
+    try:
+        await vector_store.delete_contract(org_id, contract_id)
+    except Exception as e:
+        logger.warning(f"pinecone_delete_failed: {e}")
+
+    # Only embed non-signature chunks
+    embeddable = [c for c in chunks if c.chunk_type != "signature"]
+    if not embeddable:
+        logger.info(f"chunk_indexing_complete: total={len(chunks)} embedded=0 contract_id={contract_id}")
+        return
+
+    # Use Cohere embed-multilingual-v3.0 for indexing (1024 dims)
+    import httpx
+    from app.core.config import settings
+    COHERE_URL = "https://api.cohere.com/v2/embed"
+    COHERE_HEADERS = {
+        "Authorization": f"Bearer {settings.COHERE_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    pinecone_vectors = []
+    for i in range(0, len(embeddable), EMBED_BATCH_SIZE):
+        batch = embeddable[i:i+EMBED_BATCH_SIZE]
+        texts = [c.text[:4096] for c in batch]
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=60) as client:
+                    r = client.post(COHERE_URL, headers=COHERE_HEADERS, json={
+                        "model": "embed-multilingual-v3.0",
+                        "texts": texts,
+                        "input_type": "search_document",
+                        "embedding_types": ["float"],
+                        "truncate": "END",
+                    })
+                    r.raise_for_status()
+                embeddings = r.json()["embeddings"]["float"]
+                break
+            except Exception as _e:
+                if attempt < 2:
+                    import time; time.sleep(2 ** attempt)
+                else:
+                    raise RuntimeError(f"Cohere embedding failed: {_e}")
 
         for chunk, embedding in zip(batch, embeddings):
             pinecone_vectors.append((
