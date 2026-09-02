@@ -131,6 +131,7 @@ class PipelineSessionManager:
     """
 
     def __init__(self, database_url: str, max_retries: int = 8):
+        import datetime; print(f"SESSION_MGR_V2 max_retries=8 built={datetime.datetime.utcnow()}", flush=True)
         self._database_url = database_url
         self._max_retries = max_retries
         self._engine = None
