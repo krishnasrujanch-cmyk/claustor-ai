@@ -61,9 +61,9 @@ def _preload_embedder():
     except Exception as e:
         print(f"⚠️ Embedder preload failed: {e}")
 
-# Synchronous preload at module import — blocks until ready
-_preload_embedder()
-EMBEDDING_DIMENSIONS = 384
+# bge-m3 preload DISABLED — using Cohere embed-multilingual-v3.0 now
+# _preload_embedder()
+EMBEDDING_DIMENSIONS = 1024
 
 
 class VectorStore:
