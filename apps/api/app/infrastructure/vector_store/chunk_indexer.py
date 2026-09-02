@@ -153,7 +153,6 @@ Architecture: Two-phase design for long-running embedding operations.
   Phase B (slow 10min): bge-m3 embed + Pinecone upsert (NO DB held open)
 """
 
-from __future__ import annotations
 import logging
 from typing import Optional
 from uuid import UUID
