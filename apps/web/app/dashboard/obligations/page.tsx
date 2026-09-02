@@ -1,4 +1,5 @@
 "use client";
+import { CalendarView } from "@/components/obligations/CalendarView";
 import { API_URL as API } from "@/lib/config";
 export const dynamic = "force-dynamic";
 import { useEffect, useState, useMemo } from "react";
@@ -22,6 +23,7 @@ function calcUrgency(due_date: string|null, days: number|null): string {
 }
 
 export default function ObligationsPage() {
+  const [viewMode, setViewMode] = useState<"list"|"calendar">("list");
   const [raw, setRaw]             = useState<any[]>([]);
   const [alerts, setAlerts]       = useState<any>(null);
   const [loading, setLoading]     = useState(true);
@@ -98,7 +100,25 @@ export default function ObligationsPage() {
   return (
     <div style={{padding:"32px 36px"}}>
       <div style={{marginBottom:24}}>
-        <h1 style={{fontSize:24,fontWeight:800,color:C.heading,marginBottom:4}}>Obligations</h1>
+        <div style={{display:"flex",alignItems:"center",gap:16}}>
+            <h1 style={{fontSize:24,fontWeight:800,color:C.heading,marginBottom:4}}>Obligations</h1>
+            <div style={{display:"flex",borderRadius:8,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+              <button onClick={()=>setViewMode("list")}
+                style={{padding:"6px 12px",fontSize:12,fontWeight:viewMode==="list"?700:400,
+                  background:viewMode==="list"?"#EFF6FF":"white",
+                  color:viewMode==="list"?"#2563EB":"#64748B",
+                  border:"none",cursor:"pointer"}}>
+                List
+              </button>
+              <button onClick={()=>setViewMode("calendar")}
+                style={{padding:"6px 12px",fontSize:12,fontWeight:viewMode==="calendar"?700:400,
+                  background:viewMode==="calendar"?"#EFF6FF":"white",
+                  color:viewMode==="calendar"?"#2563EB":"#64748B",
+                  border:"none",cursor:"pointer",borderLeft:"1px solid #E2E8F0"}}>
+                Calendar
+              </button>
+            </div>
+          </div>
         <p style={{fontSize:14,color:C.muted}}>Track payment dates, renewal notices, and deadlines</p>
       </div>
 
@@ -166,6 +186,13 @@ export default function ObligationsPage() {
 
       {/* Table */}
       <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden"}}>
+        {viewMode === "calendar" ? (
+          <CalendarView
+            obligations={enriched}
+            onMarkComplete={markComplete}
+          />
+        ) : (
+        <>
         {loading ? (
           <div style={{padding:40,textAlign:"center",color:C.muted}}>Loading...</div>
         ) : filtered.length===0 ? (
@@ -251,6 +278,8 @@ export default function ObligationsPage() {
               onPage={setPage}
             />
           </>
+        )}
+        </>
         )}
       </div>
     </div>
