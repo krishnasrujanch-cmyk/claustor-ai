@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { API_URL as API } from "@/lib/config";
 import { useAuthStore } from "@/store/auth";
 import { ClauStorLoader } from "@/components/shared/ClauStorLoader";
 
-export default function AuthCallbackPage() {
+function CallbackHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +26,6 @@ export default function AuthCallbackPage() {
       return;
     }
 
-    // Exchange code for token via backend
     fetch(`${API}/api/v1/sso/callback?code=${code}&state=${state || ""}`)
       .then(r => {
         if (!r.ok) throw new Error("Authentication failed");
@@ -36,10 +35,7 @@ export default function AuthCallbackPage() {
         if (data.access_token) {
           localStorage.setItem("token", data.access_token);
           if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
-          setAuth({
-            token: data.access_token,
-            user: data.user,
-          });
+          setAuth({ token: data.access_token, user: data.user });
           router.push("/dashboard");
         } else {
           setError("No token received");
@@ -70,5 +66,18 @@ export default function AuthCallbackPage() {
       <ClauStorLoader />
       <p style={{ color: "#64748B", fontSize: 14 }}>Completing sign-in...</p>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center" }}>
+        <ClauStorLoader />
+      </div>
+    }>
+      <CallbackHandler />
+    </Suspense>
   );
 }
