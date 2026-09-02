@@ -9,6 +9,7 @@ import { getToken } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { can } from "@/lib/permissions";
+import { CounterpartyView } from "@/components/contracts/CounterpartyView";
 import { C } from "@/lib/design-tokens";
 
 
@@ -145,6 +146,9 @@ export default function ContractsPage() {
   const [status, setStatus]       = useState("");
   const [quickTab, setQuickTab]   = useState("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [viewMode, setViewMode] = useState<"list"|"counterparty">("list");
+  const [counterpartyGroups, setCounterpartyGroups] = useState<any>(null);
+  const [counterpartyLoading, setCounterpartyLoading] = useState(false);
   const [uploadedBy, setUploadedBy]   = useState("");
   const [contractType, setContractType] = useState("");
   const [counterpartyFilter, setCounterpartyFilter] = useState("");
@@ -199,6 +203,23 @@ export default function ContractsPage() {
   }, [page, pageSize, search, risk, status, uploadedBy, contractType, counterpartyFilter, dateFrom, dateTo, valueMin, valueMax, expiryDays]);
 
   useEffect(()=>{ load(); },[load]);
+
+  // Fetch counterparty grouped data
+  useEffect(() => {
+    if (viewMode !== "counterparty") return;
+    setCounterpartyLoading(true);
+    const token = getToken();
+    if (!token) return;
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (risk) params.set("risk_level", risk);
+    if (expiryDays) params.set("expiry_days", expiryDays);
+    fetch(`${API}/api/v1/contracts/by-counterparty?${params}`,
+      {headers:{Authorization:`Bearer ${token}`}})
+      .then(r => r.json())
+      .then(d => { setCounterpartyGroups(d); setCounterpartyLoading(false); })
+      .catch(() => setCounterpartyLoading(false));
+  }, [viewMode, search, risk, expiryDays]);
 
   const activeFilterCount = [uploadedBy, contractType, counterpartyFilter,
     dateFrom, dateTo, valueMin, valueMax, expiryDays].filter(Boolean).length;
@@ -333,9 +354,26 @@ export default function ContractsPage() {
 
         {/* Right actions */}
         <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {/* View toggle */}
+          <div style={{display:"flex",borderRadius:8,border:"1px solid #E2E8F0",overflow:"hidden"}}>
+            <button onClick={()=>setViewMode("list")}
+              style={{padding:"6px 12px",fontSize:12,fontWeight:viewMode==="list"?700:400,
+                background:viewMode==="list"?"#EFF6FF":"white",
+                color:viewMode==="list"?"#2563EB":"#64748B",
+                border:"none",cursor:"pointer",transition:"all 0.15s"}}>
+              ☰ List
+            </button>
+            <button onClick={()=>setViewMode("counterparty")}
+              style={{padding:"6px 12px",fontSize:12,fontWeight:viewMode==="counterparty"?700:400,
+                background:viewMode==="counterparty"?"#EFF6FF":"white",
+                color:viewMode==="counterparty"?"#2563EB":"#64748B",
+                border:"none",cursor:"pointer",borderLeft:"1px solid #E2E8F0",transition:"all 0.15s"}}>
+              🏢 By Counterparty
+            </button>
+          </div>
           {/* Refresh */}
           <button
-            onClick={()=>{ setPage(1); load(); }}
+            onClick={()=>{ setPage(1); viewMode==="counterparty"?setCounterpartyGroups(null):load(); setCounterpartyLoading(viewMode==="counterparty"); }}
             title="Refresh"
             style={{
               width:34, height:34, borderRadius:8,
@@ -619,6 +657,17 @@ export default function ContractsPage() {
         </div>
       )}
 
+      {/* ── View Mode Switch ─────────────────────────────────────── */}
+      {viewMode === "counterparty" ? (
+        <CounterpartyView
+          groups={counterpartyGroups?.groups || []}
+          totalCounterparties={counterpartyGroups?.total_counterparties || 0}
+          totalContracts={counterpartyGroups?.total_contracts || 0}
+          portfolioValue={counterpartyGroups?.portfolio_value || 0}
+          loading={counterpartyLoading}
+        />
+      ) : (
+      <>
       {/* ── Table ───────────────────────────────────────────────────────── */}
       <div style={{background:C.surface,border:`1px solid ${C.border}`,
         borderRadius:12,overflow:"visible",
@@ -866,6 +915,8 @@ export default function ContractsPage() {
         )}
       </div>
 
+      </>
+      )}
       {/* Toast */}
       {toast&&(
         <div style={{position:"fixed",bottom:24,right:24,background:"#1C1B2E",

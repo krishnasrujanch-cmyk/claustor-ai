@@ -102,6 +102,126 @@ async def upload_contract(
     )
 
 
+
+@router.get("/by-counterparty")
+async def list_contracts_by_counterparty(
+    user: AuthUser,
+    db: AsyncSession = Depends(get_db),
+    search: str | None = Query(None),
+    risk_level: str | None = Query(None),
+    expiry_days: int | None = Query(None),
+):
+    """
+    List contracts grouped by counterparty with aggregate metrics.
+    Returns: counterparty name, contract count, total value, max risk,
+    earliest expiry, and individual contracts within each group.
+    """
+    from app.domain.models import Contract as _CM
+    from sqlalchemy import select as _sel, func as _func, case as _case
+    from datetime import datetime, timedelta
+
+    query = _sel(_CM).where(
+        _CM.org_id == user.org_id,
+        _CM.is_active == True,
+        _CM.is_latest == True,
+    )
+
+    # Role-based filtering
+    if user.role == "legal_reviewer":
+        from app.api.v1.endpoints.reviews import ContractReview
+        review_result = await db.execute(
+            _sel(ContractReview.contract_id).where(
+                ContractReview.assigned_to == user.id
+            )
+        )
+        assigned_ids = [r[0] for r in review_result.fetchall()]
+        query = query.where(_CM.id.in_(assigned_ids or [uuid.UUID(int=0)]))
+    elif user.role == "business_viewer":
+        query = query.where(_CM.uploaded_by == user.id)
+
+    if search:
+        query = query.where(
+            _CM.title.ilike(f"%{search}%") |
+            _CM.counterparty.ilike(f"%{search}%")
+        )
+    if risk_level:
+        query = query.where(_CM.risk_level == risk_level)
+    if expiry_days is not None:
+        cutoff = datetime.utcnow() + timedelta(days=expiry_days)
+        query = query.where(_CM.expiry_date <= cutoff.date())
+        query = query.where(_CM.expiry_date >= datetime.utcnow().date())
+
+    result = await db.execute(query.order_by(_CM.counterparty, _CM.updated_at.desc()))
+    contracts = result.scalars().all()
+
+    # Group by counterparty
+    from collections import defaultdict, OrderedDict
+    groups: dict = defaultdict(list)
+    for c in contracts:
+        key = (c.counterparty or "Unknown").strip()
+        groups[key].append(c)
+
+    # Build response with aggregates
+    counterparty_groups = []
+    risk_priority = {"critical": 4, "high": 3, "medium": 2, "low": 1, None: 0}
+
+    for name, group_contracts in sorted(groups.items()):
+        total_value = sum(c.contract_value or 0 for c in group_contracts)
+        currency = next((c.contract_currency for c in group_contracts if c.contract_currency), "USD")
+        max_risk = max(group_contracts, key=lambda c: risk_priority.get(c.risk_level, 0)).risk_level
+        avg_risk_score = sum(c.risk_score or 0 for c in group_contracts) / len(group_contracts)
+
+        # Earliest expiry
+        expiry_dates = [c.expiry_date for c in group_contracts if c.expiry_date]
+        earliest_expiry = min(expiry_dates).isoformat() if expiry_dates else None
+
+        # Count expiring soon (next 90 days)
+        now = datetime.utcnow().date()
+        cutoff_90 = now + timedelta(days=90)
+        expiring_soon = sum(
+            1 for c in group_contracts
+            if c.expiry_date and now <= c.expiry_date <= cutoff_90
+        )
+
+        counterparty_groups.append({
+            "counterparty":     name,
+            "contract_count":   len(group_contracts),
+            "total_value":      total_value,
+            "currency":         currency,
+            "max_risk_level":   max_risk,
+            "avg_risk_score":   round(avg_risk_score, 1),
+            "earliest_expiry":  earliest_expiry,
+            "expiring_soon":    expiring_soon,
+            "contracts": [
+                {
+                    "id":              str(c.id),
+                    "title":           c.title,
+                    "contract_type":   c.contract_type,
+                    "status":          c.status,
+                    "risk_level":      c.risk_level,
+                    "risk_score":      c.risk_score,
+                    "contract_value":  c.contract_value,
+                    "contract_currency": c.contract_currency,
+                    "effective_date":  c.effective_date.isoformat() if c.effective_date else None,
+                    "expiry_date":     c.expiry_date.isoformat() if c.expiry_date else None,
+                    "review_status":   c.review_status,
+                    "original_filename": c.original_filename,
+                    "created_at":      c.created_at.isoformat() if c.created_at else None,
+                }
+                for c in group_contracts
+            ],
+        })
+
+    # Sort by total value descending (highest exposure first)
+    counterparty_groups.sort(key=lambda g: g["total_value"], reverse=True)
+
+    return {
+        "groups":            counterparty_groups,
+        "total_counterparties": len(counterparty_groups),
+        "total_contracts":   len(contracts),
+        "portfolio_value":   sum(g["total_value"] for g in counterparty_groups),
+    }
+
 @router.get("/{contract_id}/versions")
 async def list_contract_versions(
     contract_id: uuid.UUID,
@@ -687,4 +807,6 @@ async def reprocess_contract(
     }
 # Add this to app/api/v1/endpoints/contracts.py
 # GET /api/v1/contracts/search-suggestions
+
+
 
