@@ -79,14 +79,14 @@ def make_session_factory(database_url: str) -> tuple[Any, async_sessionmaker]:
     """
     # Strip -pooler from URL to use Neon's direct endpoint
     database_url = database_url.replace("-pooler.", ".")
+    # Cloud SQL Unix socket doesn't need SSL
+    _connect_args = {"statement_cache_size": 0, "timeout": 30, "command_timeout": 60}
+    if "/cloudsql/" not in database_url:
+        _connect_args["ssl"] = _make_ssl_context()
+
     engine = create_async_engine(
         database_url,
-        connect_args={
-            "ssl": _make_ssl_context(),
-            "statement_cache_size": 0,
-            "timeout": 30,
-            "command_timeout": 60,
-        },
+        connect_args=_connect_args,
         pool_size=2,
         max_overflow=3,
         pool_pre_ping=True,       # Test connection before use

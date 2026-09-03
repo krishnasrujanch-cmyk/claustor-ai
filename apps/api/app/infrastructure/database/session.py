@@ -27,10 +27,13 @@ async def init_db(database_url: str, connect_args: dict = None) -> None:
     global async_session_factory
 
     if connect_args is None:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        connect_args = {"ssl": ssl_ctx}
+        if "/cloudsql/" in database_url:
+            connect_args = {}  # Cloud SQL Unix socket — no SSL needed
+        else:
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+            connect_args = {"ssl": ssl_ctx}
 
     engine = create_async_engine(
         database_url,
