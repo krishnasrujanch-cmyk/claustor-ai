@@ -77,8 +77,9 @@ def make_session_factory(database_url: str) -> tuple[Any, async_sessionmaker]:
     intermittent 'Authentication timed out' errors with bursty serverless clients.
     API uses the pooled endpoint (high concurrency); worker uses direct (reliable).
     """
-    # Strip -pooler from URL to use Neon's direct endpoint
-    database_url = database_url.replace("-pooler.", ".")
+    # Strip -pooler from URL (Neon only)
+    if "neon.tech" in database_url:
+        database_url = database_url.replace("-pooler.", ".")
     # Cloud SQL Unix socket doesn't need SSL
     _connect_args = {"statement_cache_size": 0, "timeout": 30, "command_timeout": 60}
     if "/cloudsql/" not in database_url:
