@@ -50,7 +50,7 @@ class HybridSearchEngine:
 
     async def search(
         self, query, org_id, db, contract_id=None,
-        top_k=6, semantic_top_k=15, keyword_top_k=15, clause_type=None,
+        top_k=10, semantic_top_k=20, keyword_top_k=15, clause_type=None,
         raw_query=None,
     ):
         # Semantic uses rewritten query (richer), BM25 uses raw query (keywords)

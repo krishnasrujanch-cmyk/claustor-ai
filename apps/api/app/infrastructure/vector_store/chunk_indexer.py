@@ -108,8 +108,10 @@ async def _phase_b_embed_and_index(
     except Exception as e:
         logger.warning(f"pinecone_delete_failed: {e}")
 
-    # Only embed non-signature chunks
-    embeddable = [c for c in chunks if c.chunk_type != "signature"]
+    # Only embed children + small parents (no children) — skip signature
+    # Industry standard: embed children only, parents cause dilution
+    has_children = {str(c.parent_id) for c in chunks if c.parent_id}
+    embeddable = [c for c in chunks if c.chunk_type != "signature" and not (c.is_parent and str(c.chunk_id) in has_children)]
     if not embeddable:
         logger.info(f"chunk_indexing_complete: total={len(chunks)} embedded=0 contract_id={contract_id}")
         return
