@@ -88,8 +88,8 @@ class RAGRetriever:
         top_k = TOP_K_LIMITS.get(plan, 4)
         context_limit = CONTEXT_LIMITS.get(plan, 4000)
 
-        # Hybrid search
-        chunks = await self.hybrid_engine.search(
+        # Multi-query hybrid search — decomposes broad queries
+        chunks = await self._multi_query_search(
             query=query,
             org_id=org_id,
             db=db,
@@ -167,6 +167,101 @@ class RAGRetriever:
             citations=citations,
             query=query,
         )
+
+
+    async def _decompose_query(self, query: str) -> list[str]:
+        """
+        Decompose a broad query into focused sub-queries.
+        Uses a fast LLM call to split multi-topic questions.
+        Only decomposes if query is broad (>1 topic).
+        """
+        # Simple heuristic: skip decomposition for short/focused queries
+        broad_signals = [
+            " and ", " & ", "key risks", "summary", "overview",
+            "all ", "main ", "important ", "critical ",
+            "payment", "obligations", "dues",
+        ]
+        is_broad = len(query.split()) > 8 or any(s in query.lower() for s in broad_signals)
+        if not is_broad:
+            return [query]
+
+        try:
+            from app.infrastructure.llm.router import get_llm_router
+            router = get_llm_router()
+            prompt = (
+                "Decompose this contract question into 3-5 focused sub-queries "
+                "that each target a specific topic. Return ONLY a JSON array of strings. "
+                "No explanation.\n\n"
+                f"Question: {query}\n\n"
+                "Example output: [\"liability cap and limitations\", \"payment terms and due dates\", \"termination rights\"]"
+            )
+            result = await router.complete(
+                messages=[{"role": "user", "content": prompt}],
+                role="extractor",
+                use_fast=True,
+            )
+            import json
+            text = result.get("content", "[]").strip()
+            # Clean markdown fences if present
+            text = text.replace("```json", "").replace("```", "").strip()
+            sub_queries = json.loads(text)
+            if isinstance(sub_queries, list) and len(sub_queries) >= 2:
+                logger.info("query_decomposed", original=query[:50], sub_queries=len(sub_queries))
+                return sub_queries[:5]
+        except Exception as e:
+            logger.warning("query_decomposition_failed", error=str(e)[:100])
+
+        return [query]
+
+    async def _multi_query_search(
+        self,
+        query: str,
+        org_id: UUID,
+        db: AsyncSession,
+        contract_id: UUID | None,
+        top_k: int,
+        clause_type: str | None,
+        raw_query: str | None,
+    ) -> list[HybridSearchResult]:
+        """
+        Run multiple focused searches and merge results.
+        Deduplicates by chunk text, keeps highest score.
+        """
+        sub_queries = await self._decompose_query(query)
+
+        if len(sub_queries) <= 1:
+            return await self.hybrid_engine.search(
+                query=query, org_id=org_id, db=db,
+                contract_id=contract_id, top_k=top_k,
+                clause_type=clause_type, raw_query=raw_query,
+            )
+
+        # Run all sub-queries
+        all_chunks: list[HybridSearchResult] = []
+        seen_texts: set[str] = set()
+
+        for sq in sub_queries:
+            chunks = await self.hybrid_engine.search(
+                query=sq, org_id=org_id, db=db,
+                contract_id=contract_id, top_k=top_k,
+                clause_type=clause_type, raw_query=raw_query,
+            )
+            for chunk in chunks:
+                # Deduplicate by text preview (first 200 chars)
+                key = chunk.text[:200]
+                if key not in seen_texts:
+                    seen_texts.add(key)
+                    all_chunks.append(chunk)
+
+        # Sort by RRF score descending, take top results
+        all_chunks.sort(key=lambda c: c.rrf_score, reverse=True)
+        result = all_chunks[:top_k + 5]  # slightly more for broad queries
+
+        logger.info("multi_query_results",
+                     sub_queries=len(sub_queries),
+                     total_chunks=len(all_chunks),
+                     deduped=len(result))
+        return result
 
     def _get_source_label(self, chunk: HybridSearchResult) -> str:
         """Human-readable source label for citation."""
