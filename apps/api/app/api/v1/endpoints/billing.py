@@ -101,7 +101,7 @@ async def list_plans():
                 "storage_gb": -1,
                 "features": ["all"],
                 "cta": "Talk to sales",
-                "contact": "hello@claustor.com",
+                "contact": "support@claustor.com",
             },
         ]
     }
@@ -127,7 +127,7 @@ async def subscribe(
     if req.plan == "enterprise":
         raise HTTPException(
             status_code=400,
-            detail="Enterprise requires custom setup. Contact hello@claustor.com"
+            detail="Enterprise requires custom setup. Contact support@claustor.com"
         )
 
     interval = BillingInterval.ANNUAL if req.interval == "annual" else BillingInterval.MONTHLY
@@ -291,7 +291,7 @@ async def upgrade_plan(
 
     if req.plan == "enterprise":
         raise HTTPException(status_code=400,
-            detail="Enterprise requires custom setup. Contact hello@claustor.ai")
+            detail="Enterprise requires custom setup. Contact support@claustor.com")
 
     # Direct plan update in DB (no payment processor in dev)
     from sqlalchemy import update
@@ -883,7 +883,7 @@ async def enterprise_contact(
   <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:8px;padding:16px;margin:16px 0;font-size:13px;line-height:1.8">
     <strong>{req.business_name}</strong> · {req.industry} · {req.company_size}
   </div>
-  <p style="font-size:13px;color:#6B7280">Direct contact: <a href="mailto:sales@claustor.com" style="color:#0066FF">sales@claustor.com</a></p>
+  <p style="font-size:13px;color:#6B7280">Direct contact: <a href="mailto:support@claustor.com" style="color:#0066FF">support@claustor.com</a></p>
   <p style="margin-top:24px;font-size:11px;color:#9CA3AF">Claustor AI · DKU Technologies Pvt. Ltd.</p>
 </div>"""
 
@@ -891,7 +891,7 @@ async def enterprise_contact(
         async with httpx.AsyncClient(timeout=10) as client:
             await client.post("https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-                json={"from": f"Claustor AI <{settings.RESEND_FROM}>", "to": ["sales@claustor.com"],
+                json={"from": f"Claustor AI <{settings.RESEND_FROM}>", "to": ["support@claustor.com"],
                       "subject": f"Enterprise Lead: {req.business_name} ({req.industry})", "html": sales_html})
             await client.post("https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},

@@ -1212,6 +1212,44 @@ export default function LandingPage() {
             </span>
           </div>
 
+          {/* On-premise & Licensing */}
+          <div style={{
+            marginTop: 32, padding: '24px 32px', borderRadius: 16,
+            background: 'linear-gradient(135deg, #1C1B2E 0%, #2D2B55 100%)',
+            border: '1px solid rgba(91,75,255,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexWrap: 'wrap', gap: 16,
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: 20 }}>🏢</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: 'white', letterSpacing: '-0.3px' }}>
+                  On-Premise &amp; Private Cloud Available
+                </span>
+              </div>
+              <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, maxWidth: 600, lineHeight: 1.5 }}>
+                Deploy Claustor AI in your own infrastructure. One-time perpetual licence or annual subscription.
+                Full data sovereignty, air-gapped support, custom SLAs, and dedicated onboarding.
+              </p>
+              <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap' }}>
+                {['Self-hosted deployment', 'Perpetual licence option', 'VAPT-certified', 'SOC 2 Type II ready', 'Custom integrations'].map(tag => (
+                  <span key={tag} style={{
+                    fontSize: 11, fontWeight: 600, color: '#A5B4FC',
+                    background: 'rgba(165,180,252,0.1)', padding: '3px 10px',
+                    borderRadius: 20, border: '1px solid rgba(165,180,252,0.2)',
+                  }}>{tag}</span>
+                ))}
+              </div>
+            </div>
+            <button onClick={() => setShowEnterprise(true)} style={{
+              padding: '12px 28px', borderRadius: 10, border: 'none',
+              background: '#5B4BFF', color: 'white', fontWeight: 700,
+              fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap',
+              boxShadow: '0 4px 16px rgba(91,75,255,0.4)',
+            }}>
+              Request Quote &rarr;
+            </button>
+          </div>
           {/* International note */}
           <div style={{ textAlign: "center", marginTop: 12 }}>
             <button onClick={() => setShowIntl(true)} style={{
