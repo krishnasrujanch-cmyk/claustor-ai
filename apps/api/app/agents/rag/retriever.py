@@ -24,10 +24,10 @@ CONTEXT_LIMITS = {
 
 # Top-K results per plan
 TOP_K_LIMITS = {
-    "free":         4,    # was 2
-    "starter":      8,    # was 4
-    "professional": 15,   # was 6 — tables/schedules need more chunks
-    "enterprise":   25,   # was 10
+    "free":         4,
+    "starter":      8,
+    "professional": 12,
+    "enterprise":   15,  # rerank picks best 15 from 30 retrieved
 }
 
 
@@ -98,6 +98,11 @@ class RAGRetriever:
             clause_type=clause_type,
             raw_query=raw_query,
         )
+
+        # Rerank — reorder by actual relevance, reduce to focused set
+        if chunks:
+            rerank_n = min(top_k + 5, 15)  # cap at 15 focused chunks
+            chunks = await self._rerank(query, chunks, top_n=rerank_n)
 
         if not chunks:
             logger.warning(
@@ -262,6 +267,55 @@ class RAGRetriever:
                      total_chunks=len(all_chunks),
                      deduped=len(result))
         return result
+
+
+    async def _rerank(self, query: str, chunks: list, top_n: int = 12) -> list:
+        """
+        Rerank retrieved chunks using Cohere rerank API.
+        Takes query + chunks, returns chunks reordered by relevance.
+        Generic — works for any query type, any contract.
+        """
+        if not chunks or len(chunks) <= top_n:
+            return chunks
+
+        try:
+            import httpx
+            from app.core.config import settings
+
+            docs = [c.text[:2000] for c in chunks]  # Cohere rerank max ~4K per doc
+
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.post(
+                    "https://api.cohere.com/v2/rerank",
+                    headers={
+                        "Authorization": f"Bearer {settings.COHERE_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "rerank-multilingual-v3.0",
+                        "query": query,
+                        "documents": docs,
+                        "top_n": top_n,
+                    },
+                )
+                r.raise_for_status()
+
+            results = r.json().get("results", [])
+            reranked = []
+            for result in results:
+                idx = result["index"]
+                chunk = chunks[idx]
+                chunk.rrf_score = result["relevance_score"]  # override with rerank score
+                reranked.append(chunk)
+
+            logger.info("rerank_complete",
+                        input=len(chunks), output=len(reranked),
+                        top_score=round(reranked[0].rrf_score, 4) if reranked else 0)
+            return reranked
+
+        except Exception as e:
+            logger.warning("rerank_failed", error=str(e)[:100])
+            return chunks[:top_n]  # fallback: just truncate
 
     def _get_source_label(self, chunk: HybridSearchResult) -> str:
         """Human-readable source label for citation."""
