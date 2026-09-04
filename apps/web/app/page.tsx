@@ -265,7 +265,7 @@ function IntlPopup({ onClose }: { onClose: () => void }) {
               Get International Pricing →
             </button>
             <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 10 }}>
-              Your request goes to sales@claustor.ai · Response within 24 hours
+              Your request goes to support@claustor.com · Response within 24 hours
             </div>
           </>
         )}
@@ -429,7 +429,7 @@ function DemoPopup({ onClose }: { onClose: () => void }) {
               Book My Demo →
             </button>
             <div style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", marginTop: 10 }}>
-              Your request goes to sales@claustor.ai · We respond within 4 business hours
+              Your request goes to support@claustor.com · We respond within 4 business hours
             </div>
           </>
         )}
@@ -561,7 +561,7 @@ function EnterprisePopup({ onClose }: { onClose: () => void }) {
               Send Message →
             </button>
             <div style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", marginTop: 10 }}>
-              Goes to sales@claustor.ai · Response within 4 business hours
+              Goes to support@claustor.com · Response within 4 business hours
             </div>
           </>
         )}
