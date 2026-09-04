@@ -206,7 +206,7 @@ class HybridSearchEngine:
             cid  = meta.get("chunk_id", mid.replace("chunk_",""))
             results.append({
                 "chunk_id": cid, "id": cid,
-                "text": meta.get("text_preview",""),
+                "text": meta.get("text", meta.get("text_preview","")),
                 "heading": meta.get("heading",""),
                 "section_ref": meta.get("section_ref",""),
                 "chunk_type": meta.get("chunk_type","clause"),

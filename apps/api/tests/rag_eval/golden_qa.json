@@ -1,0 +1,144 @@
+{
+  "version": "1.0",
+  "description": "Golden QA pairs for RAG quality validation",
+  "test_cases": [
+    {
+      "id": "halcyon-ip-ownership",
+      "contract_pattern": "GLOBAL MASTER SERVICES",
+      "query": "Who owns IP built specifically for us under SOW-2?",
+      "expected_facts": [
+        "integration interfaces vest in the Vendor",
+        "reusable mapping templates vest in the Vendor",
+        "Customer receives licence under Clause 10.3",
+        "migrated data remains Customer Data"
+      ],
+      "must_not_contain": [
+        "I would need to see",
+        "not provided in context",
+        "cannot determine"
+      ],
+      "expected_chunks_contain": [
+        "SOW-2",
+        "intellectual property",
+        "mapping templates"
+      ],
+      "difficulty": "hard",
+      "category": "ip_ownership"
+    },
+    {
+      "id": "halcyon-committed-spend",
+      "contract_pattern": "GLOBAL MASTER SERVICES",
+      "query": "What is the committed spend amount?",
+      "expected_facts": [
+        "USD 6,400,000",
+        "Initial Term",
+        "shortfall"
+      ],
+      "must_not_contain": [
+        "not fully detailed",
+        "not provided"
+      ],
+      "expected_chunks_contain": [
+        "6,400,000",
+        "Committed Spend"
+      ],
+      "difficulty": "medium",
+      "category": "financial"
+    },
+    {
+      "id": "halcyon-payment-terms",
+      "contract_pattern": "GLOBAL MASTER SERVICES",
+      "query": "What are the payment terms and late payment interest?",
+      "expected_facts": [
+        "forty-five",
+        "1.25%",
+        "per month",
+        "receipt"
+      ],
+      "must_not_contain": [
+        "not provided",
+        "cannot find"
+      ],
+      "expected_chunks_contain": [
+        "45",
+        "1.25"
+      ],
+      "difficulty": "medium",
+      "category": "financial"
+    },
+    {
+      "id": "halcyon-retroactive-billing",
+      "contract_pattern": "GLOBAL MASTER SERVICES",
+      "query": "Can the vendor bill retroactively for past consumption?",
+      "expected_facts": [
+        "true-up",
+        "preceding",
+        "metering"
+      ],
+      "must_not_contain": [
+        "no information",
+        "not mentioned"
+      ],
+      "expected_chunks_contain": [
+        "true-up",
+        "preceding quarters"
+      ],
+      "difficulty": "hard",
+      "category": "billing"
+    },
+    {
+      "id": "halcyon-liability-chain",
+      "contract_pattern": "GLOBAL MASTER SERVICES",
+      "query": "What are the liability caps including consequential loss and data breach?",
+      "expected_facts": [
+        "100%",
+        "Charges paid",
+        "12 months",
+        "consequential loss",
+        "data breach",
+        "9.5",
+        "9.8"
+      ],
+      "must_not_contain": [],
+      "expected_chunks_contain": [
+        "9.4",
+        "9.5"
+      ],
+      "difficulty": "hard",
+      "category": "liability"
+    },
+    {
+      "id": "halcyon-sow1-completion",
+      "contract_pattern": "GLOBAL MASTER SERVICES",
+      "query": "What is the planned completion date for SOW-1?",
+      "expected_facts": [
+        "30 June 2027",
+        "June 2027"
+      ],
+      "must_not_contain": [],
+      "expected_chunks_contain": [
+        "June 2027",
+        "completion"
+      ],
+      "difficulty": "medium",
+      "category": "dates"
+    },
+    {
+      "id": "halcyon-termination",
+      "contract_pattern": "GLOBAL MASTER SERVICES",
+      "query": "What are the termination rights for each party?",
+      "expected_facts": [
+        "terminate",
+        "convenience",
+        "Initial Term"
+      ],
+      "must_not_contain": [],
+      "expected_chunks_contain": [
+        "terminate",
+        "convenience"
+      ],
+      "difficulty": "medium",
+      "category": "termination"
+    }
+  ]
+}

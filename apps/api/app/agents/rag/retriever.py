@@ -195,13 +195,13 @@ class RAGRetriever:
                 f"Question: {query}\n\n"
                 "Example output: [\"liability cap and limitations\", \"payment terms and due dates\", \"termination rights\"]"
             )
+            from app.infrastructure.llm.base import LLMMessage, AgentRole
             result = await router.complete(
-                messages=[{"role": "user", "content": prompt}],
-                role="extractor",
-                use_fast=True,
+                messages=[LLMMessage(role="user", content=prompt)],
+                role=AgentRole.EXTRACTOR,
             )
             import json
-            text = result.get("content", "[]").strip()
+            text = result.content.strip()
             # Clean markdown fences if present
             text = text.replace("```json", "").replace("```", "").strip()
             sub_queries = json.loads(text)

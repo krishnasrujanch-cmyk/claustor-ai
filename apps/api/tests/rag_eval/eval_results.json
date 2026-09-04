@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-09-04 15:02:42",
+  "summary": {
+    "total": 7,
+    "passed": 6,
+    "avg_retrieval": 0.476,
+    "avg_answer": 0.837
+  },
+  "results": [
+    {
+      "id": "halcyon-ip-ownership",
+      "grade": "FAIL",
+      "retrieval_score": 0.3333333333333333,
+      "answer_score": 0.0,
+      "difficulty": "hard",
+      "category": "ip_ownership"
+    },
+    {
+      "id": "halcyon-committed-spend",
+      "grade": "PASS",
+      "retrieval_score": 0.0,
+      "answer_score": 1.0,
+      "difficulty": "medium",
+      "category": "financial"
+    },
+    {
+      "id": "halcyon-payment-terms",
+      "grade": "PASS",
+      "retrieval_score": 0.5,
+      "answer_score": 1.0,
+      "difficulty": "medium",
+      "category": "financial"
+    },
+    {
+      "id": "halcyon-retroactive-billing",
+      "grade": "PASS",
+      "retrieval_score": 0.5,
+      "answer_score": 1.0,
+      "difficulty": "hard",
+      "category": "billing"
+    },
+    {
+      "id": "halcyon-liability-chain",
+      "grade": "PASS",
+      "retrieval_score": 1.0,
+      "answer_score": 0.8571428571428571,
+      "difficulty": "hard",
+      "category": "liability"
+    },
+    {
+      "id": "halcyon-sow1-completion",
+      "grade": "PASS",
+      "retrieval_score": 0.0,
+      "answer_score": 1.0,
+      "difficulty": "medium",
+      "category": "dates"
+    },
+    {
+      "id": "halcyon-termination",
+      "grade": "PASS",
+      "retrieval_score": 1.0,
+      "answer_score": 1.0,
+      "difficulty": "medium",
+      "category": "termination"
+    }
+  ]
+}

@@ -167,6 +167,7 @@ async def _phase_b_embed_and_index(
                     "counterparty":  (chunk.counterparty or "")[:200],
                     "expiry_date":   chunk.expiry_date or "",
                     "effective_date":chunk.effective_date or "",
+                    "text":          chunk.text[:10000],
                     "text_preview":  chunk.text[:200],
                 }
             ))
