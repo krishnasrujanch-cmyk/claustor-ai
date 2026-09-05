@@ -449,7 +449,7 @@ async def chat_stream(
             # Judge complexity determines pipeline:
             #   complex → structured extraction (thorough)
             #   simple/medium → single-pass LLM (fast)
-            if req.contract_id and _complexity == "complex" and hasattr(context, "chunks") and context.chunks and len(context.chunks) >= 3:
+            if req.contract_id and hasattr(context, "chunks") and context.chunks and len(context.chunks) >= 3:
                 logger.info("structured_pipeline_stream", query=req.query[:50])
                 from app.agents.rag.structured_synthesizer import get_structured_synthesizer
                 _synth = get_structured_synthesizer()
