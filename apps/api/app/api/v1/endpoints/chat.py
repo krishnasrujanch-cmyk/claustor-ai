@@ -445,13 +445,8 @@ async def chat_stream(
                         plan=user.plan, complexity=_complexity,
                         provider=_answerer_cfg["provider"], model=_answerer_cfg["model"])
             # Check if broad query — use structured pipeline
-            _broad_signals = ["key risk", "payment due", "summary", "overview",
-                              "main risk", "important clause", "all risk",
-                              "critical issue", "comprehensive", "analyse",
-                              "analyze", "obligations and risk"]
-            _is_broad = any(s in req.query.lower() for s in _broad_signals)
-
-            if _is_broad and hasattr(context, "chunks") and context.chunks and len(context.chunks) >= 3:
+            # Structured pipeline for ALL single-contract queries
+            if req.contract_id and hasattr(context, "chunks") and context.chunks and len(context.chunks) >= 3:
                 logger.info("structured_pipeline_stream", query=req.query[:50])
                 from app.agents.rag.structured_synthesizer import get_structured_synthesizer
                 _synth = get_structured_synthesizer()

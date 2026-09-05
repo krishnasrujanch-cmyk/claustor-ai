@@ -57,8 +57,8 @@ def validate_grounding(answer: str, context: str) -> GroundingResult:
     # 0. Context-aware number verification
     # For any "N days/months/years" claim, extract the surrounding words
     # and verify the SAME number + context pairing exists in the source.
-    # Prevents cross-contamination (e.g. "30 days to remedy" ≠ "payment due in 30 days")
-    _num_context_pattern = r"(\w+(?:\s+\w+){0,3})\s+(\d+)\s*(days?|months?|years?|weeks?|hours?|business\s+days?)"
+    # Prevents cross-contamination — same number in different clause contexts
+    _num_context_pattern = r"(\w+(?:\s+\w+){0,3})\s+\(?(\d+)\)?\s*(days?|months?|years?|weeks?|hours?|business\s+days?)"
     for _match in re.finditer(_num_context_pattern, answer_lower):
         _preceding = _match.group(1).strip()
         _num = _match.group(2)
