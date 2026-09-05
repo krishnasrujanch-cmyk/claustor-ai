@@ -460,6 +460,12 @@ async def chat_stream(
                     chunks=context.chunks,
                     citations=[],
                 )
+                # Create minimal response object for downstream meta emission
+                class _StructuredResponse:
+                    total_tokens = 0
+                    cost_usd = 0.0
+                    extra = {}
+                response = _StructuredResponse()
             else:
                 response = await router_llm.complete(
                     messages=messages,
