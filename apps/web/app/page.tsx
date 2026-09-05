@@ -304,13 +304,13 @@ function DemoPopup({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async () => {
     try {
-      await fetch(`${API}/api/v1/billing/enterprise/contact`, {
+      await fetch(`${API}/api/v1/contact/inquiry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           business_name: form.company,
           contact_name: form.name,
-          business_email: form.email,
+          email: form.email,
           company_size: form.size,
           message: `Demo request. Use case: ${form.usecase}`,
           industry: form.usecase,
@@ -446,13 +446,13 @@ function EnterprisePopup({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async () => {
     try {
-      await fetch(`${API}/api/v1/billing/enterprise/contact`, {
+      await fetch(`${API}/api/v1/contact/inquiry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           business_name:  form.company,
           contact_name:   form.name,
-          business_email: form.email,
+          email: form.email,
           company_size:   form.size,
           message:        form.message || "Enterprise plan inquiry from landing page",
           industry:       "enterprise",

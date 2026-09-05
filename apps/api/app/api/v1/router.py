@@ -17,6 +17,7 @@ from app.api.v1.endpoints.observability import router as observability_router
 from app.api.v1.endpoints.playbook import router as playbook_router
 from app.api.v1.endpoints.roles import router as roles_router
 from app.api.v1.endpoints.reports import router as reports_router
+from app.api.v1.endpoints.contact import router as contact_router
 from app.api.v1.endpoints.insights import router as insights_router
 from app.api.v1.endpoints.notifications import router as notifications_router
 from app.api.v1.endpoints.industry import router as industry_router
@@ -50,3 +51,4 @@ api_router.include_router(api_keys_router,  prefix="/api-keys",  tags=["api-keys
 api_router.include_router(canary_router)
 api_router.include_router(observability_router)
 api_router.include_router(reports_router)
+api_router.include_router(contact_router)
