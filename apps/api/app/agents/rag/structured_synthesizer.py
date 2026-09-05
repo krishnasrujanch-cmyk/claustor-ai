@@ -46,7 +46,23 @@ RULES:
 - Use EXACT numbers from the text — never approximate
 - If a provision applies to BOTH parties equally, set direction to "mutual"
 - If you cannot determine obligor/beneficiary, set both to "unclear"
-- Return ONLY a valid JSON array. No markdown, no explanation, no preamble."""
+- Return ONLY a valid JSON array. No markdown, no explanation, no preamble.
+
+DOCUMENT METADATA — IGNORE THESE (they are NOT contractual content):
+- Law firm names, solicitor names, or preparer attributions
+- Page headers, footers, page numbers, watermarks
+- Matter references, file numbers, document IDs
+- Confidentiality markings or classification labels
+- "Prepared by", "Drafted by", or similar attributions
+These entities are NOT contracting parties and must NEVER appear as obligor or beneficiary.
+
+SECTION CONTEXT — PRESERVE THIS:
+- If the chunk mentions a specific section, schedule, exhibit, or statement of work,
+  include it in clause_ref (e.g. "SOW-1 Table 4", "Schedule 2 SL-01")
+- Do NOT merge facts from different sections into a single extraction
+- Each section/schedule/statement of work should produce separate fact entries
+- Dates, milestones, and amounts belong to the specific section they appear in —
+  do not combine across sections"""
 
 # ── Step 2: Party Comparison Prompt ───────────────────────
 
@@ -73,6 +89,11 @@ Focus on:
 - Obligations that apply to only one party
 - Caps or limits that apply differently
 - Mechanisms that favour one party (retroactive billing, deemed acceptance, etc.)
+
+IMPORTANT:
+- Only compare the actual CONTRACTING PARTIES (the parties who signed the agreement)
+- Ignore law firms, preparers, or other entities mentioned in document metadata
+- If a party name appears only in footers, headers, or "prepared by" text, it is NOT a contracting party
 
 Return ONLY a valid JSON array. No markdown, no explanation."""
 
@@ -259,6 +280,10 @@ class StructuredSynthesizer:
         answer = re.sub(r"\[Asymmetries\]", "", answer)
         answer = re.sub(r"\[Chunk (\d+)\]", r"[\1]", answer)
         answer = re.sub(r"The asymmetry analysis[^.]*\.", "", answer)
+        answer = re.sub(r"\[asymmetry analysis[^\]]*\]", "", answer, flags=re.IGNORECASE)
+        answer = re.sub(r'and\s+"+"\s+asymmetry', "", answer)
+        answer = re.sub(r'Classified as[^.]*severity[^.]*\.', "", answer)
+        answer = re.sub(r'"+"\s+(?:asymmetry|severity)', "", answer)
         answer = re.sub(r"  +", " ", answer)
         answer = re.sub(r"\n{3,}", "\n\n", answer)
         return answer.strip()

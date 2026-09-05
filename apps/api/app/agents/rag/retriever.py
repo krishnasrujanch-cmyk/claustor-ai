@@ -88,21 +88,30 @@ class RAGRetriever:
         top_k = TOP_K_LIMITS.get(plan, 4)
         context_limit = CONTEXT_LIMITS.get(plan, 4000)
 
-        # Multi-query hybrid search — decomposes broad queries
-        chunks = await self._multi_query_search(
-            query=query,
-            org_id=org_id,
-            db=db,
-            contract_id=contract_id,
-            top_k=top_k,
-            clause_type=clause_type,
-            raw_query=raw_query,
-        )
+        # Broad queries: load ALL chunks for the contract, then rerank
+        # Focused queries: search-based retrieval, then rerank
+        _broad_signals = [
+            " and ", " & ", "key risk", "summary", "overview",
+            "all ", "main ", "important ", "critical ",
+            "comprehensive", "analyse", "analyze",
+        ]
+        _is_broad = any(s in query.lower() for s in _broad_signals)
 
-        # Rerank — reorder by actual relevance, reduce to focused set
-        if chunks:
-            rerank_n = min(top_k + 5, 15)  # cap at 15 focused chunks
-            chunks = await self._rerank(query, chunks, top_n=rerank_n)
+        if _is_broad and contract_id:
+            chunks = await self._retrieve_all_chunks(db, contract_id)
+            if chunks:
+                chunks = await self._rerank(query, chunks, top_n=min(len(chunks), 20))
+                logger.info("broad_full_retrieval",
+                             query=query[:50], total_chunks=len(chunks))
+        else:
+            chunks = await self.hybrid_engine.search(
+                query=query, org_id=org_id, db=db,
+                contract_id=contract_id, top_k=top_k,
+                clause_type=clause_type, raw_query=raw_query,
+            )
+            if chunks:
+                chunks = await self._rerank(
+                    query, chunks, top_n=min(len(chunks), top_k + 5))
 
         if not chunks:
             logger.warning(
@@ -174,91 +183,46 @@ class RAGRetriever:
         )
 
 
-    async def _decompose_query(self, query: str) -> list[str]:
+    async def _retrieve_all_chunks(self, db, contract_id) -> list:
         """
-        Decompose a broad query into focused sub-queries.
-        Uses contract type profile expected clauses for deterministic
-        decomposition. No LLM call, no hardcoded terms.
-        Focused queries bypass decomposition entirely.
+        Load ALL chunks for a specific contract from the database.
+        Used for broad analytical queries where the entire contract
+        is the analysis scope — no search filtering.
         """
-        broad_signals = [
-            " and ", " & ", "key risk", "summary", "overview",
-            "all ", "main ", "important ", "critical ",
-            "comprehensive", "analyse", "analyze",
-        ]
-        is_broad = len(query.split()) > 8 or any(s in query.lower() for s in broad_signals)
-        if not is_broad:
-            return [query]
-
-        # Build sub-queries from contract type profiles — no hardcoding
-        sub_queries = [query]
         try:
-            from app.agents.profiles.contract_types import CONTRACT_TYPE_PROFILES
-            all_clauses = set()
-            for profile in CONTRACT_TYPE_PROFILES.values():
-                all_clauses.update(profile.get("expected_clauses", []))
-            clause_list = sorted(all_clauses)
-            for i in range(0, len(clause_list), 4):
-                batch = clause_list[i:i+4]
-                sub_query = " ".join(c.replace("_", " ") for c in batch)
-                sub_queries.append(sub_query)
-        except Exception:
-            pass
-
-        sub_queries = sub_queries[:6]
-        logger.info("query_decomposed", original=query[:50], sub_queries=len(sub_queries))
-        return sub_queries
-
-    async def _multi_query_search(
-        self,
-        query: str,
-        org_id: UUID,
-        db: AsyncSession,
-        contract_id: UUID | None,
-        top_k: int,
-        clause_type: str | None,
-        raw_query: str | None,
-    ) -> list[HybridSearchResult]:
-        """
-        Run multiple focused searches and merge results.
-        Deduplicates by chunk text, keeps highest score.
-        """
-        sub_queries = await self._decompose_query(query)
-
-        if len(sub_queries) <= 1:
-            return await self.hybrid_engine.search(
-                query=query, org_id=org_id, db=db,
-                contract_id=contract_id, top_k=top_k,
-                clause_type=clause_type, raw_query=raw_query,
-            )
-
-        # Run all sub-queries
-        all_chunks: list[HybridSearchResult] = []
-        seen_texts: set[str] = set()
-
-        for sq in sub_queries:
-            chunks = await self.hybrid_engine.search(
-                query=sq, org_id=org_id, db=db,
-                contract_id=contract_id, top_k=top_k,
-                clause_type=clause_type, raw_query=raw_query,
-            )
-            for chunk in chunks:
-                # Deduplicate by text preview (first 200 chars)
-                key = chunk.text[:200]
-                if key not in seen_texts:
-                    seen_texts.add(key)
-                    all_chunks.append(chunk)
-
-        # Sort by RRF score descending, take top results
-        all_chunks.sort(key=lambda c: c.rrf_score, reverse=True)
-        result = all_chunks[:top_k + 5]  # slightly more for broad queries
-
-        logger.info("multi_query_results",
-                     sub_queries=len(sub_queries),
-                     total_chunks=len(all_chunks),
-                     deduped=len(result))
-        return result
-
+            from sqlalchemy import text as sa_text
+            r = await db.execute(sa_text(
+                "SELECT text, chunk_type "
+                "FROM contract_chunks "
+                "WHERE contract_id = :cid "
+                "AND chunk_type != 'signature' "
+                "AND is_parent = false "
+                "ORDER BY chunk_index"
+            ), {"cid": str(contract_id)})
+            rows = r.fetchall()
+            if not rows:
+                return []
+            chunks = []
+            for row in rows:
+                if not row[0] or len(row[0].strip()) < 50:
+                    continue
+                chunks.append(HybridSearchResult(
+                    text=row[0],
+                    contract_id=str(contract_id),
+                    clause_type=row[1] or "",
+                    page=None,
+                    rrf_score=1.0,
+                    source="db_full",
+                    keyword_score=0.0,
+                    semantic_score=0.0,
+                ))
+            logger.info("all_chunks_loaded",
+                         contract_id=str(contract_id),
+                         count=len(chunks))
+            return chunks
+        except Exception as e:
+            logger.warning("all_chunks_load_failed", error=str(e)[:100])
+            return []
 
     async def _rerank(self, query: str, chunks: list, top_n: int = 12) -> list:
         """
