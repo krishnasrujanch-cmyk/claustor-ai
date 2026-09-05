@@ -239,6 +239,20 @@ class ChatAgent:
         if ctx_truncated:
             logger.warning("copilot_context_truncated", org_id=str(org_id))
 
+        # Load contract-type + industry profile for guided analysis
+        _profile_ctx = ""
+        try:
+            from app.agents.profiles.profile_loader import build_analysis_context
+            _contract_type = getattr(context, "contract_type", None) or "Other"
+            _industry = getattr(context, "industry", None) or "general"
+            _profile_ctx = build_analysis_context(
+                contract_type=_contract_type,
+                industry=_industry,
+                role="neutral",
+            )
+        except Exception as _pe:
+            logger.warning("profile_load_failed", error=str(_pe)[:80])
+
         messages = self._build_messages(
             query=query,
             context=safe_context,
@@ -246,6 +260,7 @@ class ChatAgent:
             summary=mem_ctx.get("summary"),
             review_status=review_status,
             review_notes=review_notes,
+            profile_context=_profile_ctx,
         )
 
         # ── Step 6: Generate Answer ───────────────────
@@ -413,6 +428,7 @@ RULES:
         summary: str | None = None,
         review_status: str | None = None,
         review_notes: str | None = None,
+        profile_context: str = "",
         user_role: str = "admin",  # default to admin — only restrict if explicitly viewer
     ) -> list[LLMMessage]:
         """Build message list for LLM with context + history."""
@@ -436,6 +452,13 @@ Instead use:
 - For risk details: give only High/Medium/Low level summary
 - Focus on clause summaries, dates, and obligations only
 """
+        if profile_context:
+            system += f"""
+CONTRACT ANALYSIS PROFILE:
+{profile_context}
+Use this profile to guide your analysis — check for expected clauses,
+flag missing ones, and apply the industry-specific risk lens."""
+
         if review_status == "rejected":
             system += f"""
 
