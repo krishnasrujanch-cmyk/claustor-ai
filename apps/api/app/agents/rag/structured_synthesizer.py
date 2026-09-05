@@ -245,6 +245,16 @@ class StructuredSynthesizer:
             cleaned.append(line)
         return "\n".join(cleaned)
 
+    def _detect_clause_refs(self, text: str) -> str:
+        """Detect clause/section numbers in chunk text and prepend as context."""
+        import re
+        # Find all clause-style references: "6.3", "16.2", "Clause 9.8", etc.
+        refs = re.findall(r'(?:^|\s)(\d{1,3}\.\d{1,2})\s', text)
+        unique_refs = sorted(set(refs), key=lambda x: float(x) if '.' in x else 0)
+        if unique_refs:
+            return f"[CLAUSES IN THIS CHUNK: {', '.join(unique_refs[:10])}]\n\n{text}"
+        return text
+
     async def _extract_facts(self, chunks: list) -> list[dict]:
         """Step 1: Extract structured facts from each chunk."""
         all_facts = []
@@ -254,6 +264,8 @@ class StructuredSynthesizer:
             chunk_text = self._strip_document_metadata(chunk_text)
             if len(chunk_text.strip()) < 50:
                 continue
+            # Enrich with detected clause numbers
+            chunk_text = self._detect_clause_refs(chunk_text)
 
             prompt = EXTRACT_PROMPT.format(
                 chunk_num=i + 1,
