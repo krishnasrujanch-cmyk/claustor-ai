@@ -444,14 +444,31 @@ async def chat_stream(
             logger.info("stream_answerer_routing",
                         plan=user.plan, complexity=_complexity,
                         provider=_answerer_cfg["provider"], model=_answerer_cfg["model"])
-            response = await router_llm.complete(
-                messages=messages,
-                role=AgentRole.ANSWERER,
-                json_mode=False,
-                preferred_provider=_answerer_cfg["provider"],
-                preferred_model=_answerer_cfg["model"],
-            )
-            full_answer = response.content
+            # Check if broad query — use structured pipeline
+            _broad_signals = ["key risk", "payment due", "summary", "overview",
+                              "main risk", "important clause", "all risk",
+                              "critical issue", "comprehensive", "analyse",
+                              "analyze", "obligations and risk"]
+            _is_broad = any(s in req.query.lower() for s in _broad_signals)
+
+            if _is_broad and chunks and len(chunks) >= 3:
+                logger.info("structured_pipeline_stream", query=req.query[:50])
+                from app.agents.rag.structured_synthesizer import get_structured_synthesizer
+                _synth = get_structured_synthesizer()
+                full_answer = await _synth.synthesize(
+                    query=req.query.strip(),
+                    chunks=chunks,
+                    citations=[],
+                )
+            else:
+                response = await router_llm.complete(
+                    messages=messages,
+                    role=AgentRole.ANSWERER,
+                    json_mode=False,
+                    preferred_provider=_answerer_cfg["provider"],
+                    preferred_model=_answerer_cfg["model"],
+                )
+                full_answer = response.content
             # Grounding validation
             try:
                 from app.agents.profiles.grounding_validator import validate_grounding, add_grounding_disclaimer

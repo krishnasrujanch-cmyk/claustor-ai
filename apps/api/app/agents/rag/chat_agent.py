@@ -271,7 +271,7 @@ class ChatAgent:
                           "analyze", "obligations and risk"]
         _is_broad = any(s in query.lower() for s in _broad_signals)
 
-        if False and _is_broad and context.chunks and len(context.chunks) >= 2:  # disabled: single-pass with strict prompt works better
+        if _is_broad and context.chunks and len(context.chunks) >= 3:
             logger.info("map_reduce_triggered", query=query[:50], chunks=len(context.chunks))
             reduce_prompt = await self._map_reduce_synthesis(
                 query=query,
