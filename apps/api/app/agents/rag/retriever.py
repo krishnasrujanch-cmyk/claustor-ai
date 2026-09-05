@@ -70,6 +70,7 @@ class RAGRetriever:
         contract_id: UUID | None = None,
         clause_type: str | None = None,
         raw_query: str | None = None,
+        complexity: str = "simple",
     ) -> RetrievedContext:
         """
         Retrieve relevant context for a query.
@@ -85,7 +86,12 @@ class RAGRetriever:
         Returns:
             RetrievedContext with formatted text + citations
         """
-        top_k = TOP_K_LIMITS.get(plan, 4)
+        base_top_k = TOP_K_LIMITS.get(plan, 4)
+        # Complexity adjusts rerank depth:
+        #   simple: fewer chunks = focused context, less noise
+        #   complex: more chunks = thorough coverage
+        _complexity_multiplier = {"simple": 0.5, "medium": 1.0, "complex": 1.5}
+        top_k = max(4, int(base_top_k * _complexity_multiplier.get(complexity, 1.0)))
         context_limit = CONTEXT_LIMITS.get(plan, 4000)
 
 

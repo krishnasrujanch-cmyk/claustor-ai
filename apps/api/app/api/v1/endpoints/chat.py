@@ -380,6 +380,7 @@ async def chat_stream(
 
             # ── Step 4: Vector Search + Reranker (if needed) ──
             if judge.needs_vector:
+                _judge_complexity = getattr(judge, "complexity", "simple") if judge else "simple"
                 context = await agent.retriever.retrieve(
                     query=retrieval_query,
                     org_id=user.org_id,
@@ -387,6 +388,7 @@ async def chat_stream(
                     plan=user.plan,
                     contract_id=_scoped_contract_id,
                     raw_query=raw_query,
+                    complexity=_judge_complexity,
                 )
                 try:
                     from app.agents.rag.reranker import rerank_chunks

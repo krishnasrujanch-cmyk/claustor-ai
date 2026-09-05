@@ -120,6 +120,7 @@ class ChatAgent:
         plan: str = "starter",
         contract_id: UUID | None = None,
         conversation_id: UUID | None = None,
+        judge_complexity: str = "simple",
     ) -> ChatResponse:
         """
         Process a chat query and return an answer with citations.
@@ -189,6 +190,7 @@ class ChatAgent:
             db=db,
             plan=plan,
             contract_id=contract_id,
+            complexity=judge_complexity,
         )
 
         # ── Step 3: Load Conversation History (with memory) ──
