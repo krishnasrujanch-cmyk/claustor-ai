@@ -478,7 +478,8 @@ class ContractPipeline:
                     from google.cloud import storage as gcs_lib
                     from google.auth import default as _gauth_default2
                     _creds2, _proj2 = _gauth_default2()
-                    client = gcs_lib.Client(project=_proj2 or "claustor-ai-prod", credentials=_creds2)
+                    from app.core.config import settings as _s2
+                    client = gcs_lib.Client(project=_proj2 or _s2.GCP_PROJECT, credentials=_creds2)
                     parts = stored_path.replace("gs://", "").split("/", 1)
                     blob = client.bucket(parts[0]).blob(parts[1])
                     data = await asyncio.get_event_loop().run_in_executor(
