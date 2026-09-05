@@ -101,13 +101,15 @@ def detect_section_type(text: str) -> str:
     first_line = text.strip().split('\n')[0].upper()
     if SIGNATURE_PATTERN.search(text[:500]):
         return CHUNK_TYPE_SIGNATURE
+    # Check table BEFORE appendix — a schedule containing a table
+    # should be chunked as table (per-row) not as appendix (single block)
+    # Count lines that look like table rows (contain 2+ pipe separators)
+    _lines = text.strip().split('\n')
+    _pipe_lines = [l for l in _lines if l.count('|') >= 3]
+    if len(_pipe_lines) >= 3:  # header + separator + at least 1 data row
+        return CHUNK_TYPE_TABLE
     if re.match(r'^(?:SCHEDULE|EXHIBIT|ANNEX|APPENDIX)\s+', first_line):
         return CHUNK_TYPE_APPENDIX
-    # Only classify as table if majority of content is table rows
-    table_matches = TABLE_ROW_PATTERN.findall(text)
-    table_chars = sum(len(m[0] or m[1]) for m in table_matches)
-    if table_chars > len(text) * 0.4:
-        return CHUNK_TYPE_TABLE
     return CHUNK_TYPE_CLAUSE
 
 
@@ -151,13 +153,27 @@ def table_to_json(text: str) -> Optional[dict]:
     """Convert markdown table to JSON rows."""
     lines = [l.strip() for l in text.strip().split('\n')
              if l.strip() and not re.match(r'^\|[-:]+\|', l)]
-    if not lines or '|' not in lines[0]:
+    if not lines:
         return None
-    headers = [h.strip() for h in lines[0].strip('|').split('|') if h.strip()]
+    # Skip non-table lines (headings, blanks) to find the header row
+    header_idx = None
+    for i, line in enumerate(lines):
+        if '|' in line:
+            header_idx = i
+            break
+    if header_idx is None:
+        return None
+    headers = [h.strip() for h in lines[header_idx].strip('|').split('|') if h.strip()]
+    if not headers:
+        return None
     rows = []
-    for line in lines[1:]:
+    for line in lines[header_idx + 1:]:
+        if '|' not in line:
+            continue
         cells = [c.strip() for c in line.strip('|').split('|')]
         if cells and len(cells) == len(headers):
+            if all(re.match(r'^[-:]+$', c) for c in cells if c):
+                continue
             rows.append(dict(zip(headers, cells)))
     return {"headers": headers, "rows": rows} if rows else None
 
@@ -235,9 +251,7 @@ def build_hierarchical_chunks(
                 _header_line = " | ".join(_headers)
                 for _row in _parsed["rows"]:
                     _row_text = " | ".join(str(_row.get(h, "")) for h in _headers)
-                    _chunk_text = f"{heading or ''}
-{_header_line}
-{_row_text}"
+                    _chunk_text = f"{heading or ''}\n{_header_line}\n{_row_text}"
                     child_id = uuid4()
                     child = ContractChunkData(
                         chunk_id=child_id,

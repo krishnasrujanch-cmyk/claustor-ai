@@ -30,7 +30,7 @@ CHUNK [{chunk_num}]:
 
 Return a JSON array of objects. Each object represents ONE clause or provision:
 {{
-  "clause_ref": "the clause/section number if stated, or 'unstated'",
+  "clause_ref": "clause number, section number, table name, schedule reference, or row identifier — use whatever reference appears in the text",
   "topic": "one of: payment, liability, indemnity, termination, renewal, service_level, ip, data_protection, confidentiality, insurance, force_majeure, acceptance, billing, compliance, other",
   "obligor": "the party who MUST do something — use the EXACT name from the text",
   "beneficiary": "the party who BENEFITS — use the EXACT name from the text",
@@ -139,8 +139,8 @@ Produce a comprehensive answer with these sections:
 Convert all internal references to simple numbered citations: [Chunk 1] becomes [1], [Chunk 2] becomes [2], etc.
 Never expose internal field names, JSON keys, classification labels, or analysis methodology in the answer.
 State conclusions directly — never narrate the analysis process.
-Every claim must have a citation — if a fact has no clause reference, omit it entirely.
-Never include a fact marked as "unstated" or without a specific clause/section reference.
+Every claim must have a citation where available.
+For table data without clause numbers, cite the table or schedule name instead.
 Never repeat the same point.
 Never contradict yourself — if two facts seem to conflict, present both and explain.
 
@@ -205,11 +205,10 @@ class StructuredSynthesizer:
             logger.warning("structured_no_facts_extracted")
             return ""
 
-        # Remove facts that could not be properly attributed
+        # Remove facts with no useful content (but keep table rows)
         all_facts = [
             f for f in all_facts
-            if f.get("clause_ref", "unstated").lower() != "unstated"
-            and f.get("obligor", "unclear").lower() != "unclear"
+            if f.get("provision") or f.get("amounts")
         ]
         logger.info("structured_facts_extracted", count=len(all_facts))
 

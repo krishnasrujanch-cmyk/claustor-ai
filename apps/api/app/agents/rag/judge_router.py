@@ -95,9 +95,9 @@ Return ONLY this JSON (no markdown):
 COMPLEXITY RULES:
 - "simple":  single fact, single clause, direct lookup, metadata query
   e.g. "GSTIN", "CIN", "PAN", "VAT number", "company registration", "tax ID", "EIN", "UEN", "ABN" → needs_db=true, needs_vector=false, db_query_type="party_identifier"
-- "when does this expire", "what is the value", "list payment terms"
-- "medium":  multi-clause, comparison, summary, explanation needed
-  e.g. "explain the termination conditions", "what are the key risks"
+- "when does this expire", "what is the value", "what does SL-08 cover"
+- "medium":  multi-clause, comparison, summary, listing all items of a type, explanation needed
+  e.g. "explain the termination conditions", "what are the key risks", "list all service levels", "share all payment terms", "show all obligations"
 - "complex": multi-contract reasoning, legal analysis, cross-reference chains,
   ambiguous language, risk assessment, "what happens if X AND Y", 
   comparative legal opinion
