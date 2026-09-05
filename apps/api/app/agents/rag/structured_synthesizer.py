@@ -252,7 +252,26 @@ class StructuredSynthesizer:
         For simple/medium queries: answer ONLY the question asked
         using extracted facts. No full risk report.
         """
-        facts_json = json.dumps(facts[:30], indent=2)
+        # Filter facts by query relevance — extract key words from query
+        # and score each fact by how many query words it contains
+        _stop = set("what does is the a an in of for to and or this that how are can my our about cover mean say do it".split())
+        _qwords = [w.lower().strip("?,. ") for w in query.split() if w.lower().strip("?,. ") not in _stop and len(w.strip("?,. ")) > 2]
+        
+        if _qwords:
+            scored = []
+            for f in facts:
+                f_text = json.dumps(f).lower()
+                score = sum(1 for w in _qwords if w in f_text)
+                if score > 0:
+                    scored.append((score, f))
+            scored.sort(key=lambda x: -x[0])
+            relevant_facts = [f for _, f in scored[:30]]
+            if not relevant_facts:
+                relevant_facts = facts[:30]
+        else:
+            relevant_facts = facts[:30]
+        
+        facts_json = json.dumps(relevant_facts, indent=2)
 
         prompt = f"""You have these extracted contract facts. Answer ONLY the specific question asked.
 
