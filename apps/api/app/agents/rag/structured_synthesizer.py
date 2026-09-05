@@ -58,7 +58,7 @@ These entities are NOT contracting parties and must NEVER appear as obligor or b
 
 SECTION CONTEXT — PRESERVE THIS:
 - If the chunk mentions a specific section, schedule, exhibit, or statement of work,
-  include it in clause_ref (e.g. "Statement of Work 1, Table 4", "Schedule 2, Item 01")
+  include it in clause_ref (e.g. "Section 3.2", "Appendix A, Table 1")
 - Do NOT merge facts from different sections into a single extraction
 - Each section/schedule/statement of work should produce separate fact entries
 - Dates, milestones, and amounts belong to the specific section they appear in —
@@ -150,8 +150,7 @@ CRITICAL — ABSENCE vs NOT RETRIEVED:
   it does NOT mean the contract lacks that provision.
 - NEVER say "no [provision] exists" or "the contract does not contain [provision]."
 - NEVER draw legal conclusions from the absence of extracted facts 
-  (e.g., "the absence of remedy caps creates exposure" is WRONG if you simply 
-  did not extract the remedy cap clause).
+  (e.g., concluding that a provision does not exist because it was not extracted is WRONG).
 - Instead say: "No [provision] was identified in the analysed sections. 
   The full contract should be reviewed for this topic."
 - NEVER speculate about what a clause "typically" contains. If you do not have
