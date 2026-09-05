@@ -160,6 +160,9 @@ class StructuredSynthesizer:
         # Step 3: Risk assessment + final answer
         answer = await self._assess_risks(query, all_facts, asymmetries)
 
+        # Step 3b: Clean internal metadata from answer
+        answer = self._clean_metadata(answer)
+
         # Step 4: Grounding validation (code, no LLM)
         answer = self._ground_check(answer, chunks)
 
@@ -240,11 +243,36 @@ class StructuredSynthesizer:
             result = await self.llm.complete(
                 messages=[LLMMessage(role="user", content=prompt)],
                 role=AgentRole.ANSWERER,
+                max_tokens=4000,
             )
             return result.content
         except Exception as e:
             logger.error("risk_assessment_failed", error=str(e)[:80])
             return ""
+
+    def _clean_metadata(self, answer: str) -> str:
+        """Remove any leaked internal labels from the answer."""
+        import re
+        # Remove JSON-style internal labels that may leak from extraction
+        patterns = [
+            r"favors?_(?:obligor|beneficiary|party_[ab])",
+            r"asymmetry_type",
+            r"source_chunk",
+            r"\[Asymmetries\]",
+            r"\[Chunk \d+\]",
+            r"The asymmetry analysis (?:identifies|confirms|shows).*?\.",
+        ]
+        for p in patterns:
+            answer = re.sub(p, "", answer, flags=re.IGNORECASE)
+        # Convert [Chunk N] to [N]
+        answer = re.sub(r"\[Chunk (\d+)\]", r"[]", answer)
+        # Clean up double spaces and empty lines
+        answer = re.sub(r"  +", " ", answer)
+        answer = re.sub(r"
+{3,}", "
+
+", answer)
+        return answer.strip()
 
     def _ground_check(self, answer: str, chunks: list) -> str:
         """Step 4: Validate party directions and amounts against source text."""
