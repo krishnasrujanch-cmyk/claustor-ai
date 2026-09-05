@@ -268,6 +268,286 @@ INDUSTRY_PLAYBOOKS = {
             "regulatory inspection cooperation, and record retention (15+ years)."
         ),
     },
+
+    "energy_oil_gas": {
+        "display_name": "Energy / Oil & Gas",
+        "risk_multipliers": {
+            "liability_cap": 2.0,
+            "indemnification": 2.0,
+            "insurance": 2.0,
+            "force_majeure": 1.5,
+            "regulatory_compliance": 2.0,
+            "termination": 1.5,
+            "warranties": 1.5,
+            "environmental": 2.5,
+        },
+        "mandatory_clauses": [
+            "environmental_compliance",
+            "health_safety",
+            "insurance",
+            "indemnification",
+            "decommissioning",
+            "regulatory_compliance",
+            "force_majeure",
+            "change_in_law",
+            "liquidated_damages",
+            "performance_guarantees",
+        ],
+        "regulatory_frameworks": ["PNGRB", "MoPNG", "EPA", "OSHA", "ISO 14001", "ISO 45001"],
+        "red_flags": [
+            "No environmental liability clause",
+            "Decommissioning costs not allocated",
+            "Insurance below industry minimum",
+            "No change-in-law adjustment mechanism",
+            "Force majeure excludes regulatory changes",
+            "No health and safety obligations",
+            "Liquidated damages uncapped",
+            "No performance guarantee or bond",
+        ],
+        "analysis_guidance": (
+            "Energy/Oil & Gas contracts require: environmental liability and remediation, "
+            "health and safety (HSE) obligations, decommissioning cost allocation, "
+            "change-in-law provisions, performance guarantees/bonds, insurance adequacy "
+            "(CGL, pollution, well control), force majeure (including sanctions), "
+            "and liquidated damages for delay/underperformance."
+        ),
+    },
+    "telecom": {
+        "display_name": "Telecommunications",
+        "risk_multipliers": {
+            "service_levels": 2.0,
+            "data_protection": 1.5,
+            "regulatory_compliance": 2.0,
+            "liability_cap": 1.5,
+            "termination": 1.5,
+            "business_continuity": 1.5,
+            "interconnection": 2.0,
+        },
+        "mandatory_clauses": [
+            "service_levels",
+            "network_availability",
+            "interconnection",
+            "number_portability",
+            "data_protection",
+            "regulatory_compliance",
+            "business_continuity",
+            "disaster_recovery",
+            "spectrum_rights",
+        ],
+        "regulatory_frameworks": ["TRAI", "DoT", "ITU", "FCC", "GDPR", "DPDP Act"],
+        "red_flags": [
+            "SLA below 99.9% for critical infrastructure",
+            "No disaster recovery or redundancy clause",
+            "Interconnection terms not TRAI-compliant",
+            "No number portability provisions",
+            "Data retention exceeds regulatory limits",
+            "No spectrum sharing/usage restrictions",
+        ],
+        "analysis_guidance": (
+            "Telecom contracts: focus on network SLAs and availability (99.9%+), "
+            "interconnection terms, number portability, spectrum rights, "
+            "TRAI/DoT regulatory compliance, disaster recovery and redundancy, "
+            "data retention and lawful intercept obligations."
+        ),
+    },
+    "government": {
+        "display_name": "Government / Public Sector",
+        "risk_multipliers": {
+            "regulatory_compliance": 2.5,
+            "termination": 2.0,
+            "audit_rights": 2.0,
+            "data_protection": 2.0,
+            "liability_cap": 1.5,
+            "indemnification": 1.5,
+            "transparency": 2.0,
+        },
+        "mandatory_clauses": [
+            "transparency_disclosure",
+            "audit_rights",
+            "anti_corruption",
+            "data_sovereignty",
+            "termination_for_convenience",
+            "security_clearance",
+            "local_content",
+            "performance_bank_guarantee",
+            "liquidated_damages",
+            "dispute_resolution_arbitration",
+        ],
+        "regulatory_frameworks": ["GFR", "CVC Guidelines", "RTI Act", "GeM", "PPP Policy", "FAR (US)"],
+        "red_flags": [
+            "No anti-corruption / integrity pact clause",
+            "Government termination for convenience without compensation",
+            "No data sovereignty / local hosting requirement",
+            "Performance bank guarantee below 10% of contract value",
+            "No provision for RTI / transparency compliance",
+            "Dispute resolution not through arbitration",
+            "No local content / Make in India compliance",
+            "Liquidated damages exceed 10% of contract value",
+        ],
+        "analysis_guidance": (
+            "Government contracts: focus on termination for convenience (sovereign right), "
+            "anti-corruption/integrity pact, audit and CAG access, data sovereignty, "
+            "performance bank guarantees, liquidated damages caps, "
+            "GeM/procurement compliance, transparency/RTI obligations, "
+            "and security clearance requirements."
+        ),
+    },
+    "insurance": {
+        "display_name": "Insurance",
+        "risk_multipliers": {
+            "regulatory_compliance": 2.5,
+            "data_protection": 2.0,
+            "confidentiality": 2.0,
+            "liability_cap": 1.5,
+            "audit_rights": 2.0,
+            "outsourcing": 2.0,
+            "business_continuity": 1.5,
+        },
+        "mandatory_clauses": [
+            "regulatory_compliance",
+            "policyholder_data_protection",
+            "outsourcing_guidelines",
+            "audit_rights",
+            "business_continuity",
+            "complaints_handling",
+            "anti_money_laundering",
+            "solvency_reporting",
+            "claims_handling",
+        ],
+        "regulatory_frameworks": ["IRDAI", "Solvency II", "NAIC", "AML/KYC", "DPDP Act"],
+        "red_flags": [
+            "Outsourcing without IRDAI compliance",
+            "No policyholder data protection clause",
+            "Claims handling SLA not defined",
+            "No anti-money laundering obligations",
+            "Business continuity plan not required",
+            "Audit rights exclude regulatory access",
+        ],
+        "analysis_guidance": (
+            "Insurance contracts: focus on IRDAI outsourcing guidelines compliance, "
+            "policyholder data protection, claims handling SLAs, "
+            "anti-money laundering/KYC obligations, solvency reporting, "
+            "complaints handling process, and regulatory audit access."
+        ),
+    },
+    "media_entertainment": {
+        "display_name": "Media & Entertainment",
+        "risk_multipliers": {
+            "intellectual_property": 2.5,
+            "licensing": 2.0,
+            "confidentiality": 1.5,
+            "termination": 1.5,
+            "indemnification": 1.5,
+            "moral_rights": 2.0,
+        },
+        "mandatory_clauses": [
+            "ip_ownership",
+            "license_grant",
+            "territory_and_term",
+            "royalties",
+            "moral_rights",
+            "content_approval",
+            "representations_warranties",
+            "indemnification",
+            "distribution_rights",
+            "sequel_derivative_rights",
+        ],
+        "regulatory_frameworks": ["Copyright Act", "CBFC", "IT Act", "DMCA", "WIPO"],
+        "red_flags": [
+            "IP assignment with no reversion clause",
+            "Perpetual licence with no termination trigger",
+            "No moral rights waiver or retention clause",
+            "Territory defined as 'worldwide' without exclusions",
+            "Royalty audit rights not specified",
+            "No content approval process",
+            "Sequel/derivative rights assigned without additional compensation",
+        ],
+        "analysis_guidance": (
+            "Media contracts: focus on IP ownership vs licence, territory and term, "
+            "royalty structure and audit rights, moral rights, content approval process, "
+            "sequel/derivative/remake rights, distribution platform restrictions, "
+            "and reversion of rights on termination."
+        ),
+    },
+    "education": {
+        "display_name": "Education / EdTech",
+        "risk_multipliers": {
+            "data_protection": 2.5,
+            "intellectual_property": 1.5,
+            "regulatory_compliance": 1.5,
+            "accessibility": 2.0,
+            "content_licensing": 1.5,
+        },
+        "mandatory_clauses": [
+            "student_data_protection",
+            "content_licensing",
+            "accessibility_compliance",
+            "ip_ownership",
+            "service_levels",
+            "termination",
+            "data_portability",
+            "content_accuracy",
+        ],
+        "regulatory_frameworks": ["FERPA", "COPPA", "NEP 2020", "UGC Guidelines", "AICTE", "DPDP Act"],
+        "red_flags": [
+            "No student data protection / FERPA compliance",
+            "Content licensing allows commercial reuse without consent",
+            "No accessibility compliance (WCAG/Section 508)",
+            "Student data used for advertising or profiling",
+            "No data portability on contract termination",
+            "No content accuracy warranty",
+        ],
+        "analysis_guidance": (
+            "Education contracts: focus on student data protection (FERPA/COPPA), "
+            "content licensing scope, accessibility compliance (WCAG), "
+            "data portability on exit, prohibition on student data monetisation, "
+            "content accuracy and update obligations."
+        ),
+    },
+    "construction": {
+        "display_name": "Construction / Infrastructure",
+        "risk_multipliers": {
+            "liability_cap": 2.0,
+            "insurance": 2.0,
+            "force_majeure": 1.5,
+            "termination": 1.5,
+            "warranties": 1.5,
+            "liquidated_damages": 2.0,
+            "health_safety": 2.0,
+        },
+        "mandatory_clauses": [
+            "scope_of_work",
+            "payment_milestones",
+            "variation_orders",
+            "liquidated_damages",
+            "defects_liability",
+            "retention_money",
+            "performance_guarantee",
+            "insurance",
+            "health_safety",
+            "force_majeure",
+            "dispute_resolution",
+            "completion_certificate",
+        ],
+        "regulatory_frameworks": ["FIDIC", "RERA", "NBC", "IS Codes", "OSHA", "EHS Standards"],
+        "red_flags": [
+            "No variation order / change management process",
+            "Liquidated damages exceed 10% of contract value",
+            "Defects liability period below 12 months",
+            "No retention money clause",
+            "Performance guarantee below 5% of contract value",
+            "No health and safety obligations",
+            "Payment not linked to milestones or completion certificates",
+            "No provision for extension of time (EOT)",
+        ],
+        "analysis_guidance": (
+            "Construction contracts: focus on FIDIC compliance, payment milestones "
+            "and retention, variation/change order process, liquidated damages cap, "
+            "defects liability period, performance bank guarantee, "
+            "health and safety obligations, extension of time provisions, "
+            "and insurance (CAR, third-party, workmen's compensation)."
+        ),
+    },
     "general": {
         "display_name": "General",
         "risk_multipliers": {},
