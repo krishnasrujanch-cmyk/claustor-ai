@@ -293,6 +293,25 @@ class ChatAgent:
             org_id=org_id,
         )
 
+        # ── Step 6b: Grounding Validation ─────────────
+        try:
+            from app.agents.profiles.grounding_validator import validate_grounding, add_grounding_disclaimer
+            _grounding = validate_grounding(response.content, safe_context)
+            if not _grounding.is_reliable:
+                response_content = add_grounding_disclaimer(response.content, _grounding)
+                logger.warning("grounding_low",
+                               score=_grounding.score,
+                               fabricated=_grounding.fabricated_numbers[:3])
+            else:
+                response_content = response.content
+                logger.info("grounding_passed", score=_grounding.score)
+        except Exception as _ge:
+            logger.warning("grounding_check_failed", error=str(_ge)[:80])
+            response_content = response.content
+
+        # Override response content with grounding-checked version
+        response.content = response_content
+
         # ── Step 7: Save to History ───────────────────
         await self._save_to_history(
             db=db,
