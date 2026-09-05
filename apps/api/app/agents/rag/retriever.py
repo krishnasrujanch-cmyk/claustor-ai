@@ -177,46 +177,37 @@ class RAGRetriever:
     async def _decompose_query(self, query: str) -> list[str]:
         """
         Decompose a broad query into focused sub-queries.
-        Uses a fast LLM call to split multi-topic questions.
-        Only decomposes if query is broad (>1 topic).
+        Uses contract type profile expected clauses for deterministic
+        decomposition. No LLM call, no hardcoded terms.
+        Focused queries bypass decomposition entirely.
         """
-        # Simple heuristic: skip decomposition for short/focused queries
         broad_signals = [
-            " and ", " & ", "key risks", "summary", "overview",
+            " and ", " & ", "key risk", "summary", "overview",
             "all ", "main ", "important ", "critical ",
-            "payment", "obligations", "dues",
+            "comprehensive", "analyse", "analyze",
         ]
         is_broad = len(query.split()) > 8 or any(s in query.lower() for s in broad_signals)
         if not is_broad:
             return [query]
 
+        # Build sub-queries from contract type profiles — no hardcoding
+        sub_queries = [query]
         try:
-            from app.infrastructure.llm.router import get_llm_router
-            router = get_llm_router()
-            prompt = (
-                "Decompose this contract question into 3-5 focused sub-queries "
-                "that each target a specific topic. Return ONLY a JSON array of strings. "
-                "No explanation.\n\n"
-                f"Question: {query}\n\n"
-                "Example output: [\"liability cap and limitations\", \"payment terms and due dates\", \"termination rights\"]"
-            )
-            from app.infrastructure.llm.base import LLMMessage, AgentRole
-            result = await router.complete(
-                messages=[LLMMessage(role="user", content=prompt)],
-                role=AgentRole.EXTRACTOR,
-            )
-            import json
-            text = result.content.strip()
-            # Clean markdown fences if present
-            text = text.replace("```json", "").replace("```", "").strip()
-            sub_queries = json.loads(text)
-            if isinstance(sub_queries, list) and len(sub_queries) >= 2:
-                logger.info("query_decomposed", original=query[:50], sub_queries=len(sub_queries))
-                return sub_queries[:5]
-        except Exception as e:
-            logger.warning("query_decomposition_failed", error=str(e)[:100])
+            from app.agents.profiles.contract_types import CONTRACT_TYPE_PROFILES
+            all_clauses = set()
+            for profile in CONTRACT_TYPE_PROFILES.values():
+                all_clauses.update(profile.get("expected_clauses", []))
+            clause_list = sorted(all_clauses)
+            for i in range(0, len(clause_list), 4):
+                batch = clause_list[i:i+4]
+                sub_query = " ".join(c.replace("_", " ") for c in batch)
+                sub_queries.append(sub_query)
+        except Exception:
+            pass
 
-        return [query]
+        sub_queries = sub_queries[:6]
+        logger.info("query_decomposed", original=query[:50], sub_queries=len(sub_queries))
+        return sub_queries
 
     async def _multi_query_search(
         self,
