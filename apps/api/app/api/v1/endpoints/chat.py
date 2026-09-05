@@ -390,12 +390,8 @@ async def chat_stream(
                     raw_query=raw_query,
                     complexity=_judge_complexity,
                 )
-                try:
-                    from app.agents.rag.reranker import rerank_chunks
-                    if hasattr(context, "chunks") and context.chunks:
-                        context.chunks = rerank_chunks(raw_query, context.chunks, top_k=6)
-                except Exception:
-                    pass
+                # Cohere rerank already applied in retriever — no second rerank needed
+                pass
             else:
                 class _EmptyCtx:
                     context_text = ""

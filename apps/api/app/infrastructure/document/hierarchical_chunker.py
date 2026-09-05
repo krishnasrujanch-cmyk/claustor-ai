@@ -104,9 +104,11 @@ def detect_section_type(text: str) -> str:
     # Check table BEFORE appendix — a schedule containing a table
     # should be chunked as table (per-row) not as appendix (single block)
     # Count lines that look like table rows (contain 2+ pipe separators)
-    _lines = text.strip().split('\n')
+    _lines = [l for l in text.strip().split('\n') if l.strip()]
     _pipe_lines = [l for l in _lines if l.count('|') >= 3]
-    if len(_pipe_lines) >= 3:  # header + separator + at least 1 data row
+    # Only classify as table if pipe lines are majority of content
+    # Prevents clause sections with a few cross-references being classified as tables
+    if len(_pipe_lines) >= 3 and len(_pipe_lines) > len(_lines) * 0.4:
         return CHUNK_TYPE_TABLE
     if re.match(r'^(?:SCHEDULE|EXHIBIT|ANNEX|APPENDIX)\s+', first_line):
         return CHUNK_TYPE_APPENDIX
@@ -150,32 +152,78 @@ def score_importance(chunk_type: str, heading: str, text: str) -> str:
 
 
 def table_to_json(text: str) -> Optional[dict]:
-    """Convert markdown table to JSON rows."""
-    lines = [l.strip() for l in text.strip().split('\n')
-             if l.strip() and not re.match(r'^\|[-:]+\|', l)]
-    if not lines:
-        return None
-    # Skip non-table lines (headings, blanks) to find the header row
-    header_idx = None
-    for i, line in enumerate(lines):
-        if '|' in line:
-            header_idx = i
-            break
-    if header_idx is None:
-        return None
-    headers = [h.strip() for h in lines[header_idx].strip('|').split('|') if h.strip()]
-    if not headers:
-        return None
-    rows = []
-    for line in lines[header_idx + 1:]:
-        if '|' not in line:
+    """Convert markdown table(s) to JSON rows.
+    Handles multiple tables in one text block by detecting
+    new header rows (a pipe row followed by a separator row).
+    """
+    raw_lines = text.strip().split('\n')
+    all_tables = []
+    current_headers = None
+    current_rows = []
+
+    i = 0
+    while i < len(raw_lines):
+        line = raw_lines[i].strip()
+
+        # Skip empty lines and non-table lines
+        if not line or '|' not in line:
+            i += 1
             continue
-        cells = [c.strip() for c in line.strip('|').split('|')]
-        if cells and len(cells) == len(headers):
-            if all(re.match(r'^[-:]+$', c) for c in cells if c):
-                continue
-            rows.append(dict(zip(headers, cells)))
-    return {"headers": headers, "rows": rows} if rows else None
+
+        # Check if this is a header row (next line is separator)
+        is_header = False
+        if i + 1 < len(raw_lines):
+            next_line = raw_lines[i + 1].strip()
+            if re.match(r'^\|[-:\s|]+\|$', next_line) or all(
+                re.match(r'^[-:]+$', c.strip()) for c in next_line.strip('|').split('|') if c.strip()
+            ):
+                is_header = True
+
+        if is_header:
+            # Save previous table if exists
+            if current_headers and current_rows:
+                all_tables.append({"headers": current_headers, "rows": current_rows, "title": _current_title})
+            # Find title: last non-table, non-empty line before this header
+            _current_title = ""
+            for _back in range(i - 1, max(i - 4, -1), -1):
+                _bl = raw_lines[_back].strip()
+                if _bl and '|' not in _bl:
+                    _current_title = _bl
+                    break
+            # Start new table
+            current_headers = [h.strip() for h in line.strip('|').split('|') if h.strip()]
+            current_rows = []
+            i += 2  # skip header + separator
+            continue
+
+        # Data row — assign to current table
+        if current_headers:
+            cells = [c.strip() for c in line.strip('|').split('|')]
+            if len(cells) == len(current_headers):
+                if not all(re.match(r'^[-:]+$', c) for c in cells if c):
+                    current_rows.append(dict(zip(current_headers, cells)))
+        i += 1
+
+    # Save last table
+    if current_headers and current_rows:
+        all_tables.append({"headers": current_headers, "rows": current_rows, "title": _current_title})
+
+    if not all_tables:
+        return None
+
+    # Merge all tables into one result with per-row header tracking
+    combined_headers = []
+    combined_rows = []
+    for table in all_tables:
+        for h in table["headers"]:
+            if h not in combined_headers:
+                combined_headers.append(h)
+        for row in table["rows"]:
+            row["_table_headers"] = table["headers"]
+            row["_table_title"] = table.get("title", "")
+            combined_rows.append(row)
+
+    return {"headers": combined_headers, "rows": combined_rows, "tables": all_tables} if combined_rows else None
 
 
 # ── Main Chunker ───────────────────────────────────────────────────────────────
@@ -247,11 +295,13 @@ def build_hierarchical_chunks(
         if section_type == CHUNK_TYPE_TABLE:
             _parsed = table_to_json(section_text) if not table_json else table_json
             if _parsed and _parsed.get("rows") and len(_parsed["rows"]) > 1:
-                _headers = _parsed["headers"]
-                _header_line = " | ".join(_headers)
                 for _row in _parsed["rows"]:
-                    _row_text = " | ".join(str(_row.get(h, "")) for h in _headers)
-                    _chunk_text = f"{heading or ''}\n{_header_line}\n{_row_text}"
+                    # Use this row's own table headers and title
+                    _row_headers = _row.pop("_table_headers", _parsed.get("headers", []))
+                    _row_title = _row.pop("_table_title", heading or "")
+                    _header_line = " | ".join(_row_headers)
+                    _row_text = " | ".join(str(_row.get(h, "")) for h in _row_headers)
+                    _chunk_text = f"{_row_title or heading or ''}\n{_header_line}\n{_row_text}"
                     child_id = uuid4()
                     child = ContractChunkData(
                         chunk_id=child_id,
@@ -275,6 +325,42 @@ def build_hierarchical_chunks(
                         expiry_date=str(meta.get("expiry_date")) if meta.get("expiry_date") else None,
                     )
                     chunks.append(child)
+                    chunk_index += 1
+                # Also extract non-table prose from this section as a separate child
+                _prose_lines = []
+                for _line in section_text.split("\n"):
+                    _stripped = _line.strip()
+                    if not _stripped:
+                        continue
+                    if _stripped.count("|") >= 2:
+                        continue  # skip table rows
+                    if len(_stripped) > 30:  # meaningful prose, not just a heading
+                        _prose_lines.append(_line)
+                _prose_text = "\n".join(_prose_lines).strip()
+                if len(_prose_text) > 100:
+                    _prose_id = uuid4()
+                    _prose_chunk = ContractChunkData(
+                        chunk_id=_prose_id,
+                        parent_id=parent_id,
+                        is_parent=False,
+                        chunk_type=CHUNK_TYPE_CLAUSE,
+                        chunk_index=chunk_index,
+                        text=_prose_text,
+                        heading=heading[:200] if heading else None,
+                        section_ref=section_ref[:50] if section_ref else None,
+                        page_number=None,
+                        importance=importance,
+                        cross_refs=cross_refs,
+                        table_json=None,
+                        contract_id=contract_id,
+                        org_id=org_id,
+                        counterparty=meta.get("counterparty"),
+                        risk_level=meta.get("risk_level"),
+                        contract_type=meta.get("contract_type"),
+                        effective_date=str(meta.get("effective_date")) if meta.get("effective_date") else None,
+                        expiry_date=str(meta.get("expiry_date")) if meta.get("expiry_date") else None,
+                    )
+                    chunks.append(_prose_chunk)
                     chunk_index += 1
                 continue
             else:
