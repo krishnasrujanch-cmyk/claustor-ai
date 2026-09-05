@@ -99,9 +99,10 @@ COMPLEXITY RULES:
 - "medium":  multi-clause, comparison, summary, listing all items of a type, explanation needed
   e.g. "explain the termination conditions", "what are the key risks", "list all service levels", "share all payment terms", "show all obligations"
 - "complex": multi-contract reasoning, legal analysis, cross-reference chains,
-  ambiguous language, risk assessment, "what happens if X AND Y", 
-  comparative legal opinion
-  e.g. "is this indemnification clause fair", "what if we breach payment AND miss milestone"
+  ambiguous language, risk assessment, analytical questions requiring judgment,
+  questions about difficulty, likelihood, or consequence of actions
+  e.g. "is this indemnification clause fair", "what if we breach payment AND miss milestone",
+  "how hard is it to terminate", "what happens if service fails", "how protected are we"
 }}"""
 
 
