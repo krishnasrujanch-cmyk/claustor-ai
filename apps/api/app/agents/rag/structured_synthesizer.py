@@ -184,6 +184,7 @@ class StructuredSynthesizer:
         query: str,
         chunks: list,
         citations: list,
+        complexity: str = "complex",
     ) -> str:
         """
         Run the full structured pipeline:
@@ -192,8 +193,14 @@ class StructuredSynthesizer:
         logger.info("structured_pipeline_start",
                      query=query[:50], chunks=len(chunks))
 
+        # Limit extraction chunks by complexity
+        # simple: top 5 (fast ~25s), medium: top 10 (~50s), complex: all (~90s)
+        _extract_limits = {"simple": 8, "medium": 12, "complex": len(chunks)}
+        _extract_count = _extract_limits.get(complexity, len(chunks))
+        extract_chunks = chunks[:_extract_count]
+
         # Step 1: Extract facts from each chunk
-        all_facts = await self._extract_facts(chunks)
+        all_facts = await self._extract_facts(extract_chunks)
         if not all_facts:
             logger.warning("structured_no_facts_extracted")
             return ""
@@ -206,12 +213,12 @@ class StructuredSynthesizer:
         ]
         logger.info("structured_facts_extracted", count=len(all_facts))
 
-        # Step 2: Compare parties
-        asymmetries = await self._compare_parties(all_facts)
-        logger.info("structured_asymmetries_found", count=len(asymmetries))
-
-        # Step 3: Risk assessment + final answer
-        answer = await self._assess_risks(query, all_facts, asymmetries)
+        if complexity != "complex":
+            answer = await self._focused_answer(query, all_facts)
+        else:
+            asymmetries = await self._compare_parties(all_facts)
+            logger.info("structured_asymmetries_found", count=len(asymmetries))
+            answer = await self._assess_risks(query, all_facts, asymmetries)
 
         # Step 3b: Clean internal metadata from answer
         answer = self._clean_metadata(answer)
@@ -221,7 +228,7 @@ class StructuredSynthesizer:
 
         logger.info("structured_pipeline_complete",
                      facts=len(all_facts),
-                     asymmetries=len(asymmetries),
+                     complexity=complexity,
                      answer_len=len(answer))
 
         return answer
@@ -244,6 +251,40 @@ class StructuredSynthesizer:
                 continue
             cleaned.append(line)
         return "\n".join(cleaned)
+
+    async def _focused_answer(self, query: str, facts: list[dict]) -> str:
+        """
+        For simple/medium queries: answer ONLY the question asked
+        using extracted facts. No full risk report.
+        """
+        facts_json = json.dumps(facts[:30], indent=2)
+
+        prompt = f"""You have these extracted contract facts. Answer ONLY the specific question asked.
+
+QUESTION: {query}
+
+EXTRACTED FACTS:
+{facts_json}
+
+RULES:
+- Answer ONLY what the question asks — do not provide a full contract analysis
+- Use exact numbers from the extracted facts
+- Cite clause references from the facts
+- If the answer involves multiple related provisions, list them concisely
+- If the question cannot be answered from the extracted facts, state that 
+  the relevant provision was not identified in the analysed sections
+- Keep the answer focused and concise"""
+
+        try:
+            result = await self.llm.complete(
+                messages=[LLMMessage(role="user", content=prompt)],
+                role=AgentRole.ANSWERER,
+                max_tokens=2000,
+            )
+            return result.content
+        except Exception as e:
+            logger.error("focused_answer_failed", error=str(e)[:80])
+            return ""
 
     def _detect_clause_refs(self, text: str) -> str:
         """Detect clause/section numbers in chunk text and prepend as context."""

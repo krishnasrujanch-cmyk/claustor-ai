@@ -226,33 +226,70 @@ def build_hierarchical_chunks(
         if section_type == CHUNK_TYPE_SIGNATURE:
             continue
 
-        # Tables get one child chunk (preserve structure)
+        # Tables: split into per-row chunks for granular retrieval
+        # Each row becomes its own child chunk with headers prepended
         if section_type == CHUNK_TYPE_TABLE:
-            child_id = uuid4()
-            child = ContractChunkData(
-                chunk_id=child_id,
-                parent_id=parent_id,
-                is_parent=False,
-                chunk_type=CHUNK_TYPE_TABLE,
-                chunk_index=chunk_index,
-                text=section_text,
-                heading=heading[:200] if heading else None,
-                section_ref=section_ref[:50] if section_ref else None,
-                page_number=None,
-                importance=importance,
-                cross_refs=cross_refs,
-                table_json=table_json,
-                contract_id=contract_id,
-                org_id=org_id,
-                counterparty=meta.get("counterparty"),
-                risk_level=meta.get("risk_level"),
-                contract_type=meta.get("contract_type"),
-                effective_date=str(meta.get("effective_date")) if meta.get("effective_date") else None,
-                expiry_date=str(meta.get("expiry_date")) if meta.get("expiry_date") else None,
-            )
-            chunks.append(child)
-            chunk_index += 1
-            continue
+            _parsed = table_to_json(section_text) if not table_json else table_json
+            if _parsed and _parsed.get("rows") and len(_parsed["rows"]) > 1:
+                _headers = _parsed["headers"]
+                _header_line = " | ".join(_headers)
+                for _row in _parsed["rows"]:
+                    _row_text = " | ".join(str(_row.get(h, "")) for h in _headers)
+                    _chunk_text = f"{heading or ''}
+{_header_line}
+{_row_text}"
+                    child_id = uuid4()
+                    child = ContractChunkData(
+                        chunk_id=child_id,
+                        parent_id=parent_id,
+                        is_parent=False,
+                        chunk_type=CHUNK_TYPE_TABLE,
+                        chunk_index=chunk_index,
+                        text=_chunk_text,
+                        heading=heading[:200] if heading else None,
+                        section_ref=section_ref[:50] if section_ref else None,
+                        page_number=None,
+                        importance=importance,
+                        cross_refs=cross_refs,
+                        table_json=None,
+                        contract_id=contract_id,
+                        org_id=org_id,
+                        counterparty=meta.get("counterparty"),
+                        risk_level=meta.get("risk_level"),
+                        contract_type=meta.get("contract_type"),
+                        effective_date=str(meta.get("effective_date")) if meta.get("effective_date") else None,
+                        expiry_date=str(meta.get("expiry_date")) if meta.get("expiry_date") else None,
+                    )
+                    chunks.append(child)
+                    chunk_index += 1
+                continue
+            else:
+                # Fallback: table can't be parsed into rows — keep as single chunk
+                child_id = uuid4()
+                child = ContractChunkData(
+                    chunk_id=child_id,
+                    parent_id=parent_id,
+                    is_parent=False,
+                    chunk_type=CHUNK_TYPE_TABLE,
+                    chunk_index=chunk_index,
+                    text=section_text,
+                    heading=heading[:200] if heading else None,
+                    section_ref=section_ref[:50] if section_ref else None,
+                    page_number=None,
+                    importance=importance,
+                    cross_refs=cross_refs,
+                    table_json=table_json,
+                    contract_id=contract_id,
+                    org_id=org_id,
+                    counterparty=meta.get("counterparty"),
+                    risk_level=meta.get("risk_level"),
+                    contract_type=meta.get("contract_type"),
+                    effective_date=str(meta.get("effective_date")) if meta.get("effective_date") else None,
+                    expiry_date=str(meta.get("expiry_date")) if meta.get("expiry_date") else None,
+                )
+                chunks.append(child)
+                chunk_index += 1
+                continue
 
         # Split section into child chunks
         # Only create children if section > MAX_CHILD_WORDS

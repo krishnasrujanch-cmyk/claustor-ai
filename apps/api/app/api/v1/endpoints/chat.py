@@ -457,6 +457,7 @@ async def chat_stream(
                     query=req.query.strip(),
                     chunks=context.chunks,
                     citations=[],
+                    complexity=_complexity,
                 )
                 # Create minimal response object for downstream meta emission
                 class _StructuredResponse:

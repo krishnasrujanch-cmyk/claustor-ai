@@ -86,12 +86,7 @@ class RAGRetriever:
         Returns:
             RetrievedContext with formatted text + citations
         """
-        base_top_k = TOP_K_LIMITS.get(plan, 4)
-        # Complexity adjusts rerank depth:
-        #   simple: fewer chunks = focused context, less noise
-        #   complex: more chunks = thorough coverage
-        _complexity_multiplier = {"simple": 0.5, "medium": 1.0, "complex": 1.5}
-        top_k = max(4, int(base_top_k * _complexity_multiplier.get(complexity, 1.0)))
+        top_k = TOP_K_LIMITS.get(plan, 4)
         context_limit = CONTEXT_LIMITS.get(plan, 4000)
 
 

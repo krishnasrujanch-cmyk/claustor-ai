@@ -268,14 +268,28 @@ class ChatAgent:
         # ── Step 6: Generate Answer ───────────────────
 
         if contract_id and context.chunks and len(context.chunks) >= 3:
-            logger.info("structured_pipeline_triggered", query=query[:50], chunks=len(context.chunks))
-            from app.agents.rag.structured_synthesizer import get_structured_synthesizer
-            _synth = get_structured_synthesizer()
-            _structured_answer = await _synth.synthesize(
-                query=query,
-                chunks=context.chunks,
-                citations=context.citations,
-            )
+            # Simple queries with high-confidence retrieval: direct LLM answer
+            # Complex queries: full structured pipeline
+            if judge_complexity == "complex":
+                logger.info("structured_pipeline_triggered", query=query[:50], chunks=len(context.chunks))
+                from app.agents.rag.structured_synthesizer import get_structured_synthesizer
+                _synth = get_structured_synthesizer()
+                _structured_answer = await _synth.synthesize(
+                    query=query,
+                    chunks=context.chunks,
+                    citations=context.citations,
+                    complexity=judge_complexity,
+                )
+            else:
+                logger.info("structured_simple_triggered", query=query[:50], chunks=len(context.chunks))
+                from app.agents.rag.structured_synthesizer import get_structured_synthesizer
+                _synth = get_structured_synthesizer()
+                _structured_answer = await _synth.synthesize(
+                    query=query,
+                    chunks=context.chunks,
+                    citations=context.citations,
+                    complexity=judge_complexity,
+                )
             if _structured_answer:
                 try:
                     from app.agents.profiles.grounding_validator import validate_grounding, add_grounding_disclaimer
@@ -403,8 +417,8 @@ For each item found:
 3. Tag the CLAUSE TOPIC (e.g. "payment terms", "termination", "liability")
 
 CRITICAL: Numbers belong to the sentence they appear in. Do NOT move a number
-from one clause topic to another. "30 days to remedy a breach" is a TERMINATION
-fact, NOT a payment fact. "45 days from receipt" is a PAYMENT fact, NOT a termination fact.
+from one clause topic to another. A time period stated in one clause topic must
+not be attributed to a different topic.
 
 Extract these categories — keep each category's facts SEPARATE:
 - PAYMENT: amounts, fees, rates, due dates, billing frequency, interest on late payment
