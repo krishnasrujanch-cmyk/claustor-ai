@@ -169,6 +169,105 @@ INDUSTRY_PLAYBOOKS = {
             "maintenance responsibilities, RERA compliance, security deposit terms."
         ),
     },
+
+    "pharma": {
+        "display_name": "Pharmaceutical / Life Sciences",
+        "risk_multipliers": {
+            "data_protection": 2.0,
+            "liability_cap": 2.0,
+            "indemnification": 2.0,
+            "regulatory_compliance": 2.5,
+            "intellectual_property": 2.0,
+            "confidentiality": 2.0,
+            "warranties": 1.5,
+            "insurance": 1.5,
+            "audit_rights": 1.5,
+            "termination": 1.3,
+        },
+        "mandatory_clauses": [
+            "regulatory_compliance",
+            "pharmacovigilance",
+            "data_integrity",
+            "audit_rights",
+            "ip_ownership",
+            "confidentiality",
+            "insurance",
+            "anti_bribery",
+            "quality_assurance",
+            "change_control",
+            "record_retention",
+        ],
+        "regulatory_frameworks": ["FDA", "EMA", "CDSCO", "GxP", "GCP", "GMP", "ICH", "21 CFR Part 11", "DPDP Act"],
+        "red_flags": [
+            "No pharmacovigilance or adverse event reporting obligation",
+            "IP ownership silent on jointly developed compounds",
+            "No data integrity or 21 CFR Part 11 compliance clause",
+            "Audit rights exclude regulatory inspector access",
+            "No anti-bribery / FCPA clause",
+            "Liability cap below 3x annual value for clinical trials",
+            "No change control process for GxP-regulated activities",
+            "Record retention below regulatory minimum (15-25 years)",
+            "Subcontracting of GxP activities without sponsor consent",
+            "No qualified person or responsible pharmacist designated",
+        ],
+        "analysis_guidance": (
+            "Pharma/Life Sciences contracts require: pharmacovigilance obligations, "
+            "data integrity (21 CFR Part 11, Annex 11), GxP compliance, "
+            "regulatory audit access (FDA/EMA/CDSCO inspection rights), "
+            "IP ownership for compounds/formulations/data, anti-bribery/FCPA, "
+            "change control for regulated processes, record retention (15-25 years), "
+            "qualified person responsibilities, and insurance adequacy for clinical trials."
+        ),
+    },
+    "clinical_trials": {
+        "display_name": "Clinical Trials / CRO",
+        "risk_multipliers": {
+            "data_protection": 2.5,
+            "liability_cap": 2.5,
+            "indemnification": 2.5,
+            "regulatory_compliance": 3.0,
+            "confidentiality": 2.0,
+            "insurance": 2.0,
+            "audit_rights": 2.0,
+            "termination": 1.5,
+        },
+        "mandatory_clauses": [
+            "subject_safety",
+            "informed_consent",
+            "adverse_event_reporting",
+            "data_ownership",
+            "regulatory_compliance",
+            "insurance_clinical",
+            "indemnification",
+            "audit_rights",
+            "record_retention",
+            "ethics_committee",
+            "investigator_obligations",
+            "study_termination",
+        ],
+        "regulatory_frameworks": ["ICH-GCP E6(R2)", "FDA 21 CFR Parts 11/50/56/312", "EMA Clinical Trials Regulation", "CDSCO CT Rules 2019", "Declaration of Helsinki"],
+        "red_flags": [
+            "No subject safety or adverse event reporting clause",
+            "Sponsor indemnification does not cover investigator negligence carve-out",
+            "No insurance for clinical trial participants",
+            "Data ownership vests in CRO not sponsor",
+            "No ethics committee / IRB approval requirement",
+            "Study termination clause lacks patient safety trigger",
+            "No provision for regulatory inspection cooperation",
+            "Record retention below 15 years post-study completion",
+            "No protocol deviation reporting mechanism",
+            "Missing informed consent process requirements",
+        ],
+        "analysis_guidance": (
+            "Clinical trial agreements are HIGH-RISK by nature due to patient safety. "
+            "Mandatory analysis: subject safety provisions, adverse event reporting timelines, "
+            "informed consent process, sponsor vs CRO vs investigator responsibilities, "
+            "insurance coverage for trial participants, data ownership and access rights, "
+            "ethics committee requirements, protocol deviation handling, "
+            "study termination triggers (safety vs commercial), "
+            "regulatory inspection cooperation, and record retention (15+ years)."
+        ),
+    },
     "general": {
         "display_name": "General",
         "risk_multipliers": {},
