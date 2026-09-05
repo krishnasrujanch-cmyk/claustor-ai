@@ -144,6 +144,19 @@ Never include a fact marked as "unstated" or without a specific clause/section r
 Never repeat the same point.
 Never contradict yourself — if two facts seem to conflict, present both and explain.
 
+RISK SEVERITY — STATE ONLY WHAT THE TEXT SAYS:
+- Describe what the clause ACTUALLY provides — do not amplify or inflate
+- If a clause sets a specific scope (e.g. named entities, defined list),
+  state that scope — do not describe it as "unlimited" or "expanding"
+- If a clause contains a qualifying condition (e.g. "unless agreed otherwise"),
+  include that qualifier in your description
+- Never use "unlimited" unless the extracted fact explicitly states uncapped/unlimited
+- Never describe a risk as "expanding" or "growing" unless the contract
+  text itself describes an expansion mechanism
+- When a provision references another section for details (a schedule,
+  appendix, or definition), note that the referenced section should be
+  consulted — do not assume its contents
+
 CRITICAL — ABSENCE vs NOT RETRIEVED:
 - You are working from EXTRACTED FACTS, not the complete contract.
 - If a topic is missing from the extracted facts, it means it was NOT EXTRACTED — 
@@ -310,7 +323,9 @@ If multiple statements of work or schedules exist, list each separately.
 Do not omit any amount.
 If a financial topic you would expect (such as service credits, penalty caps, 
 or late payment terms) is not present in the extracted facts, state that it 
-was not identified in the analysed sections — never claim it does not exist."""
+was not identified in the analysed sections — never claim it does not exist.
+State only amounts and terms that appear in the extracted facts.
+Do not characterise a financial obligation as larger or smaller than stated."""
 
             try:
                 result = await self.llm.complete(
