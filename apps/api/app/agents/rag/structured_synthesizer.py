@@ -58,7 +58,7 @@ These entities are NOT contracting parties and must NEVER appear as obligor or b
 
 SECTION CONTEXT — PRESERVE THIS:
 - If the chunk mentions a specific section, schedule, exhibit, or statement of work,
-  include it in clause_ref (e.g. "SOW-1 Table 4", "Schedule 2 SL-01")
+  include it in clause_ref (e.g. "Statement of Work 1, Table 4", "Schedule 2, Item 01")
 - Do NOT merge facts from different sections into a single extraction
 - Each section/schedule/statement of work should produce separate fact entries
 - Dates, milestones, and amounts belong to the specific section they appear in —
@@ -250,31 +250,68 @@ class StructuredSynthesizer:
     async def _assess_risks(
         self, query: str, facts: list[dict], asymmetries: list[dict],
     ) -> str:
-        """Step 3: Produce ranked risk assessment from structured data."""
-        facts_json = json.dumps(facts[:40], indent=2)
-        asymmetries_json = json.dumps(asymmetries[:15], indent=2)
+        """Step 3: Two focused calls — financials + risks — then combine."""
+        # Split facts: any fact with amounts goes to financial, all facts go to risk
+        financial_facts = [f for f in facts if f.get("amounts")]
+        risk_facts = facts  # risk assessment sees everything for full context
 
-        prompt = ASSESS_PROMPT.format(
-            facts_json=facts_json,
-            asymmetries_json=asymmetries_json,
+        # Call 1: Financial summary
+        financial_section = ""
+        if financial_facts:
+            fin_prompt = f"""Given these extracted financial facts from a contract, list ALL monetary obligations.
+
+FINANCIAL FACTS:
+{json.dumps(financial_facts[:30], indent=2)}
+
+List EVERY monetary amount, payment term, due date, interest rate, billing mechanism,
+committed spend, and true-up provision found in the facts.
+Use exact figures — never approximate.
+Convert chunk references: [Chunk N] becomes [N].
+If multiple statements of work or schedules exist, list each separately.
+Do not omit any amount."""
+
+            try:
+                result = await self.llm.complete(
+                    messages=[LLMMessage(role="user", content=fin_prompt)],
+                    role=AgentRole.ANSWERER,
+                    max_tokens=2000,
+                )
+                financial_section = result.content
+            except Exception as e:
+                logger.warning("financial_summary_failed", error=str(e)[:80])
+
+        # Call 2: Risk assessment
+        risk_section = ""
+        risk_json = json.dumps(risk_facts[:30], indent=2)
+        asym_json = json.dumps(asymmetries[:15], indent=2)
+
+        risk_prompt = ASSESS_PROMPT.format(
+            facts_json=risk_json,
+            asymmetries_json=asym_json,
             query=query,
         )
 
         try:
             result = await self.llm.complete(
-                messages=[LLMMessage(role="user", content=prompt)],
+                messages=[LLMMessage(role="user", content=risk_prompt)],
                 role=AgentRole.ANSWERER,
-                max_tokens=4000,
+                max_tokens=3000,
             )
-            return result.content
+            risk_section = result.content
         except Exception as e:
             logger.error("risk_assessment_failed", error=str(e)[:80])
-            return ""
+
+        # Combine
+        if financial_section and risk_section:
+            return f"## Financial Obligations\n\n{financial_section}\n\n---\n\n{risk_section}"
+        return financial_section or risk_section or ""
 
     def _clean_metadata(self, answer: str) -> str:
         """Remove any leaked internal labels from the answer."""
         import re
         answer = re.sub(r"\bfavors?_\w+\b", "", answer)
+        answer = re.sub(r'\s*""\s*', " ", answer)
+        answer = re.sub(r"\s*''\s*", " ", answer)
         answer = re.sub(r"\basymmetry_type\b", "", answer)
         answer = re.sub(r"\bsource_chunk\b", "", answer)
         answer = re.sub(r"\[Asymmetries\]", "", answer)
