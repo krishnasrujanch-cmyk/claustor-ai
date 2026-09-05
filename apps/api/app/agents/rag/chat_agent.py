@@ -271,7 +271,7 @@ class ChatAgent:
                           "analyze", "obligations and risk"]
         _is_broad = any(s in query.lower() for s in _broad_signals)
 
-        if _is_broad and context.chunks and len(context.chunks) >= 2:
+        if False and _is_broad and context.chunks and len(context.chunks) >= 2:  # disabled: single-pass with strict prompt works better
             logger.info("map_reduce_triggered", query=query[:50], chunks=len(context.chunks))
             reduce_prompt = await self._map_reduce_synthesis(
                 query=query,
@@ -434,15 +434,17 @@ Merge them into a single, comprehensive answer to: "{query}"
 EXTRACTED FACTS:
 {merged}
 
-RULES:
-1. Include EVERY fact extracted — do not drop any
-2. Use exact numbers as extracted — never round or approximate
-3. Organise into clear sections (Financial Obligations, Key Risks, etc.)
-4. For risks, rank by severity — prioritise asymmetric, uncapped, retroactive clauses
-5. Map chunk references to citation format: [Chunk N] becomes [{N}]
-6. If two extractions cover the same clause, keep the more detailed one
-7. Never repeat the same point twice
-8. Never contradict yourself — if two facts seem contradictory, present both and explain"""
+MANDATORY RULES:
+1. Include EVERY monetary amount from the extractions — missing a financial figure is a critical error
+2. Include EVERY clause reference mentioned in the extractions — do not skip any
+3. Include EVERY time period, deadline, and notice period from the extractions
+4. Use exact numbers as extracted — never round, approximate, or substitute
+5. Organise into: Financial Obligations first, then Risks ranked by severity
+6. For each risk: state the clause, which party bears it, and why it matters
+7. Map chunk references: [Chunk N] becomes [N]
+8. If the same fact appears in multiple extractions, keep it once with all citations
+9. Never repeat the same point
+10. Never contradict yourself — if two facts seem conflicting, present both and explain"""
 
         return reduce_prompt
 

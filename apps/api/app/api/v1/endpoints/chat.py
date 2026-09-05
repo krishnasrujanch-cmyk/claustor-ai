@@ -407,6 +407,18 @@ async def chat_stream(
             safe_ctx, _ = validate_context_window(combined, max_tokens=80000)
 
             # Build messages
+            # Load profile context for guided analysis
+            _profile_ctx = ""
+            try:
+                from app.agents.profiles.profile_loader import build_analysis_context
+                _profile_ctx = build_analysis_context(
+                    contract_type=getattr(judge, 'contract_type', None) or 'Other',
+                    industry='general',
+                    role='neutral',
+                )
+            except Exception:
+                pass
+
             messages = agent._build_messages(
                 query=req.query.strip(),
                 context=safe_ctx,
@@ -414,6 +426,7 @@ async def chat_stream(
                 summary=None,
                 review_status=None,
                 review_notes=None,
+                profile_context=_profile_ctx,
             )
 
             # Step 2: Stream tokens from Groq
