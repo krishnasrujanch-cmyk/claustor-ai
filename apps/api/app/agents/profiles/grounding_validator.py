@@ -54,19 +54,33 @@ def validate_grounding(answer: str, context: str) -> GroundingResult:
     context_lower = context.lower()
     answer_lower = answer.lower()
 
-    # 0. Cross-contamination check — numbers near wrong context
-    # Find payment-related numbers and verify they appear near payment words
-    _payment_pattern = r"(?:due|payable|invoice|payment).{0,60}(\d+)\s*(?:days?|business days?)"
-    _payment_matches = re.findall(_payment_pattern, answer_lower)
-    for _pnum in _payment_matches:
+    # 0. Context-aware number verification
+    # For any "N days/months/years" claim, extract the surrounding words
+    # and verify the SAME number + context pairing exists in the source.
+    # Prevents cross-contamination (e.g. "30 days to remedy" ≠ "payment due in 30 days")
+    _num_context_pattern = r"(\w+(?:\s+\w+){0,3})\s+(\d+)\s*(days?|months?|years?|weeks?|hours?|business\s+days?)"
+    for _match in re.finditer(_num_context_pattern, answer_lower):
+        _preceding = _match.group(1).strip()
+        _num = _match.group(2)
+        _unit = _match.group(3)
         result.total_claims += 1
-        # Verify this number appears near payment context in source too
-        _pay_ctx_pattern = f"(?:due|payable|invoice|payment).{{0,60}}{_pnum}\s*(?:days?|business)"
-        if re.search(_pay_ctx_pattern, context_lower):
+        # Check: does this number appear near the same context words in source?
+        _context_words = [w for w in _preceding.split() if len(w) > 3]
+        if not _context_words:
+            result.grounded_claims += 1
+            continue
+        # At least one context word must appear within 80 chars of the number in source
+        _grounded = False
+        for _cw in _context_words:
+            _pattern = f"(?:{_cw}.{{0,80}}{_num}|{_num}.{{0,80}}{_cw})"
+            if re.search(_pattern, context_lower):
+                _grounded = True
+                break
+        if _grounded:
             result.grounded_claims += 1
         else:
-            result.fabricated_numbers.append(f"{_pnum} days (payment context)")
-            result.warnings.append(f"Payment period '{_pnum} days' not found near payment context in source")
+            result.fabricated_numbers.append(f"{_num} {_unit} (near '{_preceding}')"  )
+            result.warnings.append(f"'{_num} {_unit}' not found near '{_preceding}' in source text")
 
     # 1. Check all monetary amounts
     money_pattern = r'[\$\₹\€\£][\d,]+(?:\.\d+)?(?:\s*(?:million|billion|lakh|crore|M|K|B))?'
