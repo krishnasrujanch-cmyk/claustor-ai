@@ -115,7 +115,9 @@ Produce a comprehensive answer with these sections:
    - Credit caps, sole remedy clauses
    - Any thresholds that trigger escalation or termination
 
-Use [Chunk N] citations matching the source_chunk field in the extracted facts.
+Convert all internal references to simple numbered citations: [Chunk 1] becomes [1], [Chunk 2] becomes [2], etc.
+Never expose internal field names, JSON keys, classification labels, or analysis methodology in the answer.
+State conclusions directly — never narrate the analysis process.
 Every claim must have a citation.
 Never repeat the same point.
 Never contradict yourself — if two facts seem to conflict, present both and explain."""
