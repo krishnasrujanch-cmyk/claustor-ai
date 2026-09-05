@@ -387,15 +387,22 @@ class ChatAgent:
             map_prompt = f"""Extract ALL of the following from this contract chunk. 
 List only what is EXPLICITLY stated — never infer or approximate.
 
-For each item found, quote the exact figure/text and note the source as [Chunk {i+1}].
+For each item found:
+1. QUOTE the exact sentence from the chunk — do not paraphrase or combine numbers from different sentences
+2. Note the source as [Chunk {i+1}]
+3. Tag the CLAUSE TOPIC (e.g. "payment terms", "termination", "liability")
 
-Extract:
-- Financial: amounts, fees, rates, percentages, payment terms, due dates, billing frequency
-- Liability: caps, limits, exclusions, carve-outs, indemnities (note direct vs consequential)
-- Rights: termination rights (per party), renewal, convenience, cause, notice periods
-- Mechanisms: auto-renewal, true-up, retroactive billing, deemed acceptance, escalation
-- Protections: service levels, credit caps, penalties, breach notification timelines
-- Obligations: regulatory, compliance, data protection, insurance requirements
+CRITICAL: Numbers belong to the sentence they appear in. Do NOT move a number
+from one clause topic to another. "30 days to remedy a breach" is a TERMINATION
+fact, NOT a payment fact. "45 days from receipt" is a PAYMENT fact, NOT a termination fact.
+
+Extract these categories — keep each category's facts SEPARATE:
+- PAYMENT: amounts, fees, rates, due dates, billing frequency, interest on late payment
+- LIABILITY: caps, limits, exclusions, carve-outs, indemnities (direct vs consequential)
+- TERMINATION: rights per party, notice periods per term phase, breach remedy periods
+- MECHANISMS: auto-renewal, true-up, retroactive billing, deemed acceptance
+- SERVICE LEVELS: targets, credit caps, penalties, sole remedy clauses
+- OBLIGATIONS: regulatory, compliance, data protection, insurance
 
 If a clause creates ASYMMETRIC rights (one party has a right the other does not), flag it.
 If nothing relevant is found, respond with "No relevant items in this chunk."

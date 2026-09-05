@@ -54,6 +54,20 @@ def validate_grounding(answer: str, context: str) -> GroundingResult:
     context_lower = context.lower()
     answer_lower = answer.lower()
 
+    # 0. Cross-contamination check — numbers near wrong context
+    # Find payment-related numbers and verify they appear near payment words
+    _payment_pattern = r"(?:due|payable|invoice|payment).{0,60}(\d+)\s*(?:days?|business days?)"
+    _payment_matches = re.findall(_payment_pattern, answer_lower)
+    for _pnum in _payment_matches:
+        result.total_claims += 1
+        # Verify this number appears near payment context in source too
+        _pay_ctx_pattern = f"(?:due|payable|invoice|payment).{{0,60}}{_pnum}\s*(?:days?|business)"
+        if re.search(_pay_ctx_pattern, context_lower):
+            result.grounded_claims += 1
+        else:
+            result.fabricated_numbers.append(f"{_pnum} days (payment context)")
+            result.warnings.append(f"Payment period '{_pnum} days' not found near payment context in source")
+
     # 1. Check all monetary amounts
     money_pattern = r'[\$\₹\€\£][\d,]+(?:\.\d+)?(?:\s*(?:million|billion|lakh|crore|M|K|B))?'
     amounts_in_answer = re.findall(money_pattern, answer)
