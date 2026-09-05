@@ -264,14 +264,8 @@ class ChatAgent:
         )
 
         # ── Step 6: Generate Answer ───────────────────
-        # Detect broad queries — use map-reduce for comprehensive analysis
-        _broad_signals = ["key risk", "payment due", "summary", "overview",
-                          "main risk", "important clause", "all risk",
-                          "critical issue", "comprehensive", "analyse",
-                          "analyze", "obligations and risk"]
-        _is_broad = any(s in query.lower() for s in _broad_signals)
 
-        if _is_broad and context.chunks and len(context.chunks) >= 3:
+        if contract_id and context.chunks and len(context.chunks) >= 3:
             logger.info("structured_pipeline_triggered", query=query[:50], chunks=len(context.chunks))
             from app.agents.rag.structured_synthesizer import get_structured_synthesizer
             _synth = get_structured_synthesizer()

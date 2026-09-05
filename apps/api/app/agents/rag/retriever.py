@@ -90,14 +90,9 @@ class RAGRetriever:
 
         # Broad queries: load ALL chunks for the contract, then rerank
         # Focused queries: search-based retrieval, then rerank
-        _broad_signals = [
-            " and ", " & ", "key risk", "summary", "overview",
-            "all ", "main ", "important ", "critical ",
-            "comprehensive", "analyse", "analyze",
         ]
-        _is_broad = any(s in query.lower() for s in _broad_signals)
 
-        if _is_broad and contract_id:
+        if contract_id:
             chunks = await self._retrieve_all_chunks(db, contract_id)
             if chunks:
                 chunks = await self._rerank(query, chunks, top_n=min(len(chunks), 20))
