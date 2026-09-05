@@ -30,12 +30,37 @@ def _check_rate_limit(ip: str) -> bool:
 
 
 class ContactRequest(BaseModel):
-    name: str
-    email: str
+    name: str = ""
+    contact_name: str = ""
+    email: str = ""
+    business_email: str = ""
     company: str = ""
+    business_name: str = ""
     size: str = ""
+    company_size: str = ""
     message: str = ""
+    industry: str = ""
+    usecase: str = ""
     source: str = "landing_page"
+    country: str = ""
+    mobile: str = ""
+    contracts_per_month: str = ""
+
+    @property
+    def resolved_name(self) -> str:
+        return self.contact_name or self.name or "Unknown"
+
+    @property
+    def resolved_email(self) -> str:
+        return self.business_email or self.email or ""
+
+    @property
+    def resolved_company(self) -> str:
+        return self.business_name or self.company or ""
+
+    @property
+    def resolved_size(self) -> str:
+        return self.company_size or self.size or ""
 
 
 @router.post("/inquiry")
@@ -49,7 +74,7 @@ async def public_contact(req: ContactRequest, request: Request):
     if not _check_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
 
-    if not req.name or not req.email:
+    if not req.resolved_name or not req.resolved_email:
         raise HTTPException(status_code=400, detail="Name and email are required.")
 
     try:
@@ -60,14 +85,14 @@ async def public_contact(req: ContactRequest, request: Request):
         await _send_email(
             settings=settings,
             to="support@claustor.com",
-            subject=f"New Inquiry — {req.name} ({req.company or 'No company'})",
+            subject=f"New Inquiry — {req.resolved_name} ({req.resolved_company or 'No company'})",
             html=f"""
             <h2>New Contact Form Submission</h2>
             <table style="border-collapse:collapse;width:100%">
-                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Name</strong></td><td style="padding:8px;border:1px solid #ddd">{req.name}</td></tr>
-                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Email</strong></td><td style="padding:8px;border:1px solid #ddd">{req.email}</td></tr>
-                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Company</strong></td><td style="padding:8px;border:1px solid #ddd">{req.company or '—'}</td></tr>
-                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Team Size</strong></td><td style="padding:8px;border:1px solid #ddd">{req.size or '—'}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Name</strong></td><td style="padding:8px;border:1px solid #ddd">{req.resolved_name}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Email</strong></td><td style="padding:8px;border:1px solid #ddd">{req.resolved_email}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Company</strong></td><td style="padding:8px;border:1px solid #ddd">{req.resolved_company or '—'}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #ddd"><strong>Team Size</strong></td><td style="padding:8px;border:1px solid #ddd">{req.resolved_size or '—'}</td></tr>
                 <tr><td style="padding:8px;border:1px solid #ddd"><strong>Message</strong></td><td style="padding:8px;border:1px solid #ddd">{req.message or '—'}</td></tr>
                 <tr><td style="padding:8px;border:1px solid #ddd"><strong>Source</strong></td><td style="padding:8px;border:1px solid #ddd">{req.source}</td></tr>
             </table>
@@ -77,11 +102,11 @@ async def public_contact(req: ContactRequest, request: Request):
         # Send auto-reply to user
         await _send_email(
             settings=settings,
-            to=req.email,
+            to=req.resolved_email,
             subject="Thanks for contacting Claustor AI",
             html=f"""
             <div style="font-family:sans-serif;max-width:600px">
-                <h2 style="color:#5B4BFF">Thanks for reaching out, {req.name}!</h2>
+                <h2 style="color:#5B4BFF">Thanks for reaching out, {req.resolved_name}!</h2>
                 <p>We've received your inquiry and our team will get back to you within 4 business hours.</p>
                 <p>In the meantime, feel free to explore our platform at <a href="https://claustor.com">claustor.com</a>.</p>
                 <br>
@@ -91,7 +116,7 @@ async def public_contact(req: ContactRequest, request: Request):
         )
 
         logger.info("public_contact_received",
-                     name=req.name, email=req.email, source=req.source)
+                     name=req.resolved_name, email=req.resolved_email, source=req.source)
 
         return {"status": "sent", "message": "We'll get back to you within 4 business hours."}
 
