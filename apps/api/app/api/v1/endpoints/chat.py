@@ -452,6 +452,15 @@ async def chat_stream(
                 preferred_model=_answerer_cfg["model"],
             )
             full_answer = response.content
+            # Grounding validation
+            try:
+                from app.agents.profiles.grounding_validator import validate_grounding, add_grounding_disclaimer
+                _grd = validate_grounding(full_answer, safe_ctx)
+                if not _grd.is_reliable:
+                    full_answer = add_grounding_disclaimer(full_answer, _grd)
+                    logger.warning("grounding_low_stream", score=_grd.score)
+            except Exception:
+                pass
 
             # Emit tokens word by word with small delay for UX
             import asyncio
