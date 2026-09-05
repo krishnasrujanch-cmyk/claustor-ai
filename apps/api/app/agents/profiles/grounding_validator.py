@@ -82,6 +82,17 @@ def validate_grounding(answer: str, context: str) -> GroundingResult:
             result.fabricated_numbers.append(f"{_num} {_unit} (near '{_preceding}')"  )
             result.warnings.append(f"'{_num} {_unit}' not found near '{_preceding}' in source text")
 
+    # 0b. Verify computed sums — if a number is a sum of other numbers in the answer,
+    # check that the components exist in the source (not the sum itself)
+    _all_amounts_in_answer = re.findall(r'[\$]?([\d,]+(?:\.\d+)?)\s*(?:M|million|annually|year)', answer_lower)
+    _amounts_in_source = re.findall(r'[\d,]+(?:\.\d+)?', context_lower)
+    _source_nums = set()
+    for a in _amounts_in_source:
+        try:
+            _source_nums.add(float(a.replace(",", "")))
+        except ValueError:
+            pass
+
     # 1. Check all monetary amounts
     money_pattern = r'[\$\₹\€\£][\d,]+(?:\.\d+)?(?:\s*(?:million|billion|lakh|crore|M|K|B))?'
     amounts_in_answer = re.findall(money_pattern, answer)

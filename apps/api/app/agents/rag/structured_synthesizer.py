@@ -36,7 +36,7 @@ Return a JSON array of objects. Each object represents ONE clause or provision:
   "beneficiary": "the party who BENEFITS — use the EXACT name from the text",
   "provision": "what the clause requires or permits — one sentence using exact language from the text",
   "amounts": ["any monetary amounts, percentages, or time periods — exact figures only"],
-  "cap": "capped/uncapped/not_applicable",
+  "cap": "capped_standard/capped_reduced/uncapped/not_applicable — use capped_reduced when a clause sets a LOWER cap than the general limit, use uncapped ONLY when text explicitly says unlimited or states the general cap does not apply",
   "direction": "mutual/one_sided/not_applicable"
 }}
 
