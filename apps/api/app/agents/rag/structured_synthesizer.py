@@ -139,9 +139,23 @@ Produce a comprehensive answer with these sections:
 Convert all internal references to simple numbered citations: [Chunk 1] becomes [1], [Chunk 2] becomes [2], etc.
 Never expose internal field names, JSON keys, classification labels, or analysis methodology in the answer.
 State conclusions directly — never narrate the analysis process.
-Every claim must have a citation.
+Every claim must have a citation — if a fact has no clause reference, omit it entirely.
+Never include a fact marked as "unstated" or without a specific clause/section reference.
 Never repeat the same point.
-Never contradict yourself — if two facts seem to conflict, present both and explain."""
+Never contradict yourself — if two facts seem to conflict, present both and explain.
+
+CRITICAL — ABSENCE vs NOT RETRIEVED:
+- You are working from EXTRACTED FACTS, not the complete contract.
+- If a topic is missing from the extracted facts, it means it was NOT EXTRACTED — 
+  it does NOT mean the contract lacks that provision.
+- NEVER say "no [provision] exists" or "the contract does not contain [provision]."
+- NEVER draw legal conclusions from the absence of extracted facts 
+  (e.g., "the absence of remedy caps creates exposure" is WRONG if you simply 
+  did not extract the remedy cap clause).
+- Instead say: "No [provision] was identified in the analysed sections. 
+  The full contract should be reviewed for this topic."
+- NEVER speculate about what a clause "typically" contains. If you do not have
+  the extracted fact, state that it was not identified — do not guess."""
 
 
 class StructuredSynthesizer:
@@ -172,6 +186,12 @@ class StructuredSynthesizer:
             logger.warning("structured_no_facts_extracted")
             return ""
 
+        # Remove facts that could not be properly attributed
+        all_facts = [
+            f for f in all_facts
+            if f.get("clause_ref", "unstated").lower() != "unstated"
+            and f.get("obligor", "unclear").lower() != "unclear"
+        ]
         logger.info("structured_facts_extracted", count=len(all_facts))
 
         # Step 2: Compare parties
@@ -194,12 +214,32 @@ class StructuredSynthesizer:
 
         return answer
 
+    def _strip_document_metadata(self, text: str) -> str:
+        """Remove document metadata that is not contractual content."""
+        import re
+        lines = text.split("\n")
+        cleaned = []
+        for line in lines:
+            stripped = line.strip()
+            # Skip lines that are purely document metadata
+            if re.match(r"^(Page\s+\d+|\d+\s+of\s+\d+)$", stripped, re.IGNORECASE):
+                continue
+            if re.match(r"^(STRICTLY CONFIDENTIAL|CONFIDENTIAL|PRIVILEGED|DRAFT)$", stripped, re.IGNORECASE):
+                continue
+            if re.match(r"^(Prepared|Drafted|Drawn up)\s+by\b", stripped, re.IGNORECASE):
+                continue
+            if re.match(r"^Matter\s+[A-Z]{2}/", stripped):
+                continue
+            cleaned.append(line)
+        return "\n".join(cleaned)
+
     async def _extract_facts(self, chunks: list) -> list[dict]:
         """Step 1: Extract structured facts from each chunk."""
         all_facts = []
 
         for i, chunk in enumerate(chunks):
             chunk_text = chunk.text if hasattr(chunk, "text") else str(chunk)
+            chunk_text = self._strip_document_metadata(chunk_text)
             if len(chunk_text.strip()) < 50:
                 continue
 
@@ -268,7 +308,10 @@ committed spend, and true-up provision found in the facts.
 Use exact figures — never approximate.
 Convert chunk references: [Chunk N] becomes [N].
 If multiple statements of work or schedules exist, list each separately.
-Do not omit any amount."""
+Do not omit any amount.
+If a financial topic you would expect (such as service credits, penalty caps, 
+or late payment terms) is not present in the extracted facts, state that it 
+was not identified in the analysed sections — never claim it does not exist."""
 
             try:
                 result = await self.llm.complete(
