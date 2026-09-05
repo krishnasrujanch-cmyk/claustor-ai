@@ -88,10 +88,8 @@ class RAGRetriever:
         top_k = TOP_K_LIMITS.get(plan, 4)
         context_limit = CONTEXT_LIMITS.get(plan, 4000)
 
-        # Broad queries: load ALL chunks for the contract, then rerank
-        # Focused queries: search-based retrieval, then rerank
-        ]
 
+        # Single-contract: full doc retrieval. Cross-contract: search.
         if contract_id:
             chunks = await self._retrieve_all_chunks(db, contract_id)
             if chunks:

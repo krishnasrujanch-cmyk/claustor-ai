@@ -444,9 +444,10 @@ async def chat_stream(
             logger.info("stream_answerer_routing",
                         plan=user.plan, complexity=_complexity,
                         provider=_answerer_cfg["provider"], model=_answerer_cfg["model"])
-            # Check if broad query — use structured pipeline
-            # Structured pipeline for ALL single-contract queries
-            if req.contract_id and hasattr(context, "chunks") and context.chunks and len(context.chunks) >= 3:
+            # Judge complexity determines pipeline:
+            #   complex → structured extraction (thorough)
+            #   simple/medium → single-pass LLM (fast)
+            if req.contract_id and _complexity == "complex" and hasattr(context, "chunks") and context.chunks and len(context.chunks) >= 3:
                 logger.info("structured_pipeline_stream", query=req.query[:50])
                 from app.agents.rag.structured_synthesizer import get_structured_synthesizer
                 _synth = get_structured_synthesizer()
