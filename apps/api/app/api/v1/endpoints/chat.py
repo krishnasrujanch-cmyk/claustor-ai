@@ -451,13 +451,13 @@ async def chat_stream(
                               "analyze", "obligations and risk"]
             _is_broad = any(s in req.query.lower() for s in _broad_signals)
 
-            if _is_broad and chunks and len(chunks) >= 3:
+            if _is_broad and hasattr(context, "chunks") and context.chunks and len(context.chunks) >= 3:
                 logger.info("structured_pipeline_stream", query=req.query[:50])
                 from app.agents.rag.structured_synthesizer import get_structured_synthesizer
                 _synth = get_structured_synthesizer()
                 full_answer = await _synth.synthesize(
                     query=req.query.strip(),
-                    chunks=chunks,
+                    chunks=context.chunks,
                     citations=[],
                 )
             else:

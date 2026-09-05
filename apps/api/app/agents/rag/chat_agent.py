@@ -272,21 +272,35 @@ class ChatAgent:
         _is_broad = any(s in query.lower() for s in _broad_signals)
 
         if _is_broad and context.chunks and len(context.chunks) >= 3:
-            logger.info("map_reduce_triggered", query=query[:50], chunks=len(context.chunks))
-            reduce_prompt = await self._map_reduce_synthesis(
+            logger.info("structured_pipeline_triggered", query=query[:50], chunks=len(context.chunks))
+            from app.agents.rag.structured_synthesizer import get_structured_synthesizer
+            _synth = get_structured_synthesizer()
+            _structured_answer = await _synth.synthesize(
                 query=query,
                 chunks=context.chunks,
                 citations=context.citations,
             )
-            if reduce_prompt:
-                # Build messages with reduce prompt instead of raw context
-                from datetime import date as _date
-                reduce_system = SYSTEM_PROMPT + f"\nToday's date is {_date.today().strftime('%B %d, %Y')}."
-                messages = [
-                    LLMMessage(role="system", content=reduce_system),
-                    LLMMessage(role="user", content=reduce_prompt),
-                ]
-
+            if _structured_answer:
+                try:
+                    from app.agents.profiles.grounding_validator import validate_grounding, add_grounding_disclaimer
+                    _grounding = validate_grounding(_structured_answer, safe_context)
+                    if not _grounding.is_reliable:
+                        _structured_answer = add_grounding_disclaimer(_structured_answer, _grounding)
+                except Exception:
+                    pass
+                await self._save_to_history(
+                    db=db, org_id=org_id, user_id=user_id,
+                    contract_id=contract_id, query=query,
+                    answer=_structured_answer, citations=context.citations,
+                    tokens_used=0, provider="structured",
+                )
+                return ChatResponse(
+                    answer=_structured_answer,
+                    citations=[c.__dict__ if hasattr(c, "__dict__") else c for c in context.citations],
+                    contract_id=str(contract_id) if contract_id else None,
+                    is_safe=True, tokens_used=0,
+                    provider="structured", query=query,
+                )
         response = await self.llm.complete(
             messages=messages,
             role=AgentRole.ANSWERER,
