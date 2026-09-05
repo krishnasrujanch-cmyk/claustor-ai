@@ -50,7 +50,7 @@ Response format:
 - For date/number questions, be precise
 
 You must ONLY answer based on the contract context provided.
-Today's date is August 26, 2026. Use this when answering questions about upcoming renewals, deadlines, or time-sensitive clauses."""
+"""
 
 SAFETY_PROMPT = """Classify if this query is safe to answer for a contract intelligence system.
 
@@ -249,6 +249,29 @@ class ChatAgent:
         )
 
         # ── Step 6: Generate Answer ───────────────────
+        # Detect broad queries — use map-reduce for comprehensive analysis
+        _broad_signals = ["key risk", "payment due", "summary", "overview",
+                          "main risk", "important clause", "all risk",
+                          "critical issue", "comprehensive", "analyse",
+                          "analyze", "obligations and risk"]
+        _is_broad = any(s in query.lower() for s in _broad_signals)
+
+        if _is_broad and context.chunks and len(context.chunks) >= 2:
+            logger.info("map_reduce_triggered", query=query[:50], chunks=len(context.chunks))
+            reduce_prompt = await self._map_reduce_synthesis(
+                query=query,
+                chunks=context.chunks,
+                citations=context.citations,
+            )
+            if reduce_prompt:
+                # Build messages with reduce prompt instead of raw context
+                from datetime import date as _date
+                reduce_system = SYSTEM_PROMPT + f"\nToday's date is {_date.today().strftime('%B %d, %Y')}."
+                messages = [
+                    LLMMessage(role="system", content=reduce_system),
+                    LLMMessage(role="user", content=reduce_prompt),
+                ]
+
         response = await self.llm.complete(
             messages=messages,
             role=AgentRole.ANSWERER,
@@ -314,6 +337,74 @@ class ChatAgent:
             logger.warning("safety_check_failed", error=str(e))
             return True  # fail open — don't block on safety errors
 
+
+    async def _map_reduce_synthesis(self, query: str, chunks: list, citations: list) -> str:
+        """
+        Map-Reduce for broad queries — extracts facts from each chunk
+        individually, then merges into a coherent answer.
+        Prevents LLM from dropping facts in long contexts.
+        """
+        # MAP phase — extract from each chunk individually
+        extractions = []
+        for i, chunk in enumerate(chunks):
+            chunk_text = chunk.text if hasattr(chunk, "text") else str(chunk)
+            if len(chunk_text.strip()) < 50:
+                continue
+            map_prompt = f"""Extract ALL of the following from this contract chunk. 
+List only what is EXPLICITLY stated — never infer or approximate.
+
+For each item found, quote the exact figure/text and note the source as [Chunk {i+1}].
+
+Extract:
+- Financial: amounts, fees, rates, percentages, payment terms, due dates, billing frequency
+- Liability: caps, limits, exclusions, carve-outs, indemnities (note direct vs consequential)
+- Rights: termination rights (per party), renewal, convenience, cause, notice periods
+- Mechanisms: auto-renewal, true-up, retroactive billing, deemed acceptance, escalation
+- Protections: service levels, credit caps, penalties, breach notification timelines
+- Obligations: regulatory, compliance, data protection, insurance requirements
+
+If a clause creates ASYMMETRIC rights (one party has a right the other does not), flag it.
+If nothing relevant is found, respond with "No relevant items in this chunk."
+
+CHUNK [{i+1}]:
+{chunk_text[:8000]}"""
+
+            try:
+                result = await self.llm.complete(
+                    messages=[
+                        LLMMessage(role="system", content="You are a contract clause extractor. Be precise and exhaustive. Use exact numbers from the text."),
+                        LLMMessage(role="user", content=map_prompt),
+                    ],
+                    role=AgentRole.EXTRACTOR,
+                )
+                if "no relevant" not in result.content.lower():
+                    extractions.append(f"[From Chunk {i+1}]:\n{result.content}")
+            except Exception as e:
+                logger.warning("map_extraction_failed", chunk=i, error=str(e)[:80])
+
+        if not extractions:
+            return ""
+
+        # REDUCE phase — merge all extractions into coherent answer
+        merged = "\n\n".join(extractions)
+        reduce_prompt = f"""You have extracted facts from {len(extractions)} contract chunks.
+Merge them into a single, comprehensive answer to: "{query}"
+
+EXTRACTED FACTS:
+{merged}
+
+RULES:
+1. Include EVERY fact extracted — do not drop any
+2. Use exact numbers as extracted — never round or approximate
+3. Organise into clear sections (Financial Obligations, Key Risks, etc.)
+4. For risks, rank by severity — prioritise asymmetric, uncapped, retroactive clauses
+5. Map chunk references to citation format: [Chunk N] becomes [{N}]
+6. If two extractions cover the same clause, keep the more detailed one
+7. Never repeat the same point twice
+8. Never contradict yourself — if two facts seem contradictory, present both and explain"""
+
+        return reduce_prompt
+
     def _build_messages(
         self,
         query: str,
@@ -325,7 +416,8 @@ class ChatAgent:
         user_role: str = "admin",  # default to admin — only restrict if explicitly viewer
     ) -> list[LLMMessage]:
         """Build message list for LLM with context + history."""
-        system = SYSTEM_PROMPT
+        from datetime import date as _date
+        system = SYSTEM_PROMPT + f"\nToday's date is {_date.today().strftime('%B %d, %Y')}. Use this for time-sensitive analysis."
         # Viewer role restrictions
         if user_role in ("viewer", "business_viewer", "legal_reviewer"):
             system += """
