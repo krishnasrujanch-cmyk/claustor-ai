@@ -253,25 +253,14 @@ class StructuredSynthesizer:
     def _clean_metadata(self, answer: str) -> str:
         """Remove any leaked internal labels from the answer."""
         import re
-        # Remove JSON-style internal labels that may leak from extraction
-        patterns = [
-            r"favors?_(?:obligor|beneficiary|party_[ab])",
-            r"asymmetry_type",
-            r"source_chunk",
-            r"\[Asymmetries\]",
-            r"\[Chunk \d+\]",
-            r"The asymmetry analysis (?:identifies|confirms|shows).*?\.",
-        ]
-        for p in patterns:
-            answer = re.sub(p, "", answer, flags=re.IGNORECASE)
-        # Convert [Chunk N] to [N]
-        answer = re.sub(r"\[Chunk (\d+)\]", r"[]", answer)
-        # Clean up double spaces and empty lines
+        answer = re.sub(r"\bfavors?_\w+\b", "", answer)
+        answer = re.sub(r"\basymmetry_type\b", "", answer)
+        answer = re.sub(r"\bsource_chunk\b", "", answer)
+        answer = re.sub(r"\[Asymmetries\]", "", answer)
+        answer = re.sub(r"\[Chunk (\d+)\]", r"[\1]", answer)
+        answer = re.sub(r"The asymmetry analysis[^.]*\.", "", answer)
         answer = re.sub(r"  +", " ", answer)
-        answer = re.sub(r"
-{3,}", "
-
-", answer)
+        answer = re.sub(r"\n{3,}", "\n\n", answer)
         return answer.strip()
 
     def _ground_check(self, answer: str, chunks: list) -> str:
