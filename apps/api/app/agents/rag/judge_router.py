@@ -94,15 +94,12 @@ Return ONLY this JSON (no markdown):
 
 COMPLEXITY RULES:
 - "simple":  single fact, single clause, direct lookup, metadata query
-  e.g. "GSTIN", "CIN", "PAN", "VAT number", "company registration", "tax ID", "EIN", "UEN", "ABN" → needs_db=true, needs_vector=false, db_query_type="party_identifier"
-- "when does this expire", "what is the value", "what does SL-08 cover"
-- "medium":  multi-clause, comparison, summary, listing all items of a type, explanation needed
-  e.g. "explain the termination conditions", "what are the key risks", "list all service levels", "share all payment terms", "show all obligations"
-- "complex": multi-contract reasoning, legal analysis, cross-reference chains,
-  ambiguous language, risk assessment, analytical questions requiring judgment,
-  questions about difficulty, likelihood, or consequence of actions
-  e.g. "is this indemnification clause fair", "what if we breach payment AND miss milestone",
-  "how hard is it to terminate", "what happens if service fails", "how protected are we"
+  e.g. identifier lookups → needs_db=true, needs_vector=false, db_query_type="party_identifier"
+- single-topic questions with one expected answer
+- "medium":  multi-clause, comparison, summary, listing, explanation
+- questions about multiple related provisions or listing all items of a type
+- "complex": cross-reference analysis, risk assessment, legal judgment
+- questions requiring reasoning across multiple clauses or evaluating consequences
 }}"""
 
 

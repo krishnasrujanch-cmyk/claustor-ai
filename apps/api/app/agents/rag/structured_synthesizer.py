@@ -193,14 +193,10 @@ class StructuredSynthesizer:
         logger.info("structured_pipeline_start",
                      query=query[:50], chunks=len(chunks))
 
-        # Limit extraction chunks by complexity
-        # simple: top 5 (fast ~25s), medium: top 10 (~50s), complex: all (~90s)
-        _extract_limits = {"simple": 8, "medium": 12, "complex": len(chunks)}
-        _extract_count = _extract_limits.get(complexity, len(chunks))
-        extract_chunks = chunks[:_extract_count]
-
+        # Extract from ALL reranked chunks — cost is negligible,
+        # completeness matters more than saving $0.01
         # Step 1: Extract facts from each chunk
-        all_facts = await self._extract_facts(extract_chunks)
+        all_facts = await self._extract_facts(chunks)
         if not all_facts:
             logger.warning("structured_no_facts_extracted")
             return ""
