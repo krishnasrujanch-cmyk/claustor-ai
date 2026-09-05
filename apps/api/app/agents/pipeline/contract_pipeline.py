@@ -288,6 +288,17 @@ class ContractPipeline:
                     logger.info("party_identifiers_extracted", parties=len(_party_ids))
             except Exception as _pe:
                 logger.warning(f"party_extraction_failed: {_pe}")
+            # Auto-detect industry from contract text
+            try:
+                from app.agents.profiles.industry_detector import detect_industry, detect_contract_type_enhanced
+                _detected_industry = detect_industry(full_text, org_industry if "org_industry" in dir() else "general")
+                _enhanced_type = detect_contract_type_enhanced(full_text, contract_meta.get("contract_type", "Other"))
+                contract_meta["industry"] = _detected_industry
+                contract_meta["contract_type"] = _enhanced_type
+                logger.info("industry_detected", industry=_detected_industry, contract_type=_enhanced_type)
+            except Exception as _ide:
+                logger.warning("industry_detection_failed", error=str(_ide)[:80])
+
             from app.infrastructure.document.hierarchical_chunker import build_hierarchical_chunks
             from app.infrastructure.vector_store.chunk_indexer import index_chunks
 
@@ -295,16 +306,6 @@ class ContractPipeline:
                 "counterparty":  contract_meta.get("counterparty"),
                 "risk_level":    None,  # updated after scoring below
                 "contract_type": contract_meta.get("contract_type"),
-                    # Auto-detect industry from contract text
-                    try:
-                        from app.agents.profiles.industry_detector import detect_industry, detect_contract_type_enhanced
-                        _detected_industry = detect_industry(full_text, org_industry if "org_industry" in dir() else "general")
-                        _enhanced_type = detect_contract_type_enhanced(full_text, contract_meta.get("contract_type", "Other"))
-                        contract_meta["industry"] = _detected_industry
-                        contract_meta["contract_type"] = _enhanced_type
-                        logger.info("industry_detected", industry=_detected_industry, contract_type=_enhanced_type)
-                    except Exception as _ide:
-                        logger.warning("industry_detection_failed", error=str(_ide)[:80])
                 "effective_date":contract_meta.get("effective_date"),
                 "expiry_date":   contract_meta.get("expiry_date"),
             }
