@@ -63,7 +63,7 @@ Return a JSON array of asymmetries:
   "party_a_position": "what this party can do or is protected from",
   "party_b": "exact party name from the facts",
   "party_b_position": "what this party can do or must do",
-  "asymmetry_type": "one of: favorable_to_a, favorable_to_b, mutual, unclear",
+  "asymmetry_type": "one of: favors_obligor, favors_beneficiary, mutual, unclear",
   "severity": "critical/high/medium/low",
   "clause_refs": ["relevant clause numbers from the facts"]
 }}
