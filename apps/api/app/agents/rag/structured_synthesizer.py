@@ -248,7 +248,7 @@ class StructuredSynthesizer:
     def _detect_clause_refs(self, text: str) -> str:
         """Detect clause/section numbers in chunk text and prepend as context."""
         import re
-        # Find all clause-style references: "6.3", "16.2", "Clause 9.8", etc.
+        # Find all clause-style references (N.N pattern) in text
         refs = re.findall(r'(?:^|\s)(\d{1,3}\.\d{1,2})\s', text)
         unique_refs = sorted(set(refs), key=lambda x: float(x) if '.' in x else 0)
         if unique_refs:
