@@ -449,9 +449,10 @@ class ContractPipeline:
                 from google.cloud import storage as gcs_lib
                 from google.auth import default as _gauth
                 _creds, _proj = _gauth()
-                _gclient = gcs_lib.Client(project=_proj or "claustor-ai-prod", credentials=_creds)
+                from app.core.config import settings as _settings
+                _gclient = gcs_lib.Client(project=_proj or _settings.GCP_PROJECT, credentials=_creds)
                 _prefix = f"orgs/{org_id}/contracts/{contract_id}/"
-                _blobs = list(_gclient.list_blobs("claustor-contracts-prod", prefix=_prefix))
+                _blobs = list(_gclient.list_blobs(_settings.GCS_BUCKET_CONTRACTS, prefix=_prefix))
                 if _blobs:
                     _blob = _blobs[0]
                     import asyncio as _aio
