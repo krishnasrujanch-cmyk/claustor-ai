@@ -316,6 +316,9 @@ RULES:
 - Do not confuse values of different types
   (e.g. a cure_period is NOT a payment_due_date)
 - Cite clause references
+- Answer the question as asked — state the direct fact first, then add
+  context or qualifications. Never contradict a stated fact with your
+  own interpretation of what it means in practice
 - If the answer is not in the extracted facts, state that it was
   not identified in the analysed sections"""
 
@@ -376,6 +379,9 @@ RULES:
 - Use exact values from the facts
 - Each fact has a clause_ref and topic — do not mix values across topics
 - Cite clause references
+- Answer the question as asked — state the direct fact first, then add
+  context or qualifications. Never contradict a stated fact with your
+  own interpretation of what it means in practice
 - If the question cannot be answered from these facts, state that
   the relevant provision was not identified in the analysed sections"""
 
