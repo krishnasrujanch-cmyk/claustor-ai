@@ -378,107 +378,26 @@ async def chat_stream(
             yield "data: " + __import__("json").dumps({"type":"heartbeat"}) + "\n\n"
 
 
-            # ── Step 4: Vector Search + Reranker (if needed) ──
-            if judge.needs_vector:
-                _judge_complexity = getattr(judge, "complexity", "simple") if judge else "simple"
-                context = await agent.retriever.retrieve(
-                    query=retrieval_query,
-                    org_id=user.org_id,
-                    db=db,
-                    plan=user.plan,
-                    contract_id=_scoped_contract_id,
-                    raw_query=raw_query,
-                    complexity=_judge_complexity,
-                )
-                # Cohere rerank already applied in retriever — no second rerank needed
-                pass
-            else:
-                class _EmptyCtx:
-                    context_text = ""
-                    chunks = []
-                context = _EmptyCtx()
-
-            # ── Step 5: Combine Context + Response Schema ──
-            response_schema = build_response_schema_instruction(judge.intent)
-            db_instruction = (f"\n\nINSTRUCTION: {response_schema}") if extra_context else ""
-            combined = (context.context_text or "") + extra_context + db_instruction
-            safe_ctx, _ = validate_context_window(combined, max_tokens=80000)
-
-            # Build messages
-            # Load profile context for guided analysis
-            _profile_ctx = ""
-            try:
-                from app.agents.profiles.profile_loader import build_analysis_context
-                _profile_ctx = build_analysis_context(
-                    contract_type=getattr(judge, 'contract_type', None) or 'Other',
-                    industry='general',
-                    role='neutral',
-                )
-            except Exception:
-                pass
-
-            messages = agent._build_messages(
+            # ── Step 4+5: Use agent.chat() — single code path ──
+            _judge_complexity = getattr(judge, 'complexity', 'simple') if judge else 'simple'
+            chat_response = await agent.chat(
                 query=req.query.strip(),
-                context=safe_ctx,
-                history=[],
-                summary=None,
-                review_status=None,
-                review_notes=None,
-                profile_context=_profile_ctx,
+                org_id=user.org_id,
+                user_id=user.id,
+                db=db,
+                plan=user.plan,
+                contract_id=_scoped_contract_id,
+                judge_complexity=_judge_complexity,
             )
+            full_answer = chat_response.answer
+            chunks = chat_response.citations or []
 
-            # Step 2: Stream tokens from Groq
-            from app.infrastructure.llm.base import AgentRole
-            from app.infrastructure.llm.router import get_llm_router
-            router_llm = get_llm_router()
-
-            full_answer = ""
-            # Use non-streaming for now, emit word by word for UX
-            # (True streaming requires AsyncIterator support in provider)
-            # Complexity-based model routing
-            from app.core.plan_model_routing import get_answerer_for_complexity
-            _complexity = getattr(judge, "complexity", "simple") if judge else "simple"
-            _answerer_cfg = get_answerer_for_complexity(user.plan, _complexity)
-            logger.info("stream_answerer_routing",
-                        plan=user.plan, complexity=_complexity,
-                        provider=_answerer_cfg["provider"], model=_answerer_cfg["model"])
-            # Judge complexity determines pipeline:
-            #   complex → structured extraction (thorough)
-            #   simple/medium → single-pass LLM (fast)
-            if req.contract_id and hasattr(context, "chunks") and context.chunks and len(context.chunks) >= 3:
-                logger.info("structured_pipeline_stream", query=req.query[:50])
-                from app.agents.rag.structured_synthesizer import get_structured_synthesizer
-                _synth = get_structured_synthesizer()
-                full_answer = await _synth.synthesize(
-                    query=req.query.strip(),
-                    chunks=context.chunks,
-                    citations=[],
-                    complexity=_complexity,
-                )
-                # Create minimal response object for downstream meta emission
-                class _StructuredResponse:
-                    total_tokens = 0
-                    cost_usd = 0.0
-                    extra = {}
-                response = _StructuredResponse()
-            else:
-                response = await router_llm.complete(
-                    messages=messages,
-                    role=AgentRole.ANSWERER,
-                    json_mode=False,
-                    preferred_provider=_answerer_cfg["provider"],
-                    preferred_model=_answerer_cfg["model"],
-                )
-                full_answer = response.content
-            # Grounding validation
-            try:
-                from app.agents.profiles.grounding_validator import validate_grounding, add_grounding_disclaimer
-                _grd = validate_grounding(full_answer, safe_ctx)
-                if not _grd.is_reliable:
-                    full_answer = add_grounding_disclaimer(full_answer, _grd)
-                    logger.warning("grounding_low_stream", score=_grd.score)
-            except Exception:
-                pass
+            # Create response object for meta emission
+            class _ChatResp:
+                total_tokens = getattr(chat_response, 'tokens_used', 0) or 0
+                cost_usd = 0.0
+                extra = {}
+            response = _ChatResp()
 
             # Emit tokens word by word with small delay for UX
             import asyncio
@@ -491,7 +410,7 @@ async def chat_stream(
                     await asyncio.sleep(0.01)
 
             # Step 3: Citations + hallucination check
-            chunks = context.chunks if hasattr(context, "chunks") else []
+            chunks = chat_response.citations if hasattr(chat_response, "citations") else []
             # Convert HybridSearchResult objects to dicts
             chunk_dicts = []
             for ci, ch in enumerate(chunks):

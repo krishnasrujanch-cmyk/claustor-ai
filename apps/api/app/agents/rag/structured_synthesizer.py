@@ -193,10 +193,14 @@ class StructuredSynthesizer:
         logger.info("structured_pipeline_start",
                      query=query[:50], chunks=len(chunks))
 
-        # Extract from ALL reranked chunks — cost is negligible,
-        # completeness matters more than saving $0.01
+        # Limit extraction by complexity — balance speed vs completeness
+        # simple: 15 chunks (~30s), medium: 20 (~40s), complex: all (~60s)
+        _max_extract = {"simple": 8, "medium": 15, "complex": len(chunks)}
+        _extract_count = min(len(chunks), _max_extract.get(complexity, len(chunks)))
+        extract_chunks = chunks[:_extract_count]
+        
         # Step 1: Extract facts from each chunk
-        all_facts = await self._extract_facts(chunks)
+        all_facts = await self._extract_facts(extract_chunks)
         if not all_facts:
             logger.warning("structured_no_facts_extracted")
             return ""
@@ -247,33 +251,121 @@ class StructuredSynthesizer:
             cleaned.append(line)
         return "\n".join(cleaned)
 
-    async def _focused_answer(self, query: str, facts: list[dict]) -> str:
+    async def _fast_extract_and_answer(self, query: str, chunks: list) -> str:
         """
-        For simple/medium queries: answer ONLY the question asked
-        using extracted facts. No full risk report.
+        FAST mode: 1 extraction call + 1 answer call (~10s total).
+        Extract structured facts from context in ONE call,
+        then answer using those facts.
         """
-        # Filter facts by query relevance — extract key words from query
-        # and score each fact by how many query words it contains
+        # Combine all chunk text
+        combined = "\n---\n".join(
+            self._detect_clause_refs(
+                self._strip_document_metadata(
+                    c.text if hasattr(c, "text") else str(c)
+                )
+            )
+            for c in chunks
+            if len((c.text if hasattr(c, "text") else str(c)).strip()) > 50
+        )
+
+        # Step 1: Query-aware fact extraction in ONE call
+        extract_prompt = f"""You are answering: "{query}"
+
+Extract ALL facts relevant to this question from the contract text below.
+Return a JSON array. For each fact:
+- "value": the exact number, date, percentage, or term
+- "type": what it represents (e.g. payment_due_date, interest_rate, liability_cap, notice_period, cure_period, committed_spend, billing_frequency)
+- "clause": the clause or section reference
+- "context": one sentence explaining what this value means
+
+IMPORTANT: Extract EVERY numerical value, date, percentage, and time period
+you find in the text. Do not skip any. Pay special attention to values
+directly relevant to the question.
+
+CONTRACT TEXT:
+{combined}
+
+Return ONLY a valid JSON array. No markdown, no explanation."""
+
+        facts_json = "[]"
+        try:
+            result = await self.llm.complete(
+                messages=[LLMMessage(role="user", content=extract_prompt)],
+                role=AgentRole.EXTRACTOR,
+            )
+            facts_json = result.content.strip()
+            facts_json = facts_json.replace("```json", "").replace("```", "").strip()
+            logger.info("fast_facts_extracted", count=facts_json.count('"value"'))
+        except Exception as e:
+            logger.warning("fast_extraction_failed", error=str(e)[:80])
+
+        # Step 2: Answer using extracted facts
+        answer_prompt = f"""Answer this question using ONLY the extracted facts below.
+
+QUESTION: {query}
+
+EXTRACTED FACTS:
+{facts_json}
+
+ORIGINAL CONTRACT TEXT (for citation):
+{combined}
+
+RULES:
+- Use exact values from the extracted facts
+- Each value has a type and clause reference — use them correctly
+- Do not confuse values of different types
+  (e.g. a cure_period is NOT a payment_due_date)
+- Cite clause references
+- If the answer is not in the extracted facts, state that it was
+  not identified in the analysed sections"""
+
+        try:
+            result = await self.llm.complete(
+                messages=[LLMMessage(role="user", content=answer_prompt)],
+                role=AgentRole.ANSWERER,
+                max_tokens=2000,
+            )
+            return result.content
+        except Exception as e:
+            logger.error("fast_answer_failed", error=str(e)[:80])
+            return ""
+
+    async def _standard_extract_and_answer(self, query: str, chunks: list) -> str:
+        """
+        STANDARD mode: per-chunk extraction + focused answer (~20s total).
+        More thorough than FAST, less expensive than DEEP.
+        """
+        # Extract from top chunks (parallel, batched)
+        facts = await self._extract_facts(chunks)
+        if not facts:
+            return ""
+
+        # Filter facts by query relevance
         _stop = set("what does is the a an in of for to and or this that how are can my our about cover mean say do it".split())
         _qwords = [w.lower().strip("?,. ") for w in query.split() if w.lower().strip("?,. ") not in _stop and len(w.strip("?,. ")) > 2]
-        
+
         if _qwords:
             scored = []
             for f in facts:
                 f_text = json.dumps(f).lower()
                 score = sum(1 for w in _qwords if w in f_text)
                 if score > 0:
+                    if f.get("amounts"):
+                        score += 1
+                    topic = f.get("topic", "").lower().replace("_", " ")
+                    if any(w in topic for w in _qwords):
+                        score += 2
+                    if len(f.get("provision", "")) > 50:
+                        score += 1
                     scored.append((score, f))
             scored.sort(key=lambda x: -x[0])
-            relevant_facts = [f for _, f in scored[:30]]
-            if not relevant_facts:
-                relevant_facts = facts[:30]
+            relevant = [f for _, f in scored[:30]]
         else:
-            relevant_facts = facts[:30]
-        
-        facts_json = json.dumps(relevant_facts, indent=2)
+            relevant = facts[:30]
 
-        prompt = f"""You have these extracted contract facts. Answer ONLY the specific question asked.
+        facts_json = json.dumps(relevant, indent=2)
+
+        prompt = f"""Answer this question using the extracted contract facts.
 
 QUESTION: {query}
 
@@ -281,13 +373,11 @@ EXTRACTED FACTS:
 {facts_json}
 
 RULES:
-- Answer ONLY what the question asks — do not provide a full contract analysis
-- Use exact numbers from the extracted facts
-- Cite clause references from the facts
-- If the answer involves multiple related provisions, list them concisely
-- If the question cannot be answered from the extracted facts, state that 
-  the relevant provision was not identified in the analysed sections
-- Keep the answer focused and concise"""
+- Use exact values from the facts
+- Each fact has a clause_ref and topic — do not mix values across topics
+- Cite clause references
+- If the question cannot be answered from these facts, state that
+  the relevant provision was not identified in the analysed sections"""
 
         try:
             result = await self.llm.complete(
@@ -297,8 +387,9 @@ RULES:
             )
             return result.content
         except Exception as e:
-            logger.error("focused_answer_failed", error=str(e)[:80])
+            logger.error("standard_answer_failed", error=str(e)[:80])
             return ""
+
 
     def _detect_clause_refs(self, text: str) -> str:
         """Detect clause/section numbers in chunk text and prepend as context."""
@@ -311,22 +402,19 @@ RULES:
         return text
 
     async def _extract_facts(self, chunks: list) -> list[dict]:
-        """Step 1: Extract structured facts from each chunk."""
-        all_facts = []
+        """Step 1: Extract structured facts from each chunk — parallel."""
+        import asyncio as _aio
 
-        for i, chunk in enumerate(chunks):
+        async def _extract_one(i: int, chunk) -> list[dict]:
             chunk_text = chunk.text if hasattr(chunk, "text") else str(chunk)
             chunk_text = self._strip_document_metadata(chunk_text)
             if len(chunk_text.strip()) < 50:
-                continue
-            # Enrich with detected clause numbers
+                return []
             chunk_text = self._detect_clause_refs(chunk_text)
-
             prompt = EXTRACT_PROMPT.format(
                 chunk_num=i + 1,
                 chunk_text=chunk_text[:6000],
             )
-
             try:
                 result = await self.llm.complete(
                     messages=[LLMMessage(role="user", content=prompt)],
@@ -336,10 +424,22 @@ RULES:
                 if isinstance(parsed, list):
                     for fact in parsed:
                         fact["source_chunk"] = i + 1
-                    all_facts.extend(parsed)
+                    return parsed
             except Exception as e:
                 logger.warning("fact_extraction_failed",
                                chunk=i, error=str(e)[:80])
+            return []
+
+        # Run all extractions in parallel (batches of 5 to avoid rate limits)
+        all_facts = []
+        batch_size = 10
+        for start in range(0, len(chunks), batch_size):
+            batch = chunks[start:start + batch_size]
+            tasks = [_extract_one(start + i, c) for i, c in enumerate(batch)]
+            results = await _aio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, list):
+                    all_facts.extend(r)
 
         return all_facts
 

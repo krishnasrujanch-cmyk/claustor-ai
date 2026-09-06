@@ -24,10 +24,10 @@ CONTEXT_LIMITS = {
 
 # Top-K results per plan
 TOP_K_LIMITS = {
-    "free":         4,
-    "starter":      8,
-    "professional": 12,
-    "enterprise":   15,  # rerank picks best 15 from 30 retrieved
+    "free":         8,
+    "starter":      12,
+    "professional": 15,
+    "enterprise":   15,
 }
 
 
@@ -90,13 +90,25 @@ class RAGRetriever:
         context_limit = CONTEXT_LIMITS.get(plan, 4000)
 
 
-        # Single-contract: full doc retrieval. Cross-contract: search.
+        # Single-contract: always load all chunks (DB query is cheap ~0.5s)
+        # then rerank to complexity-appropriate depth.
+        # Cross-contract: search-based.
+        _rerank_limits = {"simple": 15, "medium": 20, "complex": 25}
+        _rerank_n = _rerank_limits.get(complexity, 15)
+        
         if contract_id:
             chunks = await self._retrieve_all_chunks(db, contract_id)
             if chunks:
-                chunks = await self._rerank(query, chunks, top_n=min(len(chunks), 20))
-                logger.info("broad_full_retrieval",
-                             query=query[:50], total_chunks=len(chunks))
+                chunks = await self._rerank(query, chunks, top_n=min(len(chunks), _rerank_n))
+                logger.info("contract_retrieval",
+                             query=query[:50], complexity=complexity,
+                             loaded=len(chunks), reranked=_rerank_n)
+            else:
+                chunks = await self.hybrid_engine.search(
+                    query=query, org_id=org_id, db=db,
+                    contract_id=contract_id, top_k=top_k,
+                    clause_type=clause_type, raw_query=raw_query,
+                )
         else:
             chunks = await self.hybrid_engine.search(
                 query=query, org_id=org_id, db=db,
@@ -104,8 +116,7 @@ class RAGRetriever:
                 clause_type=clause_type, raw_query=raw_query,
             )
             if chunks:
-                chunks = await self._rerank(
-                    query, chunks, top_n=min(len(chunks), top_k + 5))
+                chunks = await self._rerank(query, chunks, top_n=min(len(chunks), top_k))
 
         if not chunks:
             logger.warning(
