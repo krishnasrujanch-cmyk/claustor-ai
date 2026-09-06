@@ -184,9 +184,9 @@ async def forgot_password(req: ForgotPasswordRequest, db: AsyncSession = Depends
     await db.commit()
 
     # Send email
+    from app.core.config import settings
     reset_url = f"{settings.FRONTEND_URL}/reset-password?token=reset_{reset_token}"
     try:
-        from app.core.config import settings
         if settings.RESEND_API_KEY:
             import resend
             resend.api_key = settings.RESEND_API_KEY
