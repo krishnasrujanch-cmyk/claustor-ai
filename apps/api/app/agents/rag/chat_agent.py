@@ -201,6 +201,48 @@ class ChatAgent:
             complexity=judge_complexity,
         )
 
+        # ── Step 2b: For cross-contract queries, inject contract metadata ──
+        if not contract_id:
+            try:
+                from sqlalchemy import select as _sel_meta
+                from app.domain.models import Contract as _CMeta
+                _meta_r = await db.execute(
+                    _sel_meta(
+                        _CMeta.title, _CMeta.effective_date, _CMeta.expiry_date,
+                        _CMeta.contract_value, _CMeta.contract_currency,
+                        _CMeta.auto_renewal, _CMeta.counterparty, _CMeta.contract_type,
+                    ).where(
+                        _CMeta.org_id == org_id,
+                        _CMeta.is_active == True,
+                        _CMeta.status == "analyzed",
+                    ).order_by(_CMeta.expiry_date.asc().nullslast())
+                )
+                _contracts = _meta_r.fetchall()
+                if _contracts:
+                    _meta_lines = ["CONTRACT PORTFOLIO SUMMARY (from database):"]
+                    for _c in _contracts:
+                        _line = f"- {_c.title}"
+                        if _c.counterparty:
+                            _line += f" (with {_c.counterparty})"
+                        if _c.effective_date:
+                            _line += f", effective: {_c.effective_date}"
+                        if _c.expiry_date:
+                            _line += f", expires: {_c.expiry_date}"
+                        if _c.contract_value and _c.contract_currency:
+                            _line += f", value: {_c.contract_currency} {_c.contract_value:,.0f}"
+                        if _c.auto_renewal is not None:
+                            _line += f", auto-renewal: {'Yes' if _c.auto_renewal else 'No'}"
+                        if _c.contract_type:
+                            _line += f", type: {_c.contract_type}"
+                        _meta_lines.append(_line)
+                    _meta_text = "\n".join(_meta_lines)
+                    # Prepend to context
+                    if hasattr(context, "context_text"):
+                        context.context_text = _meta_text + "\n\n" + (context.context_text or "")
+                    logger.info("cross_contract_metadata_injected", contracts=len(_contracts))
+            except Exception as _me:
+                logger.warning("cross_contract_metadata_failed", error=str(_me)[:80])
+
         # ── Step 3: Load Conversation History (with memory) ──
         memory = MemoryManager(db=db, llm=self.llm)
         mem_ctx = await memory.get_context(
