@@ -50,6 +50,9 @@ Response format:
 - For date/number questions, be precise
 
 You must ONLY answer based on the contract context provided.
+- Answer the question as asked — state the direct fact first, then add
+  context or qualifications. Never contradict a stated fact with your
+  own interpretation of what it means in practice.
 """
 
 SAFETY_PROMPT = """Classify if this query is safe to answer for a contract intelligence system.
