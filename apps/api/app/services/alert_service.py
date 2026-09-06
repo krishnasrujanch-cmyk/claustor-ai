@@ -17,7 +17,7 @@ logger = structlog.get_logger(__name__)
 
 # Alert thresholds (days before due date)
 RENEWAL_ALERT_DAYS    = [120, 90, 60, 30, 14, 7]
-OBLIGATION_ALERT_DAYS = [30, 14, 7, 1]
+OBLIGATION_ALERT_DAYS = [30, 14, 7, 3, 1]
 
 
 class AlertService:
