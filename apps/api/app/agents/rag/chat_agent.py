@@ -260,13 +260,18 @@ class ChatAgent:
             _cr = await db.execute(
                 _sel(_Contract.review_status, _Contract.review_notes,
                      _Contract.contract_family_id, _Contract.is_latest,
-                     _Contract.version_number)
+                     _Contract.version_number, _Contract.contract_type,
+                     _Contract.industry)
                 .where(_Contract.id == contract_id)
             )
             _row = _cr.fetchone()
+            _contract_type = "Other"
+            _contract_industry = "general"
             if _row:
                 review_status = _row.review_status
                 review_notes  = _row.review_notes
+                _contract_type = _row.contract_type or "Other"
+                _contract_industry = _row.industry or "general"
 
                 # If not latest version, resolve to latest for RAG
                 if not _row.is_latest and _row.contract_family_id:
@@ -320,8 +325,8 @@ class ChatAgent:
         if contract_id and context.chunks and len(context.chunks) >= 2:
             from app.agents.rag.structured_synthesizer import get_structured_synthesizer
             _synth = get_structured_synthesizer()
-            _ct = getattr(context, "contract_type", None) or "Other"
-            _ind = getattr(context, "industry", None) or "general"
+            _ct = _contract_type if "_contract_type" in dir() else "Other"
+            _ind = _contract_industry if "_contract_industry" in dir() else "general"
 
             if judge_complexity == "simple":
                 logger.info("fast_pipeline", query=query[:50], chunks=len(context.chunks), industry=_ind)
