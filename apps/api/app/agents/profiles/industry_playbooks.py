@@ -559,11 +559,49 @@ INDUSTRY_PLAYBOOKS = {
 }
 
 
+_INDUSTRY_ALIASES = {
+    "technology": "it_saas",
+    "tech": "it_saas",
+    "software": "it_saas",
+    "saas": "it_saas",
+    "it": "it_saas",
+    "cloud": "it_saas",
+    "pharmaceutical": "pharma",
+    "pharmacy": "pharma",
+    "biotech": "pharma",
+    "biopharma": "pharma",
+    "finance": "financial_services",
+    "banking": "financial_services",
+    "bank": "financial_services",
+    "health": "healthcare",
+    "hospital": "healthcare",
+    "medical": "healthcare",
+    "oil": "energy_oil_gas",
+    "gas": "energy_oil_gas",
+    "energy": "energy_oil_gas",
+    "utilities": "energy_oil_gas",
+    "property": "real_estate",
+    "realestate": "real_estate",
+    "retail": "general",
+    "ecommerce": "general",
+    "logistics": "general",
+    "media": "media_entertainment",
+    "entertainment": "media_entertainment",
+    "telecom": "telecom",
+    "telecommunications": "telecom",
+    "govt": "government",
+    "public_sector": "government",
+}
+
 def get_playbook(industry: str) -> dict:
     """Get playbook for an industry. Falls back to 'general'."""
     ind = (industry or "general").strip().lower()
+    # Direct match
     if ind in INDUSTRY_PLAYBOOKS:
         return INDUSTRY_PLAYBOOKS[ind]
+    # Alias match
+    if ind in _INDUSTRY_ALIASES:
+        return INDUSTRY_PLAYBOOKS[_INDUSTRY_ALIASES[ind]]
     # Fuzzy match
     for key, pb in INDUSTRY_PLAYBOOKS.items():
         if ind in key or key in ind:

@@ -397,6 +397,32 @@ RULES:
             return ""
 
 
+    def _get_industry_guidance(self, industry: str, contract_type: str) -> str:
+        """Build concise industry risk guidance for answer prompts."""
+        if industry == "general" and contract_type == "Other":
+            return ""
+        try:
+            from app.agents.profiles.industry_playbooks import get_playbook
+            playbook = get_playbook(industry)
+            if not playbook or playbook.get("display_name") == "General":
+                return ""
+            parts = []
+            parts.append(f"INDUSTRY CONTEXT: {playbook['display_name']}")
+            if playbook.get("red_flags"):
+                flags = playbook["red_flags"][:5]
+                parts.append("Industry-specific red flags to watch for:")
+                for f in flags:
+                    parts.append(f"  - {f}")
+            if playbook.get("risk_multipliers"):
+                high_risk = [k for k, v in playbook["risk_multipliers"].items() if v >= 1.5]
+                if high_risk:
+                    parts.append(f"High-weight risk areas for this industry: {', '.join(high_risk)}")
+            if playbook.get("mandatory_clauses"):
+                parts.append(f"Mandatory clauses: {', '.join(playbook['mandatory_clauses'][:6])}")
+            return "\n".join(parts)
+        except Exception:
+            return ""
+
     def _detect_clause_refs(self, text: str) -> str:
         """Detect clause/section numbers in chunk text and prepend as context."""
         import re
