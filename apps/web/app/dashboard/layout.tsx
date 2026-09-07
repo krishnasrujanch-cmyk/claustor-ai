@@ -216,7 +216,7 @@ function UpgradeModal({feature, plan, onClose}: {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router   = useRouter();
-  const { user, token, loadUser, logout, setAuth } = useAuthStore();
+  const { user, token, loadUser, logout } = useAuthStore();
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
@@ -225,8 +225,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const urlParams = new URLSearchParams(window.location.search);
       const ssoToken = urlParams.get("token");
       if (ssoToken) {
-        // SSO callback — store token and clean URL
-        setAuth({ token: ssoToken });
+        // SSO callback — store token in zustand persist storage and clean URL
+        const authData = JSON.stringify({ state: { token: ssoToken }, version: 0 });
+        localStorage.setItem("claustor-auth", authData);
+        useAuthStore.setState({ token: ssoToken });
         window.history.replaceState({}, "", window.location.pathname);
       }
       const storedAuth = typeof window !== "undefined"
