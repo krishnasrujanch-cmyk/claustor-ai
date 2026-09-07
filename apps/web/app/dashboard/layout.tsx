@@ -221,11 +221,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     const init = async () => {
-      // Check store token first, then localStorage fallback
+      // Check URL params first (SSO callback), then store, then localStorage
+      const urlParams = new URLSearchParams(window.location.search);
+      const ssoToken = urlParams.get("token");
+      if (ssoToken) {
+        // SSO callback — store token and clean URL
+        setAuth({ token: ssoToken });
+        window.history.replaceState({}, "", window.location.pathname);
+      }
       const storedAuth = typeof window !== "undefined"
         ? (() => { try { return JSON.parse(localStorage.getItem("claustor-auth")||"{}"); } catch { return {}; } })()
         : {};
-      const effectiveToken = token || storedAuth?.state?.token;
+      const effectiveToken = ssoToken || token || storedAuth?.state?.token;
       if (!effectiveToken) { router.push("/login"); return; }
       // Always reload user to get latest plan from DB
       await loadUser();
