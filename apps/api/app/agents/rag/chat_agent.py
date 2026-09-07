@@ -317,28 +317,30 @@ class ChatAgent:
 
         # ── Step 6: Generate Answer ───────────────────
 
-        if contract_id and context.chunks and len(context.chunks) >= 2 and judge_complexity == "complex":
-            # Simple queries with high-confidence retrieval: direct LLM answer
-            # Complex queries: full structured pipeline
-            if judge_complexity == "complex":
-                logger.info("structured_pipeline_triggered", query=query[:50], chunks=len(context.chunks))
-                from app.agents.rag.structured_synthesizer import get_structured_synthesizer
-                _synth = get_structured_synthesizer()
+        if contract_id and context.chunks and len(context.chunks) >= 2:
+            from app.agents.rag.structured_synthesizer import get_structured_synthesizer
+            _synth = get_structured_synthesizer()
+            _ct = getattr(context, "contract_type", None) or "Other"
+            _ind = getattr(context, "industry", None) or "general"
+
+            if judge_complexity == "simple":
+                logger.info("fast_pipeline", query=query[:50], chunks=len(context.chunks), industry=_ind)
+                _structured_answer = await _synth._fast_extract_and_answer(
+                    query=query, chunks=context.chunks,
+                    contract_type=_ct, industry=_ind,
+                )
+            elif judge_complexity == "complex":
+                logger.info("deep_pipeline", query=query[:50], chunks=len(context.chunks), industry=_ind)
                 _structured_answer = await _synth.synthesize(
-                    query=query,
-                    chunks=context.chunks,
-                    citations=context.citations,
-                    complexity=judge_complexity,
+                    query=query, chunks=context.chunks,
+                    citations=context.citations, complexity=judge_complexity,
+                    contract_type=_ct, industry=_ind,
                 )
             else:
-                logger.info("structured_simple_triggered", query=query[:50], chunks=len(context.chunks))
-                from app.agents.rag.structured_synthesizer import get_structured_synthesizer
-                _synth = get_structured_synthesizer()
-                _structured_answer = await _synth.synthesize(
-                    query=query,
-                    chunks=context.chunks,
-                    citations=context.citations,
-                    complexity=judge_complexity,
+                logger.info("standard_pipeline", query=query[:50], chunks=len(context.chunks), industry=_ind)
+                _structured_answer = await _synth._standard_extract_and_answer(
+                    query=query, chunks=context.chunks,
+                    contract_type=_ct, industry=_ind,
                 )
             if _structured_answer:
                 try:

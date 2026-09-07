@@ -185,6 +185,8 @@ class StructuredSynthesizer:
         chunks: list,
         citations: list,
         complexity: str = "complex",
+        contract_type: str = "Other",
+        industry: str = "general",
     ) -> str:
         """
         Run the full structured pipeline:
@@ -217,7 +219,8 @@ class StructuredSynthesizer:
         else:
             asymmetries = await self._compare_parties(all_facts)
             logger.info("structured_asymmetries_found", count=len(asymmetries))
-            answer = await self._assess_risks(query, all_facts, asymmetries)
+            _ig = self._get_industry_guidance(industry, contract_type)
+            answer = await self._assess_risks(query, all_facts, asymmetries, industry_guidance=_ig)
 
         # Step 3b: Clean internal metadata from answer
         answer = self._clean_metadata(answer)
@@ -251,7 +254,7 @@ class StructuredSynthesizer:
             cleaned.append(line)
         return "\n".join(cleaned)
 
-    async def _fast_extract_and_answer(self, query: str, chunks: list) -> str:
+    async def _fast_extract_and_answer(self, query: str, chunks: list, contract_type: str = "Other", industry: str = "general") -> str:
         """
         FAST mode: 1 extraction call + 1 answer call (~10s total).
         Extract structured facts from context in ONE call,
@@ -333,7 +336,7 @@ RULES:
             logger.error("fast_answer_failed", error=str(e)[:80])
             return ""
 
-    async def _standard_extract_and_answer(self, query: str, chunks: list) -> str:
+    async def _standard_extract_and_answer(self, query: str, chunks: list, contract_type: str = "Other", industry: str = "general") -> str:
         """
         STANDARD mode: per-chunk extraction + focused answer (~20s total).
         More thorough than FAST, less expensive than DEEP.
@@ -500,8 +503,13 @@ RULES:
 
     async def _assess_risks(
         self, query: str, facts: list[dict], asymmetries: list[dict],
+        industry_guidance: str = "",
     ) -> str:
         """Step 3: Two focused calls — financials + risks — then combine."""
+        # Inject industry context if available
+        _industry_block = ""
+        if industry_guidance:
+            _industry_block = f"\n\n{industry_guidance}\nUse this industry context to weight risks appropriately.\n"
         # Split facts: any fact with amounts goes to financial, all facts go to risk
         financial_facts = [f for f in facts if f.get("amounts")]
         risk_facts = facts  # risk assessment sees everything for full context
@@ -545,7 +553,7 @@ Do not characterise a financial obligation as larger or smaller than stated."""
             facts_json=risk_json,
             asymmetries_json=asym_json,
             query=query,
-        )
+        ) + _industry_block
 
         try:
             result = await self.llm.complete(
