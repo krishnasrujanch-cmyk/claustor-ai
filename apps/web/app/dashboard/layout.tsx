@@ -216,7 +216,7 @@ function UpgradeModal({feature, plan, onClose}: {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router   = useRouter();
-  const { user, token, loadUser, logout } = useAuthStore();
+  const { user, token, loadUser, logout, setAuth } = useAuthStore();
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
