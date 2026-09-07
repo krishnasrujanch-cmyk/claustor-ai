@@ -254,6 +254,8 @@ class ChatAgent:
         # ── Step 4: Get contract review status + resolve latest version ──
         review_status = None
         review_notes  = None
+        _contract_type = "Other"
+        _contract_industry = "general"
         if contract_id:
             from sqlalchemy import select as _sel
             from app.domain.models import Contract as _Contract
@@ -325,8 +327,8 @@ class ChatAgent:
         if contract_id and context.chunks and len(context.chunks) >= 2:
             from app.agents.rag.structured_synthesizer import get_structured_synthesizer
             _synth = get_structured_synthesizer()
-            _ct = _contract_type if "_contract_type" in dir() else "Other"
-            _ind = _contract_industry if "_contract_industry" in dir() else "general"
+            _ct = _contract_type
+            _ind = _contract_industry
 
             if judge_complexity == "simple":
                 logger.info("fast_pipeline", query=query[:50], chunks=len(context.chunks), industry=_ind)

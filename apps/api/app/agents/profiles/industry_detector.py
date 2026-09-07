@@ -48,12 +48,16 @@ INDUSTRY_KEYWORDS = {
     },
     "it_saas": {
         "strong": ["SaaS", "software as a service", "cloud service",
+                   "cloud infrastructure", "cloud agreement", "managed services",
                    "API access", "uptime", "source code escrow",
                    "user licence", "subscription", "SOC 2", "ISO 27001",
-                   "data center", "availability zone"],
+                   "data center", "availability zone", "managed SOC",
+                   "ERP integration", "service level matrix"],
         "moderate": ["software", "platform", "application", "hosting",
                      "deployment", "server", "database", "encryption",
-                     "authentication", "backup", "disaster recovery"],
+                     "authentication", "backup", "disaster recovery",
+                     "compute", "storage", "migration", "infrastructure",
+                     "incident response", "vulnerability", "cyber"],
     },
     "manufacturing": {
         "strong": ["manufacturing", "supply chain", "raw material",
