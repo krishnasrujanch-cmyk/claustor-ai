@@ -638,7 +638,6 @@ async def download_original(
 ):
     """Download the original uploaded contract file."""
     import os
-    from fastapi.responses import FileResponse
     result = await db.execute(
         select(Contract).where(
             Contract.id == contract_id,
@@ -648,18 +647,42 @@ async def download_original(
     contract = result.scalar_one_or_none()
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")
-
     file_path = contract.file_path
-    if not file_path or not os.path.exists(file_path):
+    if not file_path:
         raise HTTPException(status_code=404, detail="Original file not found")
-
     filename = contract.original_filename or f"contract-{str(contract_id)[:8]}.pdf"
-    return FileResponse(
-        path=file_path,
-        filename=filename,
-        media_type=contract.mime_type or "application/pdf",
-    )
-
+    # Local file (dev)
+    if os.path.exists(file_path):
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=file_path, filename=filename,
+            media_type=contract.mime_type or "application/pdf",
+        )
+    # GCS file (production)
+    try:
+        from google.cloud import storage
+        from fastapi.responses import StreamingResponse
+        from app.core.config import settings
+        import io
+        bucket_name = settings.GCS_BUCKET_CONTRACTS or settings.GCS_BUCKET
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob_name = file_path.replace(f"gs://{bucket_name}/", "") if file_path.startswith("gs://") else file_path
+        blob = bucket.blob(blob_name)
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail="File not found in storage")
+        data = blob.download_as_bytes()
+        return StreamingResponse(
+            io.BytesIO(data),
+            media_type=contract.mime_type or "application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ImportError:
+        raise HTTPException(status_code=404, detail="Storage not available")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Download failed")
 
 @router.get("/{contract_id}/export-pdf")
 async def export_contract_pdf(
