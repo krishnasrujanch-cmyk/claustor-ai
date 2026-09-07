@@ -10,26 +10,40 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "Claustor — The AI-Powered Contract Intelligence Platform",
-    template: "%s | Claustor",
+    default: "Claustor AI — Contract Intelligence Platform",
+    template: "%s | Claustor AI",
   },
   description:
-    "Claustor analyses your contracts in seconds. Extract clauses, score risk, track obligations — no legal team required.",
-  keywords: ["contract intelligence", "AI contract review", "CLM", "contract analysis"],
+    "AI-powered contract analysis, risk detection, and obligation tracking. Upload contracts, ask questions, get instant insights. Built for legal, finance, and procurement teams.",
+  keywords: [
+    "contract analysis", "AI contract review", "contract intelligence",
+    "legal AI", "contract management", "risk detection", "obligation tracking",
+    "CLM", "contract lifecycle management", "legal technology",
+    "contract copilot", "document analysis", "enterprise AI",
+  ],
   authors: [{ name: "Claustor AI" }],
+  creator: "Claustor AI",
+  metadataBase: new URL("https://claustor.com"),
+  alternates: { canonical: "/" },
   openGraph: {
-    title: "Claustor — AI Contract Intelligence",
-    description: "Transform contracts into intelligence with AI.",
-    url: "https://claustor.com",
-    siteName: "Claustor",
     type: "website",
+    locale: "en_US",
+    url: "https://claustor.com",
+    siteName: "Claustor AI",
+    title: "Claustor AI — Contract Intelligence Platform",
+    description: "Transform contracts into intelligence with AI. Instant risk analysis, obligation tracking, and cross-contract insights.",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Claustor AI" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Claustor — AI Contract Intelligence",
+    title: "Claustor AI — Contract Intelligence Platform",
     description: "Transform contracts into intelligence with AI.",
+    images: ["/og-image.png"],
   },
   robots: { index: true, follow: true },
+  verification: {
+    google: "add-your-google-verification-code",
+  },
 };
 
 export default function RootLayout({
@@ -39,6 +53,28 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
+      
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "Claustor AI",
+            applicationCategory: "BusinessApplication",
+            description: "AI-powered contract intelligence platform for legal, finance, and procurement teams.",
+            url: "https://claustor.com",
+            operatingSystem: "Web",
+            offers: {
+              "@type": "AggregateOffer",
+              priceCurrency: "USD",
+              lowPrice: "0",
+              highPrice: "99",
+              offerCount: "4",
+            },
+          }),
+        }}
+      />
       <body className="antialiased">{children}</body>
     </html>
   );
