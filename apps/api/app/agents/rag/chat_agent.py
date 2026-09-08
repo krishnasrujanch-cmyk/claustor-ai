@@ -26,6 +26,7 @@ logger = structlog.get_logger(__name__)
 # Memory manager import
 from app.agents.memory.memory_manager import MemoryManager
 from app.agents.memory.semantic_cache import get_cached_answer, set_cached_answer
+from app.agents.memory.episodic_memory import save_episode, get_past_episodes, format_episodes_for_prompt
 
 # Conversation history limits per plan
 HISTORY_LIMITS = {
@@ -265,6 +266,10 @@ class ChatAgent:
             contract_id=contract_id, plan=plan,
         )
         history = mem_ctx["recent"]
+        
+        # Load past conversation episodes for cross-session context
+        _episodes = await get_past_episodes(db, org_id, user_id, contract_id, limit=5)
+        _episode_ctx = format_episodes_for_prompt(_episodes)
 
         # ── Step 4: Get contract review status + resolve latest version ──
         review_status = None
