@@ -75,12 +75,13 @@ async def invalidate_contract_cache(contract_id: str) -> int:
     try:
         from app.infrastructure.database.redis import get_redis
         redis = await get_redis()
-        # Can't easily find all keys for a contract with SHA hash
-        # So we use a contract-specific version counter
-        version_key = f"claustor:version:{contract_id}"
-        await redis.incr(version_key)
-        logger.info("cache_invalidated", contract_id=str(contract_id)[:8])
-        return 1
+        # Scan and delete all cache keys (prefix match)
+        deleted = 0
+        async for key in redis.scan_iter(match=f"{CACHE_PREFIX}*", count=100):
+            await redis.delete(key)
+            deleted += 1
+        logger.info("cache_invalidated", contract_id=str(contract_id)[:8], deleted=deleted)
+        return deleted
     except Exception as e:
         logger.warning("cache_invalidate_failed", error=str(e)[:60])
         return 0

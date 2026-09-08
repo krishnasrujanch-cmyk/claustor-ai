@@ -173,6 +173,10 @@ class ChatAgent:
         _cache_cid = str(contract_id) if contract_id else None
         cached = await get_cached_answer(query, _cache_cid)
         if cached:
+            try:
+                await save_episode(db, org_id, user_id, contract_id, query, cached["answer"][:300])
+            except Exception:
+                pass
             return ChatResponse(
                 answer=cached["answer"],
                 citations=[],
@@ -385,6 +389,11 @@ class ChatAgent:
                     answer=_structured_answer, citations=context.citations,
                     tokens_used=0, provider="structured",
                 )
+                # Save episode for cross-session memory
+                try:
+                    await save_episode(db, org_id, user_id, contract_id, query, _structured_answer[:300])
+                except Exception:
+                    pass
                 return ChatResponse(
                     answer=_structured_answer,
                     citations=[c.__dict__ if hasattr(c, "__dict__") else c for c in context.citations],
