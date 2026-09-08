@@ -48,7 +48,7 @@ if __name__ == "__main__":
         sys.executable, "-m", "celery",
         "-A", "app.workers.celery_app", "worker",
         "--loglevel=info",
-        "-Q", "enterprise_queue,pro_queue,starter_queue,free_queue",
+        "-Q", "enterprise_queue,pro_queue,starter_queue,free_queue,alerts",
         "--concurrency=1",
         "--pool=threads",
         "--without-heartbeat",
