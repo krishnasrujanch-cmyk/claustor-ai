@@ -25,6 +25,7 @@ logger = structlog.get_logger(__name__)
 
 # Memory manager import
 from app.agents.memory.memory_manager import MemoryManager
+from app.agents.memory.semantic_cache import get_cached_answer, set_cached_answer
 
 # Conversation history limits per plan
 HISTORY_LIMITS = {
@@ -167,7 +168,21 @@ class ChatAgent:
                 query=query,
             )
 
-        # ── Step 1.5: Enrich follow-up queries with conversation history ──
+        # ── Step 1.5: Check semantic cache ──
+        _cache_cid = str(contract_id) if contract_id else None
+        cached = await get_cached_answer(query, _cache_cid)
+        if cached:
+            return ChatResponse(
+                answer=cached["answer"],
+                citations=[],
+                contract_id=_cache_cid,
+                is_safe=True,
+                tokens_used=0,
+                provider=cached.get("provider", "cache"),
+                query=query,
+            )
+
+        # ── Step 1.6: Enrich follow-up queries with conversation history ──
         retrieval_query = query
         try:
             from app.domain.models import Conversation as _Conv
@@ -350,6 +365,8 @@ class ChatAgent:
                     contract_type=_ct, industry=_ind,
                 )
             if _structured_answer:
+                # Cache the answer
+                await set_cached_answer(query, _cache_cid, _structured_answer, provider="structured")
                 try:
                     from app.agents.profiles.grounding_validator import validate_grounding, add_grounding_disclaimer
                     _grounding = validate_grounding(_structured_answer, safe_context)
