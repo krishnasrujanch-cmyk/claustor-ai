@@ -27,6 +27,7 @@ logger = structlog.get_logger(__name__)
 from app.agents.memory.memory_manager import MemoryManager
 from app.agents.memory.semantic_cache import get_cached_answer, set_cached_answer
 from app.agents.memory.episodic_memory import save_episode, get_past_episodes, format_episodes_for_prompt
+from app.agents.memory.user_preferences import track_query_topic, get_user_focus_areas, format_preferences_for_prompt
 
 # Conversation history limits per plan
 HISTORY_LIMITS = {
@@ -168,6 +169,12 @@ class ChatAgent:
                 provider="safety_guard",
                 query=query,
             )
+
+        # ── Step 1.4: Track user query topic ──
+        try:
+            await track_query_topic(user_id, query)
+        except Exception:
+            pass
 
         # ── Step 1.5: Check semantic cache ──
         _cache_cid = str(contract_id) if contract_id else None
