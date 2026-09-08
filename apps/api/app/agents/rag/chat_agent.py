@@ -28,6 +28,7 @@ from app.agents.memory.memory_manager import MemoryManager
 from app.agents.memory.semantic_cache import get_cached_answer, set_cached_answer
 from app.agents.memory.episodic_memory import save_episode, get_past_episodes, format_episodes_for_prompt
 from app.agents.memory.user_preferences import track_query_topic, get_user_focus_areas, format_preferences_for_prompt
+from app.agents.memory.entity_memory import extract_and_save_entities
 
 # Conversation history limits per plan
 HISTORY_LIMITS = {
@@ -396,9 +397,10 @@ class ChatAgent:
                     answer=_structured_answer, citations=context.citations,
                     tokens_used=0, provider="structured",
                 )
-                # Save episode for cross-session memory
+                # Save episode + entities for cross-session memory
                 try:
                     await save_episode(db, org_id, user_id, contract_id, query, _structured_answer[:300])
+                    await extract_and_save_entities(db, org_id, user_id, contract_id, query, _structured_answer)
                 except Exception:
                     pass
                 return ChatResponse(
