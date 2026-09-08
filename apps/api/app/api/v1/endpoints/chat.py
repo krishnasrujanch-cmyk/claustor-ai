@@ -395,8 +395,10 @@ async def chat_stream(
             # Create response object for meta emission
             class _ChatResp:
                 total_tokens = getattr(chat_response, 'tokens_used', 0) or 0
-                cost_usd = 0.0
-                extra = {}
+                input_tokens = 0
+                output_tokens = 0
+                cost_usd = getattr(chat_response, 'cost_usd', 0.0) or 0.0
+                extra = {"confidence": 0.95}
             response = _ChatResp()
 
             # Emit tokens word by word with small delay for UX
