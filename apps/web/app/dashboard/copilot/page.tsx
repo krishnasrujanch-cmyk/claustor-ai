@@ -687,7 +687,7 @@ function CopilotPageInner() {
                           <CheckCircle size={9}/> Verified {Math.round(msg.groundedness*100)}%
                         </span>
                       )}
-                      {msg.tokens && <span style={{fontSize:10,color:C.muted}}>{msg.tokens.toLocaleString()} tokens</span>}
+                      {msg.tokens > 0 && <span style={{fontSize:10,color:C.muted}}>{msg.tokens.toLocaleString()} tokens</span>}
                       <div style={{marginLeft:"auto",display:"flex",gap:5}}>
                         <button onClick={()=>{navigator.clipboard.writeText(msg.content);setCopied(idx);setTimeout(()=>setCopied(null),2000);}}
                           style={{display:"flex",alignItems:"center",gap:3,padding:"4px 9px",
