@@ -97,7 +97,7 @@ app.conf.beat_schedule_filename = "/tmp/claustor-celerybeat-schedule"
 app.conf.beat_schedule = {
     "daily-alerts": {
         "task":     "app.workers.tasks.alert_tasks.run_daily_alerts",
-        "schedule": crontab(hour=3, minute=30),  # 9:00 AM IST
+        "schedule": crontab(hour=5, minute=30),  # 11:00 AM IST
         "options":  {"queue": "alerts"},
     },
     "monthly-usage-reset": {
