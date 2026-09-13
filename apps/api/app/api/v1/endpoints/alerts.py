@@ -4,7 +4,7 @@ View alerts, configure preferences, trigger manual alert check.
 """
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Request
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -157,6 +157,28 @@ async def trigger_alerts(
     from app.services.alert_service import AlertService
     service = AlertService(db)
     result = await service.run_daily_alerts()
+    return {"triggered": True, **result}
+
+
+@router.post("/cron/daily")
+async def cron_daily_alerts(
+    request: "Request",
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Cron-triggered daily alerts. Called by Google Cloud Scheduler.
+    Protected by a shared secret header instead of user auth.
+    """
+    from fastapi import Request
+    from app.core.config import settings
+    cron_secret = getattr(settings, "CRON_SECRET", "claustor-cron-2026")
+    auth_header = request.headers.get("X-Cron-Secret", "")
+    if auth_header != cron_secret:
+        raise HTTPException(status_code=403, detail="Invalid cron secret")
+    from app.services.alert_service import AlertService
+    service = AlertService(db)
+    result = await service.run_daily_alerts()
+    logger.info("cron_daily_alerts_complete", **result)
     return {"triggered": True, **result}
 
 
