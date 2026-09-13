@@ -47,9 +47,21 @@ async def scan_contract_compliance(
         checklists = get_applicable_checklists(industry)
 
     if not checklists:
-        # General industry with no specific regulation — run DPDP only (Indian default)
         if industry == "general":
-            checklists = [{"code": "dpdp_act", **COMPLIANCE_CHECKLISTS["dpdp_act"]}]
+            # Check if contract involves personal data before applying DPDP
+            if _involves_personal_data(full_text):
+                checklists = [{"code": "dpdp_act", **COMPLIANCE_CHECKLISTS["dpdp_act"]}]
+            else:
+                return {
+                    "contract_id": str(contract_id),
+                    "industry": industry,
+                    "overall_score": None,
+                    "total_required": 0,
+                    "total_found": 0,
+                    "total_missing": 0,
+                    "regulations": [],
+                    "note": "No data protection regulations applicable — contract does not involve personal data processing.",
+                }
         else:
             return {"error": f"No compliance checklists for industry: {industry}"}
 
@@ -72,6 +84,20 @@ async def scan_contract_compliance(
         "total_missing": total_required - total_found,
         "regulations": results,
     }
+
+
+def _involves_personal_data(text: str) -> bool:
+    """Detect if contract involves personal data processing."""
+    data_indicators = [
+        "personal data", "personal information", "data subject",
+        "data processing", "data controller", "data processor",
+        "privacy", "PII", "sensitive data", "customer data",
+        "user data", "employee data", "health data", "biometric",
+        "data protection", "GDPR", "DPDP", "consent.*data",
+        "information.*process", "collect.*data", "store.*data",
+    ]
+    matches = sum(1 for kw in data_indicators if kw.lower() in text)
+    return matches >= 2  # need at least 2 indicators
 
 
 def _scan_against_checklist(text: str, checklist: dict) -> dict:
@@ -123,7 +149,9 @@ def _scan_against_checklist(text: str, checklist: dict) -> dict:
 
 
 def _check_clause_presence(text: str, clause: dict) -> list[str]:
-    """Check if a required clause is present in the text."""
+    """Check if a required clause is present in the text.
+    Uses keyword matching + word stem expansion for broader coverage.
+    """
     matched = []
     for keyword in clause["keywords"]:
         # Support regex patterns
@@ -132,7 +160,48 @@ def _check_clause_presence(text: str, clause: dict) -> list[str]:
                 matched.append(keyword)
         elif keyword.lower() in text:
             matched.append(keyword)
+
+    # If no direct match, try stem-expanded matching
+    if not matched:
+        expanded = _expand_keywords(clause["keywords"])
+        for kw in expanded:
+            if kw in text:
+                matched.append(kw)
+
     return matched
+
+
+# Common word stems and synonyms for legal/compliance terms
+_SYNONYM_MAP = {
+    "deletion": ["destroy", "erase", "purge", "remove", "wipe", "disposal"],
+    "security": ["cybersecurity", "information security", "infosec", "security policy",
+                 "security standard", "security control", "security protocol", "protective measure"],
+    "consent": ["permission", "authorisation", "authorization", "approval", "agreement to process"],
+    "retention": ["storage period", "keep.*data", "preserve.*data", "maintain.*record"],
+    "breach": ["incident", "unauthorized access", "security event", "compromise"],
+    "confidential": ["non-disclosure", "proprietary", "trade secret", "restricted information"],
+    "audit": ["inspection", "examination", "review right", "right to examine", "access to records"],
+    "transfer": ["transmit", "share.*data", "disclose.*data", "send.*data", "move.*data"],
+    "grievance": ["complaint", "dispute.*data", "remedy", "recourse", "redress"],
+    "processing": ["handling", "use of data", "data usage", "data handling", "data operation"],
+    "safeguard": ["protective measure", "security control", "technical measure", "organizational measure"],
+    "residency": ["localization", "stored in india", "data.*india", "within india", "local storage"],
+    "continuity": ["disaster recovery", "backup", "resilience", "failover", "recovery plan"],
+    "subcontract": ["sub-contract", "further outsourc", "third party engag", "delegate.*service"],
+    "termination": ["expiry", "end of agreement", "cessation", "wind-down", "conclusion of"],
+    "monitor": ["oversight", "supervision", "review.*performance", "track.*compliance"],
+}
+
+
+def _expand_keywords(keywords: list[str]) -> list[str]:
+    """Expand keywords with synonyms for broader matching."""
+    expanded = set()
+    for kw in keywords:
+        kw_lower = kw.lower()
+        for stem, synonyms in _SYNONYM_MAP.items():
+            if stem in kw_lower:
+                expanded.update(s.lower() for s in synonyms)
+    return list(expanded)
 
 
 def _score_to_risk(score: float, critical_missing: int) -> str:
