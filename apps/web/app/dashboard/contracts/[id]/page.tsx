@@ -841,7 +841,7 @@ export default function ContractDetailPage() {
               Scanning contract for regulatory compliance...
             </div>
           )}
-          {complianceData && !complianceData.error && (
+          {complianceData && !complianceData.error && !complianceData.note && (
             <div>
               {/* Overall Score */}
               <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
