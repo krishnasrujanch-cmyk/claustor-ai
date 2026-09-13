@@ -219,6 +219,9 @@ def format_compliance_report(result: dict) -> str:
     """Format compliance scan results as readable text."""
     lines = []
     lines.append(f"# Compliance Analysis")
+    if result.get("note"):
+        lines.append(result["note"])
+        return "\n".join(lines)
     lines.append(f"**Overall Score: {result['overall_score']}%** "
                  f"({result['total_found']}/{result['total_required']} requirements met)\n")
 
