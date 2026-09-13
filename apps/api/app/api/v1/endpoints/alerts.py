@@ -226,6 +226,46 @@ async def cron_daily_alerts(
     return {"triggered": True, **result}
 
 
+@router.get("/{contract_id}/compliance")
+async def get_compliance_report(
+    contract_id: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    regulation: str = None,
+):
+    """
+    Run compliance scan against regulatory checklists.
+    Optional: specify regulation (dpdp_act, rbi_outsourcing, sebi_outsourcing, gdpr, hipaa)
+    """
+    from uuid import UUID as _UUID
+    from app.domain.models import Contract
+    
+    result = await db.execute(
+        select(Contract).where(
+            Contract.id == _UUID(contract_id),
+            Contract.org_id == user.org_id,
+        )
+    )
+    contract = result.scalar_one_or_none()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    
+    from app.agents.profiles.compliance_scanner import scan_contract_compliance, format_compliance_report
+    
+    regulations = [regulation] if regulation else None
+    industry = contract.industry or "general"
+    
+    scan_result = await scan_contract_compliance(
+        db=db,
+        contract_id=_UUID(contract_id),
+        industry=industry,
+        regulations=regulations,
+    )
+    
+    scan_result["report"] = format_compliance_report(scan_result)
+    return scan_result
+
+
 def _urgency(target_date, today) -> str:
     if not target_date:
         return "normal"

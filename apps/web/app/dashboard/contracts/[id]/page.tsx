@@ -96,7 +96,7 @@ function RiskHeatmap({ matrix, clauseTypes }: { matrix:any; clauseTypes:string[]
   );
 }
 
-type Tab = "overview"|"clauses"|"analytics"|"chat";
+type Tab = "overview"|"clauses"|"analytics"|"compliance"|"chat";
 
 function contractHealth(contract: any): number {
   const riskPenalty = (contract.risk_score || 50);
@@ -136,6 +136,8 @@ export default function ContractDetailPage() {
   const [contract, setContract] = useState<(Contract & {clauses:Clause[]})|null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("overview");
+  const [complianceData, setComplianceData] = useState<any>(null);
+  const [complianceLoading, setComplianceLoading] = useState(false);
 
   // Assign review modal
   const [showAssign, setShowAssign]     = useState(false);
@@ -228,6 +230,21 @@ export default function ContractDetailPage() {
       .catch(console.error)
       .finally(()=>setAnalyticsLoading(false));
     }
+    if (tab==="compliance" && !complianceData && !complianceLoading) {
+      setComplianceLoading(true);
+      (async()=>{
+        try{
+          const token=typeof window!=="undefined"
+            ?(() => { try { return JSON.parse(localStorage.getItem("claustor-auth")||"{}").state?.token||""; } catch{ return ""; } })()
+            :"";
+          const r=await fetch(`${API}/api/v1/alerts/${id}/compliance`,{
+            headers:{Authorization:`Bearer ${token}`}
+          });
+          if(r.ok){const d=await r.json();setComplianceData(d);}
+        }catch(e){console.error(e);}
+        finally{setComplianceLoading(false);}
+      })();
+    }
   }, [tab, id]);
 
   const loadPdf = async () => {
@@ -313,6 +330,7 @@ export default function ContractDetailPage() {
     {id:"overview",  label:"Overview"},
     {id:"clauses",   label:`Clauses (${contract.clauses?.length||0})`},
     {id:"analytics", label:highRiskClauses>0?`🔴 Risk Analytics (${highRiskClauses} High)`:"Analytics"},
+    {id:"compliance", label:"🛡️ Compliance"},
     {id:"chat",      label:"💬 AI Copilot"},
   ];
 
@@ -813,6 +831,141 @@ export default function ContractDetailPage() {
       )}
 
       {/* Tab: Chat */}
+      {/* Tab: Compliance */}
+      {tab==="compliance" && (
+        <div style={{marginTop:20}}>
+
+          {complianceLoading && (
+            <div style={{textAlign:"center",padding:40,color:C.muted}}>
+              <div style={{fontSize:24,marginBottom:8}}>🔍</div>
+              Scanning contract for regulatory compliance...
+            </div>
+          )}
+          {complianceData && !complianceData.error && (
+            <div>
+              {/* Overall Score */}
+              <div style={{display:"flex",gap:20,marginBottom:24,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:200,padding:20,background:C.surface,borderRadius:12,
+                  border:`1px solid ${C.border}`}}>
+                  <div style={{fontSize:13,color:C.muted,marginBottom:6}}>Overall Compliance</div>
+                  <div style={{fontSize:36,fontWeight:800,
+                    color:complianceData.overall_score>=80?"#22C55E":complianceData.overall_score>=60?"#F59E0B":"#EF4444"}}>
+                    {complianceData.overall_score}%
+                  </div>
+                  <div style={{marginTop:8,height:8,borderRadius:4,background:"#F1F5F9",overflow:"hidden"}}>
+                    <div style={{height:"100%",borderRadius:4,width:`${complianceData.overall_score}%`,
+                      background:complianceData.overall_score>=80?"#22C55E":complianceData.overall_score>=60?"#F59E0B":"#EF4444",
+                      transition:"width 0.5s"}}/>
+                  </div>
+                </div>
+                <div style={{flex:1,minWidth:200,padding:20,background:C.surface,borderRadius:12,
+                  border:`1px solid ${C.border}`,display:"flex",gap:24}}>
+                  <div>
+                    <div style={{fontSize:13,color:C.muted}}>Requirements Met</div>
+                    <div style={{fontSize:28,fontWeight:700,color:"#22C55E"}}>{complianceData.total_found}</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:13,color:C.muted}}>Missing</div>
+                    <div style={{fontSize:28,fontWeight:700,color:"#EF4444"}}>{complianceData.total_missing}</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:13,color:C.muted}}>Total</div>
+                    <div style={{fontSize:28,fontWeight:700,color:C.heading}}>{complianceData.total_required}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Per-Regulation Cards */}
+              {complianceData.regulations?.map((reg:any,ri:number)=>(
+                <div key={ri} style={{marginBottom:20,background:C.surface,borderRadius:12,
+                  border:`1px solid ${C.border}`,overflow:"hidden"}}>
+                  <div style={{padding:"16px 20px",
+                    background:reg.risk_level==="low"?"#F0FDF4":reg.risk_level==="medium"?"#FFFBEB":"#FEF2F2",
+                    borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <span style={{fontWeight:700,fontSize:15,color:C.heading}}>{reg.display_name}</span>
+                      <span style={{marginLeft:12,fontSize:12,padding:"2px 10px",borderRadius:20,fontWeight:600,
+                        background:reg.risk_level==="low"?"#DCFCE7":reg.risk_level==="medium"?"#FEF3C7":"#FEE2E2",
+                        color:reg.risk_level==="low"?"#166534":reg.risk_level==="medium"?"#92400E":"#991B1B"}}>
+                        {reg.risk_level.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={{fontSize:24,fontWeight:800,
+                      color:reg.score>=80?"#22C55E":reg.score>=60?"#F59E0B":"#EF4444"}}>
+                      {reg.score}%
+                    </div>
+                  </div>
+                  <div style={{padding:20}}>
+                    {/* Progress bar */}
+                    <div style={{height:6,borderRadius:3,background:"#F1F5F9",marginBottom:16,overflow:"hidden"}}>
+                      <div style={{height:"100%",borderRadius:3,width:`${reg.score}%`,
+                        background:reg.score>=80?"#22C55E":reg.score>=60?"#F59E0B":"#EF4444",
+                        transition:"width 0.5s"}}/>
+                    </div>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
+                      {reg.found_count} of {reg.total_clauses} requirements met
+                      {reg.critical_missing>0&&<span style={{color:"#EF4444",fontWeight:600}}> · {reg.critical_missing} critical gaps</span>}
+                    </div>
+
+                    {/* Missing clauses */}
+                    {reg.missing?.length>0&&(
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontWeight:700,fontSize:13,color:"#991B1B",marginBottom:8}}>Missing Requirements</div>
+                        {reg.missing.map((m:any,mi:number)=>(
+                          <div key={mi} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 12px",
+                            marginBottom:4,borderRadius:8,
+                            background:m.severity==="critical"?"#FEF2F2":m.severity==="high"?"#FFF7ED":"#FFFBEB"}}>
+                            <span style={{fontSize:14,flexShrink:0}}>
+                              {m.severity==="critical"?"🔴":m.severity==="high"?"🟠":"🟡"}
+                            </span>
+                            <div>
+                              <div style={{fontWeight:600,fontSize:13,color:C.heading}}>
+                                {m.title} <span style={{fontSize:11,color:C.muted,fontWeight:400}}>[{m.severity.toUpperCase()}]</span>
+                              </div>
+                              <div style={{fontSize:12,color:C.body,marginTop:2}}>{m.description}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Found clauses */}
+                    {reg.found?.length>0&&(
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13,color:"#166534",marginBottom:8}}>Requirements Met</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                          {reg.found.map((f:any,fi:number)=>(
+                            <span key={fi} style={{fontSize:12,padding:"4px 10px",borderRadius:20,
+                              background:"#F0FDF4",color:"#166534",border:"1px solid #BBF7D0"}}>
+                              ✅ {f.title}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Rescan button */}
+              <div style={{textAlign:"center",marginTop:16}}>
+                <button onClick={()=>setComplianceData(null)} style={{padding:"8px 20px",borderRadius:8,
+                  background:"transparent",color:C.muted,border:`1px solid ${C.border}`,
+                  fontSize:12,cursor:"pointer"}}>
+                  ↻ Rescan
+                </button>
+              </div>
+            </div>
+          )}
+          {complianceData?.error && (
+            <div style={{textAlign:"center",padding:40,color:C.muted}}>
+              <div style={{fontSize:24,marginBottom:8}}>⚠️</div>
+              {complianceData.error}
+            </div>
+          )}
+        </div>
+      )}
+
       {tab==="chat" && (
         <div style={{display:"flex",flexDirection:"column",height:560,
           background:"rgba(255,255,255,0.85)",backdropFilter:"blur(12px)",
