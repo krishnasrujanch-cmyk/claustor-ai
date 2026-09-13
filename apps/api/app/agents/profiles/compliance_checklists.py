@@ -7,7 +7,7 @@ COMPLIANCE_CHECKLISTS = {
     "dpdp_act": {
         "display_name": "Digital Personal Data Protection Act, 2023 (DPDP)",
         "jurisdiction": "India",
-        "applies_to": ["financial_services", "healthcare", "it_saas", "telecom", "insurance", "retail"],
+        "applies_to": ["financial_services", "healthcare", "pharma", "it_saas", "telecom", "insurance", "retail", "manufacturing", "energy_oil_gas"],
         "required_clauses": [
             {
                 "id": "dpdp_01",
@@ -210,7 +210,7 @@ COMPLIANCE_CHECKLISTS = {
     "gdpr": {
         "display_name": "General Data Protection Regulation (GDPR)",
         "jurisdiction": "EU",
-        "applies_to": ["financial_services", "healthcare", "it_saas", "telecom", "insurance", "retail", "media_entertainment"],
+        "applies_to": ["financial_services", "healthcare", "pharma", "it_saas", "telecom", "insurance", "retail", "media_entertainment", "manufacturing"],
         "required_clauses": [
             {
                 "id": "gdpr_01",
