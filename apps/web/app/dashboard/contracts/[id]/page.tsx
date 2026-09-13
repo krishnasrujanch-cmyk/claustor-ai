@@ -957,6 +957,25 @@ export default function ContractDetailPage() {
               </div>
             </div>
           )}
+          {complianceData?.note && (
+            <div style={{textAlign:"center",padding:40}}>
+              <div style={{width:64,height:64,borderRadius:"50%",background:"#F0FDF4",
+                display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+                <span style={{fontSize:28}}>✅</span>
+              </div>
+              <div style={{fontSize:16,fontWeight:700,color:C.heading,marginBottom:8}}>
+                No Data Protection Regulations Applicable
+              </div>
+              <p style={{color:C.muted,fontSize:13,maxWidth:400,margin:"0 auto",lineHeight:1.6}}>
+                This contract does not involve personal data processing, so data protection 
+                regulations like DPDP Act and GDPR do not apply.
+              </p>
+              <p style={{color:C.muted,fontSize:12,marginTop:12}}>
+                To run a specific regulation check, use the AI Copilot: 
+                <em>&quot;Is this contract DPDP compliant?&quot;</em>
+              </p>
+            </div>
+          )}
           {complianceData?.error && (
             <div style={{textAlign:"center",padding:40,color:C.muted}}>
               <div style={{fontSize:24,marginBottom:8}}>⚠️</div>
