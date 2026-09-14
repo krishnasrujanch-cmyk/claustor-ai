@@ -47,7 +47,7 @@ export function Footer() {
           <span style={{fontSize:12,color:"#4B5563",marginLeft:8}}>© 2026 DKU Technologies Pvt. Ltd.</span>
         </div>
         <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
-          {[["Privacy","/privacy"],["Terms","/terms"],["Security","/security"],["Contact","/contact"]].map(([label,href])=>(
+          {[["About","/about"],["Privacy","/privacy"],["Terms","/terms"],["Security","/security"],["Contact","/contact"]].map(([label,href])=>(
             <Link key={label} href={href} style={{fontSize:13,color:"#6B7280",textDecoration:"none"}}>{label}</Link>
           ))}
         </div>
