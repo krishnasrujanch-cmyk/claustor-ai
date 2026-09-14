@@ -1304,7 +1304,7 @@ export default function LandingPage() {
             <span style={{ fontSize: 12, color: "#4B5563", marginLeft: 8 }}>© 2026 DKU Technologies Pvt. Ltd.</span>
           </div>
           <div style={{ display: "flex", gap: 24 }}>
-            {["Privacy", "Terms", "Security", "Contact"].map(item => (
+            {["About", "Privacy", "Terms", "Security", "Contact"].map(item => (
               <a key={item} href={`/${item.toLowerCase()}`} style={{ fontSize: 13, color: "#6B7280", textDecoration: "none" }}>{item}</a>
             ))}
           </div>
